@@ -3,8 +3,10 @@ package sdk
 import (
 	"context"
 	"fmt"
-	consts "github.com/xsxdot/aio/app/const"
 	"time"
+
+	"github.com/xsxdot/aio/app/config"
+	consts "github.com/xsxdot/aio/app/const"
 
 	"github.com/xsxdot/aio/pkg/distributed/election"
 	"github.com/xsxdot/aio/pkg/distributed/idgen"
@@ -21,6 +23,9 @@ import (
 type EtcdServiceOptions struct {
 	// 连接超时时间
 	ConnectTimeout time.Duration
+	// 是否使用配置中心的配置信息
+	UseConfigCenter bool
+	// 以下字段仅在不使用配置中心时有效
 	// 安全连接配置
 	TLS *etcd.TLSConfig
 	// 认证信息
@@ -33,6 +38,7 @@ type EtcdServiceOptions struct {
 // 默认的 ETCD 服务选项
 var DefaultEtcdServiceOptions = &EtcdServiceOptions{
 	ConnectTimeout:    5 * time.Second,
+	UseConfigCenter:   true, // 默认使用配置中心
 	AutoSyncEndpoints: true,
 }
 
@@ -61,6 +67,22 @@ func NewEtcdService(client *Client, options *EtcdServiceOptions) *EtcdService {
 		options: options,
 		logger:  zap.NewExample(), // 使用示例日志记录器，实际可从外部传入
 	}
+}
+
+// GetClientConfigFromCenter 从配置中心获取ETCD客户端配置
+func (e *EtcdService) GetClientConfigFromCenter(ctx context.Context) (*config.ClientConfigFixedValue, error) {
+	// 从配置中心获取客户端配置
+	configKey := fmt.Sprintf("%s%s", consts.ClientConfigPrefix, consts.ComponentEtcd)
+
+	// 使用 GetConfigWithStruct 方法直接获取并反序列化为结构体
+	// 该方法会自动处理加密字段的解密
+	var config config.ClientConfigFixedValue
+	err := e.client.Config.GetConfigWithStruct(ctx, configKey, &config)
+	if err != nil {
+		return nil, fmt.Errorf("从配置中心获取ETCD客户端配置失败: %w", err)
+	}
+
+	return &config, nil
 }
 
 // Connect 连接到 ETCD 服务
@@ -99,14 +121,48 @@ func (e *EtcdService) Connect(ctx context.Context) error {
 		e.logger.Info("添加 ETCD 端点", zap.String("endpoint", endpoint))
 	}
 
+	var username, password string
+	var tlsConfig *etcd.TLSConfig
+	autoSyncEndpoints := e.options.AutoSyncEndpoints
+
+	// 从配置中心获取认证信息
+	if e.options.UseConfigCenter {
+		config, err := e.GetClientConfigFromCenter(ctx)
+		if err != nil {
+			e.logger.Warn("从配置中心获取ETCD配置失败，将使用传入的配置", zap.Error(err))
+			// 使用传入的配置作为备选
+			username = e.options.Username
+			password = e.options.Password
+			tlsConfig = e.options.TLS
+		} else {
+			username = config.Username
+			password = config.Password
+
+			// 如果启用了TLS，设置TLS配置
+			if config.EnableTls {
+				tlsConfig = &etcd.TLSConfig{
+					TLSEnabled: true,
+					Cert:       config.Cert,
+					Key:        config.Key,
+					TrustedCA:  config.TrustedCAFile,
+				}
+			}
+		}
+	} else {
+		// 使用传入的配置
+		username = e.options.Username
+		password = e.options.Password
+		tlsConfig = e.options.TLS
+	}
+
 	// 创建 ETCD 客户端配置
 	clientConfig := &etcd.ClientConfig{
 		Endpoints:         endpoints,
 		DialTimeout:       e.options.ConnectTimeout,
-		Username:          e.options.Username,
-		Password:          e.options.Password,
-		AutoSyncEndpoints: e.options.AutoSyncEndpoints,
-		TLS:               e.options.TLS,
+		Username:          username,
+		Password:          password,
+		AutoSyncEndpoints: autoSyncEndpoints,
+		TLS:               tlsConfig,
 	}
 
 	// 创建 ETCD 客户端

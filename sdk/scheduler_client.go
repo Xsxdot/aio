@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"context"
 	"fmt"
+	"github.com/xsxdot/aio/pkg/common"
 	"github.com/xsxdot/aio/pkg/distributed/election"
 	"sync"
 	"time"
@@ -183,8 +184,8 @@ func NewSchedulerService(client *Client, options *SchedulerServiceOptions) *Sche
 	}
 
 	// 如果未指定服务名称，使用默认值
-	if options.ServiceName == "" {
-		options.ServiceName = "scheduler-service"
+	if client.serviceInfo != nil {
+		options.ServiceName = client.serviceInfo.Name
 	}
 
 	// 创建上下文
@@ -197,7 +198,7 @@ func NewSchedulerService(client *Client, options *SchedulerServiceOptions) *Sche
 	service := &SchedulerService{
 		client:        client,
 		options:       options,
-		logger:        zap.NewExample(), // 使用示例日志记录器，实际可从外部传入
+		logger:        common.GetLogger().GetZapLogger("SchedulerService-" + options.ServiceName), // 使用示例日志记录器，实际可从外部传入
 		cronScheduler: cronScheduler,
 		tasks:         make(map[string]*Task),
 		taskStatus:    make(map[string]TaskStatus),

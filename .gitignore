@@ -20,6 +20,7 @@ go.work
 
 # 编译输出
 /bin/
+/release/
 
 # IDE相关文件
 .idea/
@@ -39,6 +40,8 @@ go.work
 *.tmp
 *.log
 *.bak
+build.bat
+build.sh
 
 # 配置文件中可能含有敏感信息的文件
 # 根据需要取消注释

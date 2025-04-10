@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
+
 	"github.com/xsxdot/aio/pkg/distributed/discovery"
 	"github.com/xsxdot/aio/pkg/distributed/election"
 	"github.com/xsxdot/aio/pkg/protocol"
-	"time"
 )
 
 // 定义TCP API相关的服务和消息类型
@@ -44,17 +45,8 @@ type LeaderInfo struct {
 	LastUpdate time.Time `json:"lastUpdate"`
 }
 
-// 统一的简单响应结构体
-type ServiceResponseBase struct {
-	// Success 操作是否成功
-	Success bool `json:"success"`
-	// Type 响应类型，用于区分不同的响应
-	Type string `json:"type"`
-	// Message 响应消息
-	Message string `json:"message,omitempty"`
-	// Data 响应数据
-	Data interface{} `json:"data,omitempty"`
-}
+// 使用统一的响应结构体
+type ServiceResponse = protocol.APIResponse
 
 // 请求结构体
 type GetLeaderRequest struct {
@@ -123,27 +115,19 @@ func RegisterElectionTCPHandlers(electionService election.ElectionService, proto
 			LastUpdate:   time.Now(),
 		}
 
-		// 序列化响应
-		respPayload, err := json.Marshal(leaderInfo)
-		if err != nil {
-			return sendErrorResponse(protocolMgr, msg, err)
-		}
-
-		// 发送响应消息
-		respMsg := protocol.NewMessage(
-			MsgTypeLeaderResponse,
-			ServiceTypeElection,
+		// 使用统一的响应方法
+		return protocol.SendServiceResponse(
+			protocolMgr,
 			connID,
 			msg.Header().MessageID,
-			respPayload,
+			MsgTypeLeaderResponse,
+			ServiceTypeElection,
+			true,
+			"leader",
+			"获取主节点信息成功",
+			leaderInfo,
+			"",
 		)
-
-		conn, found := protocolMgr.GetConnection(connID)
-		if !found {
-			return fmt.Errorf("connection not found: %s", connID)
-		}
-
-		return conn.Send(respMsg)
 	})
 
 	// 注册服务
@@ -175,11 +159,17 @@ func RegisterDiscoveryTCPHandlers(discoveryService discovery.DiscoveryService, p
 			return sendErrorResponse(protocolMgr, msg, err)
 		}
 
+		// 序列化服务列表为JSON字符串
+		servicesJSON, err := json.Marshal(services)
+		if err != nil {
+			return sendErrorResponse(protocolMgr, msg, fmt.Errorf("序列化服务列表失败: %v", err))
+		}
+
 		// 构造统一响应结构
-		response := ServiceResponseBase{
+		response := ServiceResponse{
 			Success: true,
 			Type:    "discover",
-			Data:    services,
+			Data:    string(servicesJSON),
 		}
 
 		// 序列化响应
@@ -219,11 +209,18 @@ func RegisterDiscoveryTCPHandlers(discoveryService discovery.DiscoveryService, p
 
 		// 服务变更事件处理函数
 		eventHandler := func(event discovery.DiscoveryEvent) {
+			// 将事件序列化为JSON字符串
+			eventJSON, err := json.Marshal(event)
+			if err != nil {
+				fmt.Printf("Failed to marshal event: %v\n", err)
+				return
+			}
+
 			// 构造事件消息
-			eventData := ServiceResponseBase{
+			eventData := ServiceResponse{
 				Success: true,
 				Type:    "event",
-				Data:    event,
+				Data:    string(eventJSON),
 			}
 
 			// 序列化事件内容
@@ -264,11 +261,17 @@ func RegisterDiscoveryTCPHandlers(discoveryService discovery.DiscoveryService, p
 		}
 		watcherMap[connID][req.ServiceName] = watcherID
 
+		// 将响应数据序列化为JSON字符串
+		watcherDataJSON, err := json.Marshal(map[string]string{"watcherId": watcherID, "serviceName": req.ServiceName})
+		if err != nil {
+			return sendErrorResponse(protocolMgr, msg, fmt.Errorf("序列化监听器数据失败: %v", err))
+		}
+
 		// 构造统一响应结构
-		response := ServiceResponseBase{
+		response := ServiceResponse{
 			Success: true,
 			Type:    "watch",
-			Data:    map[string]string{"watcherId": watcherID, "serviceName": req.ServiceName},
+			Data:    string(watcherDataJSON),
 		}
 
 		// 发送成功响应
@@ -327,7 +330,7 @@ func RegisterDiscoveryTCPHandlers(discoveryService discovery.DiscoveryService, p
 		}
 
 		// 构造统一响应结构
-		response := ServiceResponseBase{
+		response := ServiceResponse{
 			Success: true,
 			Type:    "unwatch",
 			Message: "服务监听已取消",
@@ -378,12 +381,18 @@ func RegisterDiscoveryTCPHandlers(discoveryService discovery.DiscoveryService, p
 			return sendErrorResponse(protocolMgr, msg, err)
 		}
 
+		// 将响应数据序列化为JSON字符串
+		serviceIDJSON, err := json.Marshal(map[string]string{"serviceId": req.Service.ID})
+		if err != nil {
+			return sendErrorResponse(protocolMgr, msg, fmt.Errorf("序列化服务ID失败: %v", err))
+		}
+
 		// 构造统一响应结构
-		response := ServiceResponseBase{
+		response := ServiceResponse{
 			Success: true,
 			Type:    "register",
 			Message: "服务注册成功",
-			Data:    map[string]string{"serviceId": req.Service.ID},
+			Data:    string(serviceIDJSON),
 		}
 
 		// 发送成功响应
@@ -427,12 +436,18 @@ func RegisterDiscoveryTCPHandlers(discoveryService discovery.DiscoveryService, p
 			return sendErrorResponse(protocolMgr, msg, err)
 		}
 
+		// 将响应数据序列化为JSON字符串
+		serviceIDJSON, err := json.Marshal(map[string]string{"serviceId": req.ServiceID})
+		if err != nil {
+			return sendErrorResponse(protocolMgr, msg, fmt.Errorf("序列化服务ID失败: %v", err))
+		}
+
 		// 构造统一响应结构
-		response := ServiceResponseBase{
+		response := ServiceResponse{
 			Success: true,
 			Type:    "deregister",
 			Message: "服务已注销",
-			Data:    map[string]string{"serviceId": req.ServiceID},
+			Data:    string(serviceIDJSON),
 		}
 
 		// 发送成功响应
@@ -512,28 +527,16 @@ func sendErrorResponse(protocolMgr *protocol.ProtocolManager, msg *protocol.Cust
 		respType = "unknown"
 	}
 
-	// 构造统一错误响应
-	errResp := ServiceResponseBase{
-		Success: false,
-		Type:    respType,
-		Message: err.Error(),
-	}
-
-	respPayload, _ := json.Marshal(errResp)
-	respMsg := protocol.NewMessage(
-		respMsgType,
-		msg.Header().ServiceType,
+	// 使用统一的错误响应函数
+	return protocol.SendErrorResponse(
+		protocolMgr,
 		msg.Header().ConnID,
 		msg.Header().MessageID,
-		respPayload,
+		respMsgType,
+		msg.Header().ServiceType,
+		respType,
+		err,
 	)
-
-	conn, found := protocolMgr.GetConnection(msg.Header().ConnID)
-	if !found {
-		return fmt.Errorf("connection not found: %s", msg.Header().ConnID)
-	}
-
-	return conn.Send(respMsg)
 }
 
 // 生成唯一的消息ID

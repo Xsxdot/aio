@@ -253,9 +253,16 @@ func (c *EtcdComponent) DefaultConfig(baseConfig *config.BaseConfig) interface{}
 
 // GetClientConfig 返回客户端配置
 func (c *EtcdComponent) GetClientConfig() (bool, *config.ClientConfig) {
-	value := map[string]interface{}{
-		"username": c.cfg.User.RootUsername,
-		"password": config.NewEncryptedValue(c.cfg.User.RootPassword),
+	value := config.ClientConfigFixedValue{
+		Username:  c.cfg.User.RootUsername,
+		Password:  c.cfg.User.RootPassword,
+		EnableTls: c.cfg.ClientTLSConfig.TLSEnabled,
+	}
+
+	if c.cfg.ClientTLSConfig.TLSEnabled && !c.cfg.ClientTLSConfig.AutoTls {
+		value.Cert = c.cfg.ClientTLSConfig.Cert
+		value.Key = c.cfg.ClientTLSConfig.Key
+		value.TrustedCAFile = c.cfg.ClientTLSConfig.TrustedCA
 	}
 
 	return true, config.NewClientConfig("etcd", value)

@@ -74,10 +74,9 @@ func (s *Server) Status() consts.ComponentStatus {
 
 // GetClientConfig 实现Component接口，返回客户端配置
 func (s *Server) GetClientConfig() (bool, *config.ClientConfig) {
-	value := map[string]interface{}{
-		"password": config.NewEncryptedValue(s.config.Password),
+	value := config.ClientConfigFixedValue{
+		Password: s.config.Password,
 	}
-
 	return true, config.NewClientConfig("redis", value)
 }
 

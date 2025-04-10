@@ -379,9 +379,10 @@ func (m *AuthManager) AuthenticateClient(req ClientAuthRequest) (*auth2.Token, e
 
 	// 获取主体权限
 	roles, permissions, err := m.getUserPermissions(subject)
-	if err != nil {
-		return nil, fmt.Errorf("get client permissions failed: %w", err)
-	}
+	//todo 现在还不需要验证这个
+	//if err != nil {
+	//	return nil, fmt.Errorf("get client permissions failed: %w", err)
+	//}
 
 	// 生成JWT令牌
 	authInfo := &auth2.AuthInfo{

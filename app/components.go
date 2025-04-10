@@ -433,7 +433,7 @@ func (r *ComponentManager) RegisterClientConfig() {
 			// 将客户端配置注册到配置中心
 			if r.app.ConfigService != nil {
 				// 使用组件名称作为配置键，将客户端配置写入配置中心
-				configKey := fmt.Sprintf("client.%s", component.Name())
+				configKey := fmt.Sprintf("%s%s", consts.ClientConfigPrefix, component.Name())
 				metadata := map[string]string{
 					"type":        "client_config",
 					"component":   component.Name(),
@@ -442,9 +442,46 @@ func (r *ComponentManager) RegisterClientConfig() {
 
 				// 将ClientConfig转换为配置服务需要的格式
 				configValue := make(map[string]*configInternal.ConfigValue)
-				for k, v := range clientConfig.Value {
-					configValue[k] = &configInternal.ConfigValue{
-						Value: fmt.Sprintf("%v", v),
+
+				// 添加用户名
+				if clientConfig.Value.Username != "" {
+					configValue["username"] = &configInternal.ConfigValue{
+						Value: clientConfig.Value.Username,
+						Type:  configInternal.ValueTypeString,
+					}
+				}
+
+				// 添加密码（加密形式）
+				if clientConfig.Value.Password != "" {
+					configValue["password"] = &configInternal.ConfigValue{
+						Value: clientConfig.Value.Password,
+						Type:  configInternal.ValueTypeEncrypted,
+					}
+				}
+
+				// 添加TLS相关配置
+				configValue["enable_tls"] = &configInternal.ConfigValue{
+					Value: fmt.Sprintf("%v", clientConfig.Value.EnableTls),
+					Type:  configInternal.ValueTypeBool,
+				}
+
+				if clientConfig.Value.Cert != "" {
+					configValue["cert"] = &configInternal.ConfigValue{
+						Value: clientConfig.Value.Cert,
+						Type:  configInternal.ValueTypeString,
+					}
+				}
+
+				if clientConfig.Value.Key != "" {
+					configValue["key"] = &configInternal.ConfigValue{
+						Value: clientConfig.Value.Key,
+						Type:  configInternal.ValueTypeString,
+					}
+				}
+
+				if clientConfig.Value.TrustedCAFile != "" {
+					configValue["trusted_ca_file"] = &configInternal.ConfigValue{
+						Value: clientConfig.Value.TrustedCAFile,
 						Type:  configInternal.ValueTypeString,
 					}
 				}

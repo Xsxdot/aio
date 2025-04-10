@@ -6,12 +6,28 @@ type ClientConfigValue struct {
 	Type  string `json:"type"`
 }
 
+// ClientConfigFixedValue 表示客户端配置固定字段的值结构
+type ClientConfigFixedValue struct {
+	// 用户名
+	Username string `json:"username,omitempty"`
+	// 密码 (可能是加密的)
+	Password string `json:"password,omitempty"`
+	// 是否启用TLS
+	EnableTls bool `json:"enable_tls,omitempty"`
+	// 客户端证书
+	Cert string `json:"cert,omitempty"`
+	// 客户端密钥
+	Key string `json:"key,omitempty"`
+	// 可信CA证书
+	TrustedCAFile string `json:"trusted_ca_file,omitempty"`
+}
+
 // ClientConfig 表示返回给客户端的配置
 type ClientConfig struct {
 	// Key 配置键名
 	Key string `json:"key"`
 	// Value 配置值内容
-	Value map[string]interface{} `json:"value"`
+	Value ClientConfigFixedValue `json:"value"`
 	// Version 配置版本号
 	Version int `json:"version"`
 	// Metadata 元数据
@@ -19,7 +35,7 @@ type ClientConfig struct {
 }
 
 // NewClientConfig 创建新的客户端配置
-func NewClientConfig(key string, value map[string]interface{}) *ClientConfig {
+func NewClientConfig(key string, value ClientConfigFixedValue) *ClientConfig {
 	return &ClientConfig{
 		Key:      key,
 		Value:    value,

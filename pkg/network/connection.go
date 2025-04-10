@@ -9,24 +9,26 @@ import (
 
 // Connection 表示一个网络连接
 type Connection struct {
-	id        string
-	conn      net.Conn
-	protocol  Protocol
-	handler   *MessageHandler
-	closeChan chan struct{}
-	state     atomic.Value // ConnectionState
-	stats     *ConnectionStats
+	id         string
+	conn       net.Conn
+	protocol   Protocol
+	handler    *MessageHandler
+	closeChan  chan struct{}
+	state      atomic.Value // ConnectionState
+	stats      *ConnectionStats
+	formClient bool
 }
 
 // NewConnection 创建新的连接
-func NewConnection(conn net.Conn, protocol Protocol, handler *MessageHandler) *Connection {
+func NewConnection(conn net.Conn, protocol Protocol, handler *MessageHandler, formClient bool) *Connection {
 	c := &Connection{
-		id:        generateID(),
-		conn:      conn,
-		protocol:  protocol,
-		handler:   handler,
-		closeChan: make(chan struct{}),
-		stats:     &ConnectionStats{},
+		id:         generateID(),
+		conn:       conn,
+		protocol:   protocol,
+		handler:    handler,
+		closeChan:  make(chan struct{}),
+		stats:      &ConnectionStats{},
+		formClient: formClient,
 	}
 
 	// 设置初始状态
@@ -113,27 +115,4 @@ func (c *Connection) Close() error {
 // generateID 生成唯一的连接ID
 func generateID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
-}
-
-// Dial 创建到远程服务器的连接
-func Dial(address string, protocol Protocol) (*Connection, error) {
-	// 建立TCP连接
-	conn, err := net.Dial("tcp", address)
-	if err != nil {
-		return nil, err
-	}
-
-	// 创建消息处理器
-	handler := &MessageHandler{
-		Handle: func(_ *Connection, data []byte) error {
-			// 客户端连接默认不处理服务器消息
-			// 由调用者手动处理接收到的消息
-			return nil
-		},
-	}
-
-	// 创建连接对象
-	c := NewConnection(conn, protocol, handler)
-
-	return c, nil
 }

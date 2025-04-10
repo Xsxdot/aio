@@ -11,4 +11,6 @@ const (
 	ComponentMQServer        = "aio-mq-server"
 	ComponentMonitor         = "aio-monitor"
 	ComponentProtocolManager = "aio-service"
+
+	ClientConfigPrefix = "client."
 )

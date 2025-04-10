@@ -2,11 +2,12 @@ package network
 
 import (
 	"fmt"
-	"github.com/xsxdot/aio/pkg/common"
 	"io"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/xsxdot/aio/pkg/common"
 
 	"go.uber.org/zap"
 )
@@ -98,7 +99,7 @@ func (m *ConnectionManager) Connect(addr string) (*Connection, error) {
 		return nil, fmt.Errorf("dial error: %w", err)
 	}
 
-	return m.handleNewConnection(conn)
+	return m.handleNewConnection(conn, false)
 }
 
 // Send 发送消息
@@ -210,7 +211,7 @@ func (m *ConnectionManager) acceptLoop() {
 				return
 			}
 
-			if _, err := m.handleNewConnection(conn); err != nil {
+			if _, err := m.handleNewConnection(conn, true); err != nil {
 				m.log.Error("handle new connection error", zap.Error(err))
 				conn.Close()
 			}
@@ -219,7 +220,7 @@ func (m *ConnectionManager) acceptLoop() {
 }
 
 // handleNewConnection 处理新连接
-func (m *ConnectionManager) handleNewConnection(conn net.Conn) (*Connection, error) {
+func (m *ConnectionManager) handleNewConnection(conn net.Conn, fromClient bool) (*Connection, error) {
 	// 检查连接数量限制
 	if m.options.MaxConnections > 0 && m.GetConnectionCount() >= m.options.MaxConnections {
 		conn.Close()
@@ -243,7 +244,7 @@ func (m *ConnectionManager) handleNewConnection(conn net.Conn) (*Connection, err
 	}
 
 	// 创建新连接
-	c := NewConnection(conn, m.protocol, m.handler)
+	c := NewConnection(conn, m.protocol, m.handler, fromClient)
 
 	// 保存连接
 	m.connections.Store(c.ID(), c)
@@ -275,7 +276,7 @@ func (m *ConnectionManager) handleConnection(conn *Connection) {
 	}()
 
 	// 启动心跳
-	if m.handler.GetHeartbeat != nil {
+	if m.handler.GetHeartbeat != nil && !conn.formClient {
 		m.wg.Add(1)
 		go m.heartbeatLoop(conn)
 	}
@@ -331,8 +332,6 @@ func (m *ConnectionManager) heartbeatLoop(conn *Connection) {
 	heartbeatInterval := m.options.HeartbeatInterval
 	if heartbeatInterval <= 0 {
 		heartbeatInterval = 30 * time.Second
-		m.log.Warn("心跳间隔设置为非正数，已自动修正为30秒",
-			zap.String("connectionID", conn.ID()))
 	}
 
 	ticker := time.NewTicker(heartbeatInterval)

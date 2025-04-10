@@ -28,7 +28,7 @@ func TestMetricsCollector(t *testing.T) {
 	}
 
 	// 启动指标收集
-	err = client.StartMetrics(options)
+	_, err = client.StartMetrics(options)
 	if err != nil {
 		t.Logf("启动指标收集失败: %v", err)
 	} else {

@@ -391,9 +391,16 @@ func WithJetStream(maxMem, maxFile int64) func(*ServerConfig) {
 
 // GetClientConfig 实现Component接口，返回客户端配置
 func (s *NatsServer) GetClientConfig() (bool, *config.ClientConfig) {
-	value := map[string]interface{}{
-		"username": s.config.Username,
-		"password": config.NewEncryptedValue(s.config.Password),
+	value := config.ClientConfigFixedValue{
+		Username:  s.config.Username,
+		Password:  s.config.Password,
+		EnableTls: s.config.TLSEnabled,
+	}
+
+	if s.config.TLSEnabled {
+		value.Cert = s.config.CertFile
+		value.Key = s.config.KeyFile
+		value.TrustedCAFile = s.config.ClientCAFile
 	}
 
 	return true, config.NewClientConfig("nats", value)

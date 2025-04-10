@@ -31,10 +31,13 @@ type DiscoveryServiceEvent struct {
 
 // DiscoveryService 服务发现服务
 type DiscoveryService struct {
+	serviceInfo *ServiceInfo
 	// 客户端引用
 	client *Client
 	// 选项
 	options *DiscoveryServiceOptions
+	// TCP API客户端
+	tcpClient *TCPAPIClient
 
 	// 服务相关
 	servicesLock sync.RWMutex
@@ -58,9 +61,13 @@ func NewDiscoveryService(client *Client, options *DiscoveryServiceOptions) *Disc
 		}
 	}
 
+	info := client.serviceInfo
+
 	return &DiscoveryService{
+		serviceInfo:  info,
 		client:       client,
 		options:      options,
+		tcpClient:    client.GetTCPAPIClient(),
 		services:     make(map[string]map[string]*discovery.ServiceInfo),
 		watcherIDs:   make(map[string]string),
 		watchedNames: make(map[string]bool),
@@ -74,7 +81,7 @@ func (d *DiscoveryService) RegisterServiceDiscoveryHandler() {
 	// 注册服务事件处理函数
 	handler.RegisterHandler(distributed.MsgTypeServiceEvent, func(connID string, msg *protocol.CustomMessage) error {
 		// 解析服务事件
-		var eventResp distributed.ServiceResponseBase
+		var eventResp protocol.APIResponse
 		if err := json.Unmarshal(msg.Payload(), &eventResp); err != nil {
 			return fmt.Errorf("解析服务事件响应失败: %w", err)
 		}
@@ -84,19 +91,14 @@ func (d *DiscoveryService) RegisterServiceDiscoveryHandler() {
 			return fmt.Errorf("接收到非事件类型的服务事件: %s", eventResp.Type)
 		}
 
-		// 从Data字段解析具体事件内容
-		if eventResp.Data == nil {
+		// 检查数据是否为空
+		if eventResp.Data == "" {
 			return fmt.Errorf("服务事件数据为空")
 		}
 
-		// 将data字段转换为AdaptedDiscoveryEvent
-		dataJSON, err := json.Marshal(eventResp.Data)
-		if err != nil {
-			return fmt.Errorf("转换事件数据失败: %w", err)
-		}
-
+		// 从Data字段解析具体事件内容（现在Data是字符串类型）
 		var event discovery.DiscoveryEvent
-		if err := json.Unmarshal(dataJSON, &event); err != nil {
+		if err := json.Unmarshal([]byte(eventResp.Data), &event); err != nil {
 			return fmt.Errorf("解析服务事件失败: %w", err)
 		}
 
@@ -110,7 +112,7 @@ func (d *DiscoveryService) RegisterServiceDiscoveryHandler() {
 	// 注册服务响应处理函数
 	handler.RegisterHandler(distributed.MsgTypeServiceResponse, func(connID string, msg *protocol.CustomMessage) error {
 		// 解析为统一响应结构体
-		var baseResp distributed.ServiceResponseBase
+		var baseResp protocol.APIResponse
 		if err := json.Unmarshal(msg.Payload(), &baseResp); err != nil {
 			fmt.Printf("解析统一响应结构失败: %v\n", err)
 			return fmt.Errorf("解析统一响应结构失败: %w", err)
@@ -126,19 +128,14 @@ func (d *DiscoveryService) RegisterServiceDiscoveryHandler() {
 		switch baseResp.Type {
 		case "discover":
 			// 处理服务发现响应
-			if baseResp.Data == nil {
+			if baseResp.Data == "" {
 				fmt.Printf("服务发现响应数据为空\n")
 				return nil
 			}
 
-			// 将data字段转换为[]discovery.ServiceInfo
-			dataJSON, err := json.Marshal(baseResp.Data)
-			if err != nil {
-				return fmt.Errorf("转换服务列表数据失败: %w", err)
-			}
-
+			// 将data字段转换为[]discovery.ServiceInfo（现在data是字符串）
 			var services []discovery.ServiceInfo
-			if err := json.Unmarshal(dataJSON, &services); err != nil {
+			if err := json.Unmarshal([]byte(baseResp.Data), &services); err != nil {
 				return fmt.Errorf("解析服务列表失败: %w", err)
 			}
 
@@ -147,17 +144,16 @@ func (d *DiscoveryService) RegisterServiceDiscoveryHandler() {
 
 		case "watch":
 			// 处理服务监听响应
-			if baseResp.Data == nil {
+			if baseResp.Data == "" {
 				return nil
 			}
 
 			// 尝试获取watcherId
-			dataJSON, _ := json.Marshal(baseResp.Data)
 			var watchData struct {
 				WatcherID   string `json:"watcherId"`
 				ServiceName string `json:"serviceName"`
 			}
-			if err := json.Unmarshal(dataJSON, &watchData); err == nil && watchData.WatcherID != "" {
+			if err := json.Unmarshal([]byte(baseResp.Data), &watchData); err == nil && watchData.WatcherID != "" {
 				d.watcherLock.Lock()
 				// 保存对应服务的监听器ID
 				if watchData.ServiceName != "" {
@@ -303,10 +299,10 @@ func (d *DiscoveryService) GenerateStableServiceID(service discovery.ServiceInfo
 }
 
 // RegisterService 注册服务
-func (d *DiscoveryService) RegisterService(ctx context.Context, service discovery.ServiceInfo) error {
+func (d *DiscoveryService) RegisterService(ctx context.Context, service discovery.ServiceInfo) (string, error) {
 	// 验证服务信息
 	if service.Name == "" || service.Address == "" {
-		return fmt.Errorf("服务信息不完整: 必须提供名称和地址")
+		return "", fmt.Errorf("服务信息不完整: 必须提供名称和地址")
 	}
 
 	// 如果服务ID为空，则生成一个稳定的ID
@@ -325,20 +321,20 @@ func (d *DiscoveryService) RegisterService(ctx context.Context, service discover
 		Service: service,
 	}
 
-	// 序列化请求
-	reqData, err := json.Marshal(req)
+	// 使用TCP API客户端发送请求
+	_, err := d.tcpClient.Send(
+		ctx,
+		distributed.MsgTypeRegisterService,
+		distributed.ServiceTypeDiscovery,
+		distributed.MsgTypeServiceResponse,
+		req,
+	)
 	if err != nil {
-		return fmt.Errorf("序列化请求失败: %w", err)
-	}
-
-	// 发送注册请求
-	err = d.client.SendMessage(distributed.MsgTypeRegisterService, distributed.ServiceTypeDiscovery, reqData)
-	if err != nil {
-		return fmt.Errorf("发送注册请求失败: %w", err)
+		return "", fmt.Errorf("发送注册请求失败: %w", err)
 	}
 
 	fmt.Printf("已发送服务注册请求: ID=%s, 名称=%s\n", service.ID, service.Name)
-	return nil
+	return service.ID, nil
 }
 
 // DeregisterService 注销服务
@@ -353,14 +349,14 @@ func (d *DiscoveryService) DeregisterService(ctx context.Context, serviceID stri
 		ServiceID: serviceID,
 	}
 
-	// 序列化请求
-	reqData, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("序列化请求失败: %w", err)
-	}
-
-	// 发送注销请求
-	err = d.client.SendMessage(distributed.MsgTypeDeregisterService, distributed.ServiceTypeDiscovery, reqData)
+	// 使用TCP API客户端发送请求
+	_, err := d.tcpClient.Send(
+		ctx,
+		distributed.MsgTypeDeregisterService,
+		distributed.ServiceTypeDiscovery,
+		distributed.MsgTypeServiceResponse,
+		req,
+	)
 	if err != nil {
 		return fmt.Errorf("发送注销请求失败: %w", err)
 	}
@@ -376,14 +372,14 @@ func (d *DiscoveryService) WatchService(ctx context.Context, serviceName string)
 		ServiceName: serviceName,
 	}
 
-	// 序列化请求
-	reqData, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("序列化请求失败: %w", err)
-	}
-
-	// 发送监听请求
-	err = d.client.SendMessage(distributed.MsgTypeWatchService, distributed.ServiceTypeDiscovery, reqData)
+	// 使用TCP API客户端发送请求
+	_, err := d.tcpClient.Send(
+		ctx,
+		distributed.MsgTypeWatchService,
+		distributed.ServiceTypeDiscovery,
+		distributed.MsgTypeServiceResponse,
+		req,
+	)
 	if err != nil {
 		return fmt.Errorf("发送监听请求失败: %w", err)
 	}
@@ -458,15 +454,14 @@ func (d *DiscoveryService) stopWatchWithID(ctx context.Context, watcherID string
 		WatcherID: watcherID,
 	}
 
-	// 序列化请求
-	reqData, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("序列化请求失败: %w", err)
-	}
-
-	// 发送停止监听请求 - 使用常量定义消息类型
-	msgTypeStopWatch := protocol.MessageType(100) // 使用适当的数值，需要与服务端保持一致
-	err = d.client.SendMessage(msgTypeStopWatch, distributed.ServiceTypeDiscovery, reqData)
+	// 使用TCP API客户端发送请求
+	_, err := d.tcpClient.Send(
+		ctx,
+		distributed.MsgTypeUnwatchService,
+		distributed.ServiceTypeDiscovery,
+		distributed.MsgTypeServiceResponse,
+		req,
+	)
 	if err != nil {
 		return fmt.Errorf("发送停止监听请求失败: %w", err)
 	}
@@ -506,49 +501,33 @@ func (d *DiscoveryService) DiscoverServices(ctx context.Context, serviceName str
 		ServiceName: serviceName,
 	}
 
-	// 序列化请求
-	reqData, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("序列化请求失败: %w", err)
-	}
-
-	// 发送发现请求
-	err = d.client.SendMessage(distributed.MsgTypeDiscoverService, distributed.ServiceTypeDiscovery, reqData)
+	// 使用TCP API客户端发送请求
+	resp, err := d.tcpClient.Send(
+		ctx,
+		distributed.MsgTypeDiscoverService,
+		distributed.ServiceTypeDiscovery,
+		distributed.MsgTypeServiceResponse,
+		req,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("发送发现请求失败: %w", err)
 	}
 
-	// 等待响应或超时
-	timeout := 5 * time.Second
-	if deadline, ok := ctx.Deadline(); ok {
-		timeout = deadline.Sub(time.Now())
+	// 检查响应数据
+	if resp.Data == "" {
+		return nil, fmt.Errorf("服务发现响应数据为空")
 	}
 
-	time.Sleep(timeout)
-
-	// 整理找到的服务
-	d.servicesLock.RLock()
-	defer d.servicesLock.RUnlock()
-
-	var result []discovery.ServiceInfo
-
-	if serviceName != "" {
-		// 查询特定服务名称
-		if serviceMap, ok := d.services[serviceName]; ok {
-			for _, service := range serviceMap {
-				result = append(result, *service)
-			}
-		}
-	} else {
-		// 查询所有服务
-		for _, serviceMap := range d.services {
-			for _, service := range serviceMap {
-				result = append(result, *service)
-			}
-		}
+	// 解析服务列表
+	var services []discovery.ServiceInfo
+	if err := json.Unmarshal([]byte(resp.Data), &services); err != nil {
+		return nil, fmt.Errorf("解析服务列表失败: %w", err)
 	}
 
-	return result, nil
+	// 更新本地服务缓存
+	d.updateServiceList(services)
+
+	return services, nil
 }
 
 // GetServices 获取当前已知的所有服务

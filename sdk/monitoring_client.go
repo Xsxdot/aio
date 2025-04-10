@@ -178,6 +178,13 @@ func NewMetricsCollector(client *Client, options *MetricsCollectorOptions) *Metr
 		options.StatusCollectInterval = 30 * time.Second
 	}
 
+	options.InstanceID = client.serviceInfo.ID
+	options.ServiceName = client.serviceInfo.Name
+	options.Tags = map[string]string{
+		"LocalIP":  client.serviceInfo.LocalIP,
+		"PublicIP": client.serviceInfo.PublicIP,
+	}
+
 	collector := &MetricsCollector{
 		options:         options,
 		client:          client,

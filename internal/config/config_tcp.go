@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/xsxdot/aio/pkg/protocol"
 	"time"
+
+	"github.com/xsxdot/aio/pkg/protocol"
 
 	"go.uber.org/zap"
 )
@@ -36,6 +37,10 @@ const (
 	// 组合配置相关
 	MsgTypeGetComposite   protocol.MessageType = 11
 	MsgTypeMergeComposite protocol.MessageType = 12
+
+	// JSON格式配置相关
+	MsgTypeGetConfigJSON    protocol.MessageType = 13
+	MsgTypeGetEnvConfigJSON protocol.MessageType = 14
 )
 
 // 请求/响应结构定义
@@ -43,6 +48,18 @@ type (
 	// GetConfigRequest 获取配置请求
 	GetConfigRequest struct {
 		Key string `json:"key"`
+	}
+
+	// GetConfigJSONRequest 获取JSON格式配置请求
+	GetConfigJSONRequest struct {
+		Key string `json:"key"`
+	}
+
+	// GetEnvConfigJSONRequest 获取环境JSON格式配置请求
+	GetEnvConfigJSONRequest struct {
+		Key       string   `json:"key"`
+		Env       string   `json:"env"`
+		Fallbacks []string `json:"fallbacks,omitempty"`
 	}
 
 	// SetConfigRequest 设置配置请求
@@ -81,13 +98,8 @@ type (
 		Fallbacks []string `json:"fallbacks,omitempty"`
 	}
 
-	// ConfigResponse 配置响应
-	ConfigResponse struct {
-		Success bool        `json:"success"`
-		Message string      `json:"message,omitempty"`
-		Data    interface{} `json:"data,omitempty"`
-		Error   string      `json:"error,omitempty"`
-	}
+	// ConfigResponse 配置响应 - 使用统一的APIResponse
+	ConfigResponse = protocol.APIResponse
 )
 
 // TCPAPI 配置中心的TCP API
@@ -138,11 +150,13 @@ func (api *TCPAPI) registerHandlers(handler *protocol.ServiceHandler) {
 	handler.RegisterHandler(MsgTypeSetConfig, api.handleSetConfig)
 	handler.RegisterHandler(MsgTypeDeleteConfig, api.handleDeleteConfig)
 	handler.RegisterHandler(MsgTypeListConfigs, api.handleListConfigs)
+	handler.RegisterHandler(MsgTypeGetConfigJSON, api.handleGetConfigJSON)
 
 	// 环境相关
 	handler.RegisterHandler(MsgTypeGetEnvConfig, api.handleGetEnvConfig)
 	handler.RegisterHandler(MsgTypeSetEnvConfig, api.handleSetEnvConfig)
 	handler.RegisterHandler(MsgTypeListEnvConfig, api.handleListEnvConfig)
+	handler.RegisterHandler(MsgTypeGetEnvConfigJSON, api.handleGetEnvConfigJSON)
 
 	// 历史相关
 	handler.RegisterHandler(MsgTypeGetHistory, api.handleGetHistory)
@@ -159,20 +173,18 @@ func (api *TCPAPI) sendResponse(connID string, msgID string, success bool, messa
 		return fmt.Errorf("未注册到协议管理器")
 	}
 
-	response := ConfigResponse{
-		Success: success,
-		Message: message,
-		Data:    data,
-		Error:   errorMsg,
-	}
-
-	payload, err := json.Marshal(response)
-	if err != nil {
-		api.logger.Error("序列化响应失败", zap.Error(err))
-		return err
-	}
-
-	return api.manager.SendMessage(connID, MsgTypeConfigResult, ServiceTypeConfig, payload)
+	return protocol.SendServiceResponse(
+		api.manager,
+		connID,
+		msgID,
+		MsgTypeConfigResult,
+		ServiceTypeConfig,
+		success,
+		"config", // 配置服务响应类型
+		message,
+		data,
+		errorMsg,
+	)
 }
 
 // handleGetConfig 处理获取配置请求
@@ -195,6 +207,30 @@ func (api *TCPAPI) handleGetConfig(connID string, msg *protocol.CustomMessage) e
 	}
 
 	return api.sendResponse(connID, msg.Header().MessageID, true, "获取配置成功", config, "")
+}
+
+// handleGetConfigJSON 处理获取JSON格式配置请求
+func (api *TCPAPI) handleGetConfigJSON(connID string, msg *protocol.CustomMessage) error {
+	api.logger.Debug("收到获取JSON格式配置请求", zap.String("connID", connID), zap.String("msgID", msg.Header().MessageID))
+
+	var request GetConfigJSONRequest
+	if err := json.Unmarshal(msg.Payload(), &request); err != nil {
+		api.logger.Error("解析请求失败", zap.Error(err))
+		return api.sendResponse(connID, msg.Header().MessageID, false, "", nil, fmt.Sprintf("解析请求失败: %v", err))
+	}
+
+	if request.Key == "" {
+		return api.sendResponse(connID, msg.Header().MessageID, false, "", nil, "配置键不能为空")
+	}
+
+	// 直接使用ExportConfigAsJSON方法获取JSON格式配置
+	jsonData, err := api.service.ExportConfigAsJSON(context.Background(), request.Key)
+	if err != nil {
+		return api.sendResponse(connID, msg.Header().MessageID, false, "", nil, fmt.Sprintf("获取配置失败: %v", err))
+	}
+
+	// 返回JSON字符串
+	return api.sendResponse(connID, msg.Header().MessageID, true, "获取JSON格式配置成功", jsonData, "")
 }
 
 // handleSetConfig 处理设置配置请求
@@ -479,6 +515,41 @@ func (api *TCPAPI) handleMergeComposite(connID string, msg *protocol.CustomMessa
 	}
 
 	return api.sendResponse(connID, msg.Header().MessageID, true, "合并组合配置成功", config, "")
+}
+
+// handleGetEnvConfigJSON 处理获取环境JSON格式配置请求
+func (api *TCPAPI) handleGetEnvConfigJSON(connID string, msg *protocol.CustomMessage) error {
+	api.logger.Debug("收到获取环境JSON格式配置请求", zap.String("connID", connID), zap.String("msgID", msg.Header().MessageID))
+
+	var request GetEnvConfigJSONRequest
+	if err := json.Unmarshal(msg.Payload(), &request); err != nil {
+		api.logger.Error("解析请求失败", zap.Error(err))
+		return api.sendResponse(connID, msg.Header().MessageID, false, "", nil, fmt.Sprintf("解析请求失败: %v", err))
+	}
+
+	if request.Key == "" {
+		return api.sendResponse(connID, msg.Header().MessageID, false, "", nil, "配置键不能为空")
+	}
+
+	if request.Env == "" {
+		return api.sendResponse(connID, msg.Header().MessageID, false, "", nil, "环境参数不能为空")
+	}
+
+	// 构建环境配置
+	fallbacks := request.Fallbacks
+	if len(fallbacks) == 0 {
+		fallbacks = DefaultEnvironmentFallbacks(request.Env)
+	}
+	envConfig := NewEnvironmentConfig(request.Env, fallbacks...)
+
+	// 使用ExportConfigAsJSONForEnvironment获取环境JSON格式配置
+	jsonData, err := api.service.ExportConfigAsJSONForEnvironment(context.Background(), request.Key, envConfig)
+	if err != nil {
+		return api.sendResponse(connID, msg.Header().MessageID, false, "", nil, fmt.Sprintf("获取环境配置失败: %v", err))
+	}
+
+	// 返回JSON字符串
+	return api.sendResponse(connID, msg.Header().MessageID, true, "获取环境JSON格式配置成功", jsonData, "")
 }
 
 // BroadcastConfigUpdate 广播配置更新

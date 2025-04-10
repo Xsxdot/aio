@@ -7,6 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/xsxdot/aio/pkg/common"
+	"github.com/xsxdot/aio/pkg/utils"
+	"go.uber.org/zap"
+
 	"github.com/xsxdot/aio/pkg/auth"
 	"github.com/xsxdot/aio/pkg/distributed"
 	"github.com/xsxdot/aio/pkg/distributed/discovery"
@@ -36,10 +40,10 @@ func (s ServerEndpoint) String() string {
 
 // ClientOptions 客户端选项
 type ClientOptions struct {
+	ServiceInfo *ServiceInfo
 	// 认证信息
 	ClientID     string
 	ClientSecret string
-	Certificate  string
 	Token        string
 	// 网络选项
 	ConnectionTimeout time.Duration
@@ -49,6 +53,8 @@ type ClientOptions struct {
 	ProtocolOptions *protocol.ProtocolManagerOptions
 	// 是否自动连接到主节点
 	AutoConnectToLeader bool
+	// 是否自动注册到服务中心
+	AutoRegisterService bool
 	// 服务监听间隔
 	ServiceWatchInterval time.Duration
 	// Etcd服务选项
@@ -72,6 +78,7 @@ var DefaultClientOptions = &ClientOptions{
 	RetryInterval:        2 * time.Second,
 	ProtocolOptions:      nil,
 	AutoConnectToLeader:  true,
+	AutoRegisterService:  true,
 	ServiceWatchInterval: 5 * time.Second,
 	EtcdOptions:          DefaultEtcdServiceOptions,
 	SchedulerOptions:     DefaultSchedulerServiceOptions,
@@ -79,6 +86,33 @@ var DefaultClientOptions = &ClientOptions{
 	RedisOptions:         DefaultRedisOptions,
 	NatsOptions:          DefaultNatsOptions,
 	MetricsOptions:       DefaultMetricsCollectorOptions(),
+}
+
+func (o *ClientOptions) WithService(serviceName string, port int) *ClientOptions {
+	o.ServiceInfo = &ServiceInfo{
+		Name: serviceName,
+		Port: port,
+	}
+	return o
+}
+
+func (o *ClientOptions) WithAuth(clientID, clientSecret string) *ClientOptions {
+	o.ClientID = clientID
+	o.ClientSecret = clientSecret
+	return o
+}
+
+type ServiceInfo struct {
+	// 服务名称
+	Name string
+	// 服务ID
+	ID string
+	// 服务端口
+	Port int
+	// 服务元数据
+	Metadata map[string]string
+	LocalIP  string
+	PublicIP string
 }
 
 // NodeInfo 扩展的节点信息，基于election.ElectionInfo
@@ -95,6 +129,8 @@ type NodeInfo struct {
 
 // Client 统一的SDK客户端
 type Client struct {
+	log         *zap.Logger
+	serviceInfo *ServiceInfo
 	// 初始服务器列表
 	initialServers []ServerEndpoint
 	// 协议管理器
@@ -103,7 +139,6 @@ type Client struct {
 	authInfo struct {
 		ClientID     string
 		ClientSecret string
-		Certificate  string
 		Token        string
 	}
 	// 连接选项
@@ -149,6 +184,9 @@ type Client struct {
 	// 事件处理器
 	leaderChangeHandlers     []func(oldLeader, newLeader *NodeInfo)
 	connectionStatusHandlers []func(nodeID, connID string, connected bool)
+
+	// TCP API 客户端
+	tcpAPIClient *TCPAPIClient
 }
 
 // NewClient 创建新的客户端
@@ -157,23 +195,34 @@ func NewClient(servers []ServerEndpoint, options *ClientOptions) *Client {
 		options = DefaultClientOptions
 	}
 
+	serviceInfo := options.ServiceInfo
+	if serviceInfo != nil {
+		if serviceInfo.LocalIP == "" {
+			serviceInfo.LocalIP = utils.GetLocalIP()
+		}
+		if serviceInfo.PublicIP == "" {
+			serviceInfo.PublicIP = utils.GetPublicIP()
+		}
+	}
+
 	// 创建上下文
 	watchCtx, cancelWatch := context.WithCancel(context.Background())
 
 	client := &Client{
+		log:            common.GetLogger().GetZapLogger("AIO-SDK"),
+		serviceInfo:    serviceInfo,
 		initialServers: servers,
 		options:        options,
 		connections:    make(map[string]*network2.Connection),
 		nodes:          make(map[string]*NodeInfo),
 		watchCtx:       watchCtx,
 		cancelWatch:    cancelWatch,
-		electionName:   "/aio/election",
+		electionName:   "aio/election",
 	}
 
 	// 保存认证信息
 	client.authInfo.ClientID = options.ClientID
 	client.authInfo.ClientSecret = options.ClientSecret
-	client.authInfo.Certificate = options.Certificate
 	client.authInfo.Token = options.Token
 
 	// 创建协议管理器
@@ -210,6 +259,9 @@ func NewClient(servers []ServerEndpoint, options *ClientOptions) *Client {
 	// 注册各种处理器
 	client.registerHandlers()
 
+	// 创建TCP API客户端
+	client.tcpAPIClient = NewTCPAPIClient(client)
+
 	// 创建服务发现组件（仅初始化服务发现组件）
 	client.Discovery = NewDiscoveryService(client, &DiscoveryServiceOptions{
 		ServiceWatchInterval: options.ServiceWatchInterval,
@@ -217,6 +269,23 @@ func NewClient(servers []ServerEndpoint, options *ClientOptions) *Client {
 
 	// 注册服务发现处理器
 	client.Discovery.RegisterServiceDiscoveryHandler()
+
+	if serviceInfo != nil && options.AutoRegisterService {
+		id, err := client.Discovery.RegisterService(context.Background(), discovery.ServiceInfo{
+			ID:      serviceInfo.ID,
+			Name:    serviceInfo.Name,
+			Address: serviceInfo.LocalIP,
+			Port:    serviceInfo.Port,
+			Metadata: map[string]string{
+				"public_ip": serviceInfo.PublicIP,
+			},
+		})
+		if err != nil {
+			client.log.Error("服务注册失败", zap.Error(err))
+		} else {
+			serviceInfo.ID = id
+		}
+	}
 
 	client.Config = NewConfigService(client, options.ConfigOptions)
 
@@ -320,19 +389,26 @@ func (c *Client) registerLeaderEventHandlers() {
 
 	// 注册主节点响应处理函数
 	handler.RegisterHandler(distributed.MsgTypeLeaderResponse, func(connID string, msg *protocol.CustomMessage) error {
-		// 解析主节点响应
-		var leaderInfo distributed.LeaderInfo
-		if err := json.Unmarshal(msg.Payload(), &leaderInfo); err != nil {
+		// 解析为统一的API响应格式
+		var apiResp protocol.APIResponse
+		if err := json.Unmarshal(msg.Payload(), &apiResp); err != nil {
 			return fmt.Errorf("解析主节点响应失败: %w", err)
 		}
 
-		// 检查是否是错误响应
-		var errorResp struct {
-			Error   bool   `json:"error"`
-			Message string `json:"message"`
+		// 检查操作是否成功
+		if !apiResp.Success {
+			return fmt.Errorf("获取主节点失败: %s", apiResp.Error)
 		}
-		if err := json.Unmarshal(msg.Payload(), &errorResp); err == nil && errorResp.Error {
-			return fmt.Errorf("获取主节点失败: %s", errorResp.Message)
+
+		// 数据不能为空
+		if apiResp.Data == "" {
+			return fmt.Errorf("获取主节点信息为空")
+		}
+
+		// 从Data字段解析LeaderInfo
+		var leaderInfo distributed.LeaderInfo
+		if err := json.Unmarshal([]byte(apiResp.Data), &leaderInfo); err != nil {
+			return fmt.Errorf("解析主节点信息失败: %w", err)
 		}
 
 		// 更新主节点信息
@@ -631,6 +707,9 @@ func (c *Client) setupNodeChangeHandler(serviceName string, networkOptions *netw
 // handleLeaderUpdate 处理主节点更新
 func (c *Client) handleLeaderUpdate() {
 	go func() {
+		// 添加延迟，避免频繁刷新
+		time.Sleep(5 * time.Second)
+
 		newLeaderInfo, err := c.refreshLeaderInfo()
 		if err != nil {
 			fmt.Printf("刷新主节点信息失败: %v\n", err)
@@ -697,6 +776,16 @@ func (c *Client) GetLeaderInfo(ctx context.Context) (*NodeInfo, error) {
 
 // refreshLeaderInfo 刷新主节点信息
 func (c *Client) refreshLeaderInfo() (*NodeInfo, error) {
+	// 添加一个锁，避免多个goroutine同时刷新
+	c.leaderLock.RLock()
+	lastLeaderNode := c.leaderNode
+	c.leaderLock.RUnlock()
+
+	// 如果上次更新时间距现在小于3秒，则直接返回缓存的主节点信息
+	if lastLeaderNode != nil && time.Since(lastLeaderNode.LastEventTime) < 3*time.Second {
+		return lastLeaderNode, nil
+	}
+
 	// 构造获取主节点请求
 	req := distributed.GetLeaderRequest{
 		ElectionName: c.electionName,
@@ -749,6 +838,15 @@ func (c *Client) refreshLeaderInfo() (*NodeInfo, error) {
 func (c *Client) updateLeaderInfo(leaderInfo *distributed.LeaderInfo, connID string) {
 	c.leaderLock.Lock()
 	defer c.leaderLock.Unlock()
+
+	// 如果主节点信息相同，则不更新
+	if c.leaderNode != nil && c.leaderNode.NodeID == leaderInfo.NodeID {
+		// 检查其他关键信息是否相同
+		if c.leaderNode.IP == leaderInfo.IP && c.leaderNode.ProtocolPort == leaderInfo.ProtocolPort {
+			// 主节点信息没有变化，忽略此次更新
+			return
+		}
+	}
 
 	oldLeader := c.leaderNode
 
@@ -827,7 +925,12 @@ func (c *Client) Close() error {
 
 	// 关闭已初始化的服务组件
 	if c.Discovery != nil {
-		// Discovery 服务不需要特别的关闭操作
+		if c.serviceInfo != nil && c.options.AutoRegisterService {
+			err := c.Discovery.DeregisterService(context.Background(), c.serviceInfo.ID)
+			if err != nil {
+				c.log.Error("注销服务失败", zap.Error(err))
+			}
+		}
 	}
 
 	if c.Etcd != nil {
@@ -858,6 +961,8 @@ func (c *Client) RegisterServiceHandler(svcType protocol.ServiceType, name strin
 
 // SendMessage 发送消息（优先使用主节点）
 func (c *Client) SendMessage(msgType protocol.MessageType, svcType protocol.ServiceType, payload []byte) error {
+	// 使用TCP API客户端发送请求，但仍保留原有逻辑以保持向后兼容性
+
 	// 优先使用主节点
 	c.leaderLock.RLock()
 	leaderNode := c.leaderNode
@@ -1000,10 +1105,16 @@ func (c *Client) GetNatsClient(ctx context.Context) (*nats.Conn, error) {
 	return natsService.GetClient(ctx)
 }
 
+// GetRedisClient 获取Redis客户端
+func (c *Client) GetRedisClient(ctx context.Context) (*RedisClient, error) {
+	redisService := c.getRedisService()
+	return redisService.Get()
+}
+
 // StartMetrics 启动指标收集服务
-func (c *Client) StartMetrics(options *MetricsCollectorOptions) error {
+func (c *Client) StartMetrics(options *MetricsCollectorOptions) (*MetricsCollector, error) {
 	metricsCollector := c.getMetricsCollector(options)
-	return metricsCollector.Start()
+	return metricsCollector, metricsCollector.Start()
 }
 
 // StopMetrics 停止指标收集服务
@@ -1232,55 +1343,58 @@ func (c *Client) registerTokenRefreshTask() {
 	}
 }
 
-// RefreshToken 刷新认证token
+// RefreshToken 刷新令牌
 func (c *Client) RefreshToken(ctx context.Context) error {
-	c.connectionLock.RLock()
-
-	// 检查是否有可用连接
-	if len(c.connections) == 0 {
-		c.connectionLock.RUnlock()
-		return fmt.Errorf("没有可用的连接来刷新token")
-	}
-
-	// 优先使用主节点连接
 	c.leaderLock.RLock()
-	var connID string
-	if c.leaderNode != nil && c.leaderNode.ConnectionID != "" {
-		connID = c.leaderNode.ConnectionID
-	} else {
-		// 没有主节点，使用第一个可用连接
-		for id := range c.connections {
-			connID = id
-			break
-		}
-	}
+	token := c.authInfo.Token
 	c.leaderLock.RUnlock()
-	c.connectionLock.RUnlock()
 
-	// 获取连接对象
-	var conn *network2.Connection
-	c.connectionLock.RLock()
-	var ok bool
-	if conn, ok = c.connections[connID]; !ok || conn == nil {
-		c.connectionLock.RUnlock()
-		return fmt.Errorf("无效的连接ID: %s", connID)
+	if token == "" {
+		return fmt.Errorf("无法刷新令牌: 当前无令牌")
 	}
-	c.connectionLock.RUnlock()
 
-	// 使用协议管理器的RefreshToken方法
-	token, err := c.protocolMgr.RefreshToken(conn)
+	// 构造刷新令牌的请求
+	req := struct {
+		Token string `json:"token"`
+	}{
+		Token: token,
+	}
 
+	// 使用TCP API客户端发送请求
+	resp, err := c.tcpAPIClient.Send(
+		ctx,
+		protocol.MsgTypeRefreshToken,
+		protocol.ServiceTypeSystem,
+		protocol.MsgTypeRefreshTokenResponse,
+		req,
+	)
 	if err != nil {
-		return fmt.Errorf("刷新token失败: %w", err)
+		return fmt.Errorf("刷新令牌请求失败: %w", err)
 	}
 
-	// 更新token
-	if token != nil && token.AccessToken != "" {
-		c.authInfo.Token = token.AccessToken
-		fmt.Println("成功刷新token")
-	} else {
-		return fmt.Errorf("刷新token成功但未返回新token")
+	// 从响应中提取新令牌
+	var tokenResp struct {
+		NewToken string `json:"newToken"`
 	}
+	if err := json.Unmarshal([]byte(resp.Data), &tokenResp); err != nil {
+		return fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	if tokenResp.NewToken == "" {
+		return fmt.Errorf("服务器返回的令牌为空")
+	}
+
+	// 更新客户端的令牌
+	c.authInfo.Token = tokenResp.NewToken
+	fmt.Println("令牌刷新成功")
 
 	return nil
+}
+
+// GetTCPAPIClient 获取TCP API客户端
+func (c *Client) GetTCPAPIClient() *TCPAPIClient {
+	if c.tcpAPIClient == nil {
+		c.tcpAPIClient = NewTCPAPIClient(c)
+	}
+	return c.tcpAPIClient
 }

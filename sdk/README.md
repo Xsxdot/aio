@@ -550,3 +550,223 @@ client.Metrics.RecordAPICall(sdk.APICall{
     },
 })
 ```
+
+## 统一TCP API处理器
+
+SDK提供了统一的TCP API处理器，可以帮助服务注册处理程序和处理请求结果。以下是使用示例：
+
+### 客户端使用示例
+
+```go
+// 创建SDK客户端
+client := sdk.NewClient(servers, options)
+
+// 获取TCP API客户端
+tcpClient := client.GetTCPAPIClient()
+
+// 设置请求超时时间
+tcpClient.SetRequestTimeout(5 * time.Second)
+
+// 发送请求
+ctx := context.Background()
+response, err := tcpClient.Send(
+    ctx,
+    protocol.MsgTypeYourRequest,      // 请求消息类型
+    protocol.ServiceTypeYourService,  // 服务类型
+    protocol.MsgTypeYourResponse,     // 响应消息类型
+    yourRequestData,                  // 请求数据
+)
+
+if err != nil {
+    log.Printf("请求失败: %v", err)
+    return
+}
+
+// 处理响应数据
+var result YourResultType
+err = json.Unmarshal([]byte(response.Data), &result)
+if err != nil {
+    log.Printf("解析响应失败: %v", err)
+    return
+}
+
+// 使用响应数据
+log.Printf("请求成功: %v", result)
+```
+
+### 服务端使用示例
+
+```go
+// 创建SDK客户端
+client := sdk.NewClient(servers, options)
+
+// 获取TCP API客户端
+tcpClient := client.GetTCPAPIClient()
+
+// 创建服务处理器
+handler := tcpClient.NewServiceHandler()
+
+// 注册消息处理函数
+tcpClient.RegisterHandler(handler, protocol.MsgTypeYourRequest, func(connID string, msg *protocol.CustomMessage) error {
+    // 定义请求结构
+    var request YourRequestType
+    
+    // 处理请求并返回结果
+    return tcpClient.HandleAPIRequest(connID, msg, &request, func(req interface{}) (interface{}, error) {
+        // 将请求转换为具体类型
+        request := req.(*YourRequestType)
+        
+        // 处理业务逻辑
+        result, err := processYourRequest(request)
+        if err != nil {
+            return nil, err
+        }
+        
+        // 返回结果
+        return result, nil
+    })
+})
+
+// 注册服务处理器
+err := tcpClient.RegisterServiceHandler(
+    protocol.ServiceTypeYourService,  // 服务类型
+    "your-service-name",              // 服务名称
+    handler,                          // 服务处理器
+)
+if err != nil {
+    log.Fatalf("注册服务处理器失败: %v", err)
+}
+
+// 启动服务...
+```
+
+### 完整示例
+
+下面是一个完整的示例，展示了如何创建一个简单的服务和客户端：
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "log"
+    "time"
+    
+    "github.com/xsxdot/aio/pkg/protocol"
+    "github.com/xsxdot/aio/sdk"
+)
+
+// 定义服务类型和消息类型
+const (
+    ServiceTypeExample protocol.ServiceType = 100
+    MsgTypeExampleRequest protocol.MessageType = 1
+    MsgTypeExampleResponse protocol.MessageType = 2
+)
+
+// 请求和响应结构
+type ExampleRequest struct {
+    Name string `json:"name"`
+    Value int `json:"value"`
+}
+
+type ExampleResponse struct {
+    Result string `json:"result"`
+    Status int `json:"status"`
+}
+
+func main() {
+    // 创建服务器端
+    go startServer()
+    
+    // 等待服务器启动
+    time.Sleep(1 * time.Second)
+    
+    // 创建客户端
+    startClient()
+}
+
+func startServer() {
+    // 创建SDK客户端
+    servers := []sdk.ServerEndpoint{{Host: "localhost", Port: 8080}}
+    client := sdk.NewClient(servers, sdk.DefaultClientOptions)
+    
+    // 获取TCP API客户端
+    tcpClient := client.GetTCPAPIClient()
+    
+    // 创建服务处理器
+    handler := tcpClient.NewServiceHandler()
+    
+    // 注册消息处理函数
+    tcpClient.RegisterHandler(handler, MsgTypeExampleRequest, func(connID string, msg *protocol.CustomMessage) error {
+        var request ExampleRequest
+        
+        return tcpClient.HandleAPIRequest(connID, msg, &request, func(req interface{}) (interface{}, error) {
+            r := req.(*ExampleRequest)
+            
+            // 处理业务逻辑
+            response := ExampleResponse{
+                Result: fmt.Sprintf("处理 %s 完成", r.Name),
+                Status: r.Value * 2,
+            }
+            
+            return response, nil
+        })
+    })
+    
+    // 注册服务处理器
+    err := tcpClient.RegisterServiceHandler(ServiceTypeExample, "example-service", handler)
+    if err != nil {
+        log.Fatalf("注册服务处理器失败: %v", err)
+    }
+    
+    // 启动服务...
+    log.Println("服务器已启动，等待请求...")
+    select {}
+}
+
+func startClient() {
+    // 创建SDK客户端
+    servers := []sdk.ServerEndpoint{{Host: "localhost", Port: 8080}}
+    client := sdk.NewClient(servers, sdk.DefaultClientOptions)
+    
+    // 获取TCP API客户端
+    tcpClient := client.GetTCPAPIClient()
+    
+    // 设置请求超时时间
+    tcpClient.SetRequestTimeout(5 * time.Second)
+    
+    // 创建请求
+    request := ExampleRequest{
+        Name:  "测试请求",
+        Value: 42,
+    }
+    
+    // 发送请求
+    ctx := context.Background()
+    response, err := tcpClient.Send(
+        ctx,
+        MsgTypeExampleRequest,
+        ServiceTypeExample,
+        MsgTypeExampleResponse,
+        request,
+    )
+    
+    if err != nil {
+        log.Printf("请求失败: %v", err)
+        return
+    }
+    
+    // 处理响应数据
+    var result ExampleResponse
+    err = json.Unmarshal([]byte(response.Data), &result)
+    if err != nil {
+        log.Printf("解析响应失败: %v", err)
+        return
+    }
+    
+    // 使用响应数据
+    log.Printf("请求成功: 结果=%s, 状态=%d", result.Result, result.Status)
+}
+```

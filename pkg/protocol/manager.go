@@ -316,19 +316,20 @@ func (m *ProtocolManager) createNetworkHandler() *network.MessageHandler {
 							return fmt.Errorf("connection not authenticated")
 						}
 					} else {
+						//todo 现在只需要验证token
 						// 已认证的连接，验证操作权限
-						resource := fmt.Sprintf("service.%s", msg.Header().ServiceType)
-						action := fmt.Sprintf("message.%s", msg.Header().MessageType)
-
-						// 验证权限
-						verifyResp, err := m.VerifyPermission(conn.ID(), resource, action)
-						if err != nil {
-							return fmt.Errorf("verify permission failed: %w", err)
-						}
-
-						if !verifyResp.Allowed {
-							return fmt.Errorf("permission denied: %s", verifyResp.Reason)
-						}
+						//resource := fmt.Sprintf("service.%s", msg.Header().ServiceType)
+						//action := fmt.Sprintf("message.%s", msg.Header().MessageType)
+						//
+						//// 验证权限
+						//verifyResp, err := m.VerifyPermission(conn.ID(), resource, action)
+						//if err != nil {
+						//	return fmt.Errorf("verify permission failed: %w", err)
+						//}
+						//
+						//if !verifyResp.Allowed {
+						//	return fmt.Errorf("permission denied: %s", verifyResp.Reason)
+						//}
 					}
 				}
 			}

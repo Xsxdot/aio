@@ -1,7 +1,10 @@
 package protocol
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+
 	"github.com/xsxdot/aio/pkg/network"
 )
 
@@ -51,6 +54,20 @@ type MessageHeader struct {
 	ServiceType ServiceType
 	ConnID      string // 连接ID
 	MessageID   string // 消息ID，由发送方生成
+}
+
+// APIResponse 统一的API响应结构体
+type APIResponse struct {
+	// Success 表示操作是否成功
+	Success bool `json:"success"`
+	// Type 响应类型，用于区分不同的响应
+	Type string `json:"type,omitempty"`
+	// Message 响应消息
+	Message string `json:"message,omitempty"`
+	// Data 响应数据，使用字符串传输，通常是JSON序列化后的数据
+	Data string `json:"data,omitempty"`
+	// Error 错误信息
+	Error string `json:"error,omitempty"`
 }
 
 // Message 消息接口
@@ -150,4 +167,130 @@ func (h *ServiceHandler) RegisterHandler(msgType MessageType, handler MessageHan
 func (h *ServiceHandler) GetHandler(msgType MessageType) (MessageHandler, bool) {
 	handler, ok := h.handlers[msgType]
 	return handler, ok
+}
+
+// API响应处理相关工具函数
+
+// CreateAPIResponse 创建统一的API响应对象
+func CreateAPIResponse(success bool, responseType string, message string, data interface{}, errMsg string) (*APIResponse, error) {
+	dataStr := ""
+	if str, ok := data.(string); ok {
+		dataStr = str
+	} else if data != nil {
+		dataBytes, err := json.Marshal(data)
+		if err != nil {
+			return nil, fmt.Errorf("序列化响应数据失败: %v", err)
+		}
+		dataStr = string(dataBytes)
+	}
+
+	return &APIResponse{
+		Success: success,
+		Type:    responseType,
+		Message: message,
+		Data:    dataStr,
+		Error:   errMsg,
+	}, nil
+}
+
+// SendAPIResponse 发送API响应
+func SendAPIResponse(
+	manager *ProtocolManager,
+	connID string,
+	msgID string,
+	msgType MessageType,
+	svcType ServiceType,
+	success bool,
+	responseType string,
+	message string,
+	data interface{},
+	errMsg string) error {
+
+	// 创建响应对象
+	response, err := CreateAPIResponse(success, responseType, message, data, errMsg)
+	if err != nil {
+		return err
+	}
+
+	// 序列化响应
+	payload, err := json.Marshal(response)
+	if err != nil {
+		return fmt.Errorf("序列化响应失败: %v", err)
+	}
+
+	// 创建并发送消息
+	msg := NewMessage(msgType, svcType, connID, msgID, payload)
+
+	conn, found := manager.GetConnection(connID)
+	if !found {
+		return fmt.Errorf("连接未找到: %s", connID)
+	}
+
+	return conn.Send(msg)
+}
+
+// SendServiceResponse 向指定连接发送服务响应
+func SendServiceResponse(
+	manager *ProtocolManager,
+	connID string,
+	msgID string,
+	msgType MessageType,
+	svcType ServiceType,
+	success bool,
+	responseType string,
+	message string,
+	data interface{},
+	errMsg string) error {
+
+	if manager == nil {
+		return fmt.Errorf("协议管理器为空")
+	}
+
+	return SendAPIResponse(manager, connID, msgID, msgType, svcType, success, responseType, message, data, errMsg)
+}
+
+// SendErrorResponse 发送错误响应
+func SendErrorResponse(
+	manager *ProtocolManager,
+	connID string,
+	msgID string,
+	msgType MessageType,
+	svcType ServiceType,
+	responseType string,
+	err error) error {
+
+	if manager == nil {
+		return fmt.Errorf("协议管理器为空")
+	}
+
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
+	}
+
+	return SendAPIResponse(manager, connID, msgID, msgType, svcType, false, responseType, "", nil, errMsg)
+}
+
+// SendDirectResponse 直接发送响应消息
+// 适用于不需要创建APIResponse的场景，比如已有序列化好的消息体
+func SendDirectResponse(
+	manager *ProtocolManager,
+	connID string,
+	msgID string,
+	msgType MessageType,
+	svcType ServiceType,
+	payload []byte) error {
+
+	if manager == nil {
+		return fmt.Errorf("协议管理器为空")
+	}
+
+	msg := NewMessage(msgType, svcType, connID, msgID, payload)
+
+	conn, found := manager.GetConnection(connID)
+	if !found {
+		return fmt.Errorf("连接未找到: %s", connID)
+	}
+
+	return conn.Send(msg)
 }
