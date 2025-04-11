@@ -240,7 +240,8 @@ func (d *discoveryServiceImpl) Register(ctx context.Context, service ServiceInfo
 
 	// 处理IP地址
 	// 如果地址是localhost或127.0.0.1，替换为内网IP
-	if service.Address == "localhost" || service.Address == "127.0.0.1" || service.Address == "0.0.0.0" {
+	if service.Address == "0.0.0.0" {
+		//if service.Address == "localhost" || service.Address == "127.0.0.1" || service.Address == "0.0.0.0" {
 		internalIP, err := getInternalIP()
 		if err == nil && internalIP != "" {
 			d.logger.Info("Replacing localhost with internal IP",

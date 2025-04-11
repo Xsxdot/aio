@@ -192,7 +192,7 @@ func (r *ComponentManager) RegisterService(name string, port int, meta map[strin
 	serviceInfo := discovery.ServiceInfo{
 		ID:      r.app.BaseConfig.System.NodeId,
 		Name:    name,
-		Address: r.app.BaseConfig.Network.LocalIp, // 使用统一的系统IP
+		Address: r.app.BaseConfig.Network.BindIP, // 使用统一的系统IP
 		Port:    port,
 		Metadata: map[string]string{
 			"version":   "1.0.0",

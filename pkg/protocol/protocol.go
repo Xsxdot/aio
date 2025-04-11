@@ -5,15 +5,12 @@ import (
 	network2 "github.com/xsxdot/aio/pkg/network"
 	netprotocol "github.com/xsxdot/aio/pkg/network/protocol"
 	"io"
-	"log"
 )
 
 // CustomProtocol 自定义协议
 type CustomProtocol struct {
 	// 协议使用长度字段协议作为基础传输协议
 	baseProtocol network2.Protocol
-	// 服务处理器映射
-	serviceHandlers map[ServiceType]*ServiceHandler
 }
 
 // NewCustomProtocol 创建自定义协议
@@ -21,14 +18,8 @@ func NewCustomProtocol() *CustomProtocol {
 	// 使用4字节长度头，最大消息大小为10MB
 	baseProtocol := netprotocol.NewLengthFieldProtocol(4, 10*1024*1024)
 	return &CustomProtocol{
-		baseProtocol:    baseProtocol,
-		serviceHandlers: make(map[ServiceType]*ServiceHandler),
+		baseProtocol: baseProtocol,
 	}
-}
-
-// RegisterService 注册服务处理器
-func (p *CustomProtocol) RegisterService(svcType ServiceType, handler *ServiceHandler) {
-	p.serviceHandlers[svcType] = handler
 }
 
 // Read 读取消息
@@ -82,48 +73,5 @@ func (p *CustomProtocol) ParseMessage(data []byte) (*CustomMessage, error) {
 	payload := data[offset : offset+int(payloadLen)]
 
 	// 注意：连接ID为空，将在消息处理阶段通过连接对象设置
-	return NewMessage(msgType, svcType, "", msgID, payload), nil
-}
-
-// ProcessMessage 处理消息
-func (p *CustomProtocol) ProcessMessage(conn *network2.Connection, data []byte) error {
-	msg, err := p.ParseMessage(data)
-	if err != nil {
-		return err
-	}
-
-	log.Printf("[协议] 收到消息内容: %s", string(msg.Payload()))
-
-	// 设置连接ID
-	msg.header.ConnID = conn.ID()
-
-	// 获取服务处理器
-	serviceHandler, ok := p.serviceHandlers[msg.Header().ServiceType]
-	if !ok {
-		return ErrServiceNotFound
-	}
-
-	// 获取消息处理函数
-	handler, ok := serviceHandler.GetHandler(msg.Header().MessageType)
-	if !ok {
-		println(fmt.Sprintf("Handle:%d", msg.Header().MessageType))
-		return ErrHandlerNotFound
-	}
-
-	// 处理消息
-	return handler(msg.Header().ConnID, msg)
-}
-
-// CreateNetworkHandler 创建网络处理器
-func (p *CustomProtocol) CreateNetworkHandler() *network2.MessageHandler {
-	return &network2.MessageHandler{
-		Handle: func(conn *network2.Connection, data []byte) error {
-			// 处理接收到的消息
-			return p.ProcessMessage(conn, data)
-		},
-		GetHeartbeat: func() network2.Message {
-			// 创建简单的心跳消息
-			return NewMessage(MsgTypeHeartbeat, ServiceTypeSystem, "", generateMsgID(), CreateHeartbeatMessage())
-		},
-	}
+	return NewParseMessage(msgType, svcType, "", msgID, payload), nil
 }

@@ -10,12 +10,20 @@ import (
 var (
 	ErrConnectionNotFound = errors.New("connection not found")
 	ErrConnectionClosed   = errors.New("connection closed")
+	ErrWriteErr           = errors.New("write err")
 	ErrMessageTooLarge    = errors.New("message too large")
 	ErrInvalidProtocol    = errors.New("invalid protocol")
 	ErrInvalidHandler     = errors.New("invalid handler")
 	ErrMaxConnections     = errors.New("max connections reached")
 	ErrTimeout            = errors.New("operation timeout")
 )
+
+func IsUnavailable(err error) bool {
+	if errors.Is(err, ErrConnectionClosed) || errors.Is(err, ErrConnectionNotFound) || errors.Is(err, ErrWriteErr) {
+		return true
+	}
+	return false
+}
 
 // Message 消息接口
 type Message interface {
@@ -72,15 +80,16 @@ type Options struct {
 	EnableKeepAlive bool
 	// 心跳间隔
 	HeartbeatInterval time.Duration
+	OnlyClient        bool
 }
 
 // DefaultOptions 默认选项
 var DefaultOptions = &Options{
-	ReadTimeout:       30 * time.Second,
-	WriteTimeout:      30 * time.Second,
-	IdleTimeout:       60 * time.Second,
-	MaxConnections:    0, // 0表示不限制连接数量
+	ReadTimeout:       2 * time.Minute,  // 读取超时
+	WriteTimeout:      30 * time.Second, // 写入超时
+	IdleTimeout:       5 * time.Minute,  // 空闲超时
+	MaxConnections:    0,                // 0表示不限制连接数量
 	BufferSize:        4096,
 	EnableKeepAlive:   true,
-	HeartbeatInterval: 30 * time.Second,
+	HeartbeatInterval: 25 * time.Second, // 心跳间隔略小于写入超时
 }

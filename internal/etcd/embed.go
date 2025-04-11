@@ -171,7 +171,7 @@ func NewEtcdServer(config *ServerConfig, logger *zap.Logger) (*EtcdServer, error
 
 			logger.Info("已启用JWT认证")
 		}
-	case "simple":
+	case "root":
 		// 使用用户名密码认证
 		// 注意：etcd使用simple token作为认证系统的一部分
 		cfg.AuthToken = "simple"

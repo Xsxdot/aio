@@ -1,31 +1,32 @@
-package sdk_v2
+package client
 
 import (
 	"context"
 	"fmt"
-	"github.com/xsxdot/aio/pkg/auth"
+	"time"
+
 	"github.com/xsxdot/aio/pkg/common"
-	"github.com/xsxdot/aio/pkg/distributed"
 	"github.com/xsxdot/aio/pkg/network"
 	"github.com/xsxdot/aio/pkg/protocol"
 	"go.uber.org/zap"
-	"time"
 )
 
 type ProtocolService struct {
 	options   *ProtocolOptions
 	manager   *protocol.ProtocolManager
-	token     *auth.Token
 	conn      map[string]*network.Connection
 	addr2conn map[string]string
-	leader    *NodeInfo
 	log       *zap.Logger
+	client    *Client
 }
 
-func NewProtocolService(options *ProtocolOptions) *ProtocolService {
+func NewProtocolService(client *Client, options *ProtocolOptions) *ProtocolService {
 	p := &ProtocolService{
-		options: options,
-		log:     common.GetLogger().GetZapLogger("aio-protocol-client"),
+		options:   options,
+		client:    client,
+		log:       common.GetLogger().GetZapLogger("aio-protocol-client"),
+		conn:      make(map[string]*network.Connection),
+		addr2conn: make(map[string]string),
 	}
 
 	enableAuth := false
@@ -58,6 +59,8 @@ func (s *ProtocolService) Start(ctx context.Context) error {
 			if err != nil {
 				s.log.Error("连接节点失败", zap.String("addr", server), zap.Error(err), zap.Int("retryCount", i+1))
 				time.Sleep(s.options.RetryInterval)
+			} else {
+				break
 			}
 		}
 	}
@@ -75,36 +78,33 @@ func (s *ProtocolService) connectNode(addr string) error {
 	}
 
 	options := network.Options{
-		ReadTimeout:       s.options.ConnectionTimeout,
+		//ReadTimeout:       s.options.ConnectionTimeout,
 		WriteTimeout:      s.options.ConnectionTimeout,
 		IdleTimeout:       s.options.ConnectionTimeout * 2,
 		MaxConnections:    100,
 		BufferSize:        4096,
 		EnableKeepAlive:   true,
 		HeartbeatInterval: 30 * time.Second,
+		OnlyClient:        true,
 	}
-	var connection *network.Connection
-	var err error
-	var token *auth.Token
-	if s.options.ClientID != "" && s.options.ClientSecret != "" {
-		connection, token, err = s.manager.ConnectWithAuth(addr, &options)
-		if err != nil {
-			return err
-		}
-	} else {
-		connection, err = s.manager.Connect(addr, &options)
-		if err != nil {
-			return err
-		}
+	connection, err := s.manager.Connect(addr, &options)
+	if err != nil {
+		return err
 	}
 
-	s.token = token
 	s.conn[connection.ID()] = connection
 	s.addr2conn[addr] = connection.ID()
 
 	return nil
 }
 
-func (s *ProtocolService) updateLeaderInfo(d *distributed.LeaderInfo) {
+func (s *ProtocolService) Stop(ctx context.Context) error {
+	for _, conn := range s.conn {
+		err := conn.Close()
+		if err != nil {
+			s.log.Error("关闭连接失败", zap.String("addr", conn.RemoteAddr().String()), zap.Error(err))
+		}
+	}
 
+	return nil
 }

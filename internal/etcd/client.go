@@ -9,11 +9,6 @@ import (
 	"go.uber.org/zap"
 )
 
-var (
-	// GlobalEtcdClient 全局的etcd客户端实例
-	GlobalEtcdClient *EtcdClient
-)
-
 // EtcdClient 代表一个etcd客户端
 type EtcdClient struct {
 	client *clientv3.Client
@@ -204,32 +199,4 @@ func (c *EtcdClient) WatchWithPrefix(ctx context.Context, prefix string) clientv
 	withPrefix := clientv3.WithPrefix()
 	client := c.client
 	return client.Watch(ctx, prefix, withPrefix)
-}
-
-// InitGlobalEtcdClient 初始化全局的etcd客户端
-func InitGlobalEtcdClient(config *ClientConfig, logger *zap.Logger) error {
-	if GlobalEtcdClient != nil {
-		return fmt.Errorf("全局etcd客户端已经初始化")
-	}
-
-	client, err := NewEtcdClient(config, logger)
-	if err != nil {
-		return err
-	}
-
-	GlobalEtcdClient = client
-	return nil
-}
-
-// GetGlobalEtcdClient 获取全局的etcd客户端实例
-func GetGlobalEtcdClient() *EtcdClient {
-	return GlobalEtcdClient
-}
-
-// CloseGlobalEtcdClient 关闭全局的etcd客户端
-func CloseGlobalEtcdClient() {
-	if GlobalEtcdClient != nil {
-		GlobalEtcdClient.Close()
-		GlobalEtcdClient = nil
-	}
 }

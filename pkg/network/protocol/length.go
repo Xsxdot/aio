@@ -85,13 +85,13 @@ func (p *LengthFieldProtocol) Write(writer io.Writer, data []byte) error {
 		return fmt.Errorf("unsupported header length: %d", p.headerLength)
 	}
 
-	if _, err := writer.Write(header); err != nil {
-		return fmt.Errorf("write header error: %w", err)
-	}
+	// 一次性写入头部和数据，避免多次系统调用
+	combined := make([]byte, p.headerLength+int(length))
+	copy(combined, header)
+	copy(combined[p.headerLength:], data)
 
-	// 写入消息体
-	if _, err := writer.Write(data); err != nil {
-		return fmt.Errorf("write payload error: %w", err)
+	if _, err := writer.Write(combined); err != nil {
+		return fmt.Errorf("write message error: %w", err)
 	}
 
 	return nil

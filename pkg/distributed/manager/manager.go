@@ -2,7 +2,6 @@ package manager
 
 import (
 	"context"
-	"github.com/xsxdot/aio/pkg/distributed/election"
 	"github.com/xsxdot/aio/pkg/distributed/idgen"
 	"github.com/xsxdot/aio/pkg/distributed/lock"
 	"github.com/xsxdot/aio/pkg/distributed/state"
@@ -35,7 +34,7 @@ type DistributedManager interface {
 	Restart(ctx context.Context) error
 
 	// 组件服务访问
-	Election() election.ElectionService
+	//Election() election.ElectionService
 	Lock() lock.LockService
 	IDGenerator() idgen.IDGeneratorService
 	StateManager() state.StateManagerService
@@ -51,10 +50,10 @@ type Manager struct {
 	logger     *zap.Logger
 	status     ManagerStatus
 
-	electionService election.ElectionService
-	lockService     lock.LockService
-	idgenService    idgen.IDGeneratorService
-	stateService    state.StateManagerService
+	//electionService election.ElectionService
+	lockService  lock.LockService
+	idgenService idgen.IDGeneratorService
+	stateService state.StateManagerService
 }
 
 // ManagerOption 管理器配置选项函数类型
@@ -91,12 +90,12 @@ func (m *Manager) Start(ctx context.Context) error {
 	// 初始化各服务组件
 	var err error
 
-	// 初始化选举服务
-	m.electionService, err = election.NewElectionService(m.etcdClient, m.logger)
-	if err != nil {
-		m.status = StatusError
-		return err
-	}
+	//初始化选举服务
+	//m.electionService, err = election.NewElectionService(m.etcdClient, m.logger)
+	//if err != nil {
+	//	m.status = StatusError
+	//	return err
+	//}
 
 	// 初始化锁服务
 	m.lockService, err = lock.NewLockService(m.etcdClient, m.logger)
@@ -120,10 +119,10 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 
 	// 启动各服务组件
-	if err := m.electionService.Start(ctx); err != nil {
-		m.status = StatusError
-		return err
-	}
+	//if err := m.electionService.Start(ctx); err != nil {
+	//	m.status = StatusError
+	//	return err
+	//}
 
 	if err := m.lockService.Start(ctx); err != nil {
 		m.status = StatusError
@@ -163,9 +162,9 @@ func (m *Manager) Stop(ctx context.Context) error {
 		m.logger.Error("Failed to stop lock service", zap.Error(err))
 	}
 
-	if err := m.electionService.Stop(ctx); err != nil {
-		m.logger.Error("Failed to stop election service", zap.Error(err))
-	}
+	//if err := m.electionService.Stop(ctx); err != nil {
+	//	m.logger.Error("Failed to stop election service", zap.Error(err))
+	//}
 
 	m.status = StatusStopped
 	m.logger.Info("Distributed manager stopped successfully")
@@ -188,9 +187,9 @@ func (m *Manager) Restart(ctx context.Context) error {
 }
 
 // Election 获取选举服务
-func (m *Manager) Election() election.ElectionService {
-	return m.electionService
-}
+//func (m *Manager) Election() election.ElectionService {
+//	return m.electionService
+//}
 
 // Lock 获取锁服务
 func (m *Manager) Lock() lock.LockService {

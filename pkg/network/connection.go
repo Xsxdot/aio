@@ -1,10 +1,15 @@
 package network
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sync/atomic"
 	"time"
+
+	"github.com/xsxdot/aio/pkg/common"
+	"go.uber.org/zap"
 )
 
 // Connection 表示一个网络连接
@@ -17,6 +22,7 @@ type Connection struct {
 	state      atomic.Value // ConnectionState
 	stats      *ConnectionStats
 	formClient bool
+	log        *zap.Logger
 }
 
 // NewConnection 创建新的连接
@@ -29,6 +35,7 @@ func NewConnection(conn net.Conn, protocol Protocol, handler *MessageHandler, fo
 		closeChan:  make(chan struct{}),
 		stats:      &ConnectionStats{},
 		formClient: formClient,
+		log:        common.GetLogger().ZapLogger().Named("connection"),
 	}
 
 	// 设置初始状态
@@ -72,9 +79,40 @@ func (c *Connection) Send(msg Message) error {
 		return ErrConnectionClosed
 	default:
 		data := msg.ToBytes()
+
+		// 记录发送前的日志
+		c.log.Debug("准备发送消息",
+			zap.Int("dataLen", len(data)),
+			zap.String("remoteAddr", c.conn.RemoteAddr().String()))
+
 		if err := c.protocol.Write(c.conn, data); err != nil {
-			return fmt.Errorf("write error: %w", err)
+			// 检查是否是网络错误
+			var isTimeout bool
+			if netErr, ok := err.(net.Error); ok {
+				isTimeout = netErr.Timeout()
+			}
+
+			c.log.Error("写入错误",
+				zap.Error(err),
+				zap.String("remoteAddr", c.conn.RemoteAddr().String()),
+				zap.Int("dataLen", len(data)),
+				zap.Bool("isTimeout", isTimeout))
+
+			// 检查连接是否已关闭
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				return fmt.Errorf("连接写入超时: %w", ErrWriteErr)
+			} else if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
+				return fmt.Errorf("连接已关闭: %w", ErrConnectionClosed)
+			}
+
+			return fmt.Errorf("写入错误: %w", ErrWriteErr)
 		}
+
+		// 记录发送成功的日志
+		c.log.Debug("消息发送成功",
+			zap.Int("dataLen", len(data)),
+			zap.String("remoteAddr", c.conn.RemoteAddr().String()))
 
 		// 更新统计信息
 		c.stats.WriteBytes += uint64(len(data))

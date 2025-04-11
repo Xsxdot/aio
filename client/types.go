@@ -1,4 +1,4 @@
-package sdk_v2
+package client
 
 import (
 	"crypto/md5"
@@ -30,6 +30,69 @@ type ProtocolOptions struct {
 	ConnectionTimeout time.Duration
 	RetryCount        int
 	RetryInterval     time.Duration
+}
+
+type EtcdOptions struct {
+	// 连接超时时间
+	ConnectTimeout time.Duration
+}
+
+var DefaultEtcdOptions = &EtcdOptions{
+	ConnectTimeout: 5 * time.Second,
+}
+
+// NatsClientOptions NATS客户端选项
+type NatsClientOptions struct {
+	// 连接超时时间
+	ConnectTimeout time.Duration
+	// 重连等待时间
+	ReconnectWait time.Duration
+	// 最大重连次数
+	MaxReconnects int
+	// 是否启用JetStream
+	UseJetStream bool
+	// 连接错误回调
+	ErrorCallback func(error)
+}
+
+var DefaultNatsOptions = &NatsClientOptions{
+	ConnectTimeout: 5 * time.Second,
+	ReconnectWait:  3 * time.Second,
+	MaxReconnects:  5,
+	UseJetStream:   false,
+}
+
+// RedisClientOptions Redis客户端选项
+type RedisClientOptions struct {
+	// 连接超时
+	ConnTimeout time.Duration
+	// 读取超时
+	ReadTimeout time.Duration
+	// 写入超时
+	WriteTimeout time.Duration
+	// 数据库密码
+	Password string
+	// 数据库索引
+	DB int
+	// 最大重试次数
+	MaxRetries int
+	// 最小空闲连接数
+	MinIdleConns int
+	// 连接池大小
+	PoolSize int
+	// 是否自动重连接到主节点
+	AutoReconnect bool
+}
+
+var DefaultRedisOptions = &RedisClientOptions{
+	ConnTimeout:   5 * time.Second,
+	ReadTimeout:   5 * time.Second,
+	WriteTimeout:  5 * time.Second,
+	DB:            0,
+	MaxRetries:    3,
+	MinIdleConns:  10,
+	PoolSize:      100,
+	AutoReconnect: true,
 }
 
 type ServiceInfoBuilder struct {
@@ -96,15 +159,31 @@ func (b *ServiceInfoBuilder) WithDefaultProtocolOptions(servers []string, client
 	}
 }
 
+type EtcdBuilder struct {
+	serviceInfo     *ServiceInfo
+	protocolOptions *ProtocolOptions
+	etcdOptions     *EtcdOptions
+}
+
+func (b *ProtocolBuilder) WithEtcdOptions(options *EtcdOptions) *EtcdBuilder {
+	return &EtcdBuilder{
+		serviceInfo:     b.serviceInfo,
+		protocolOptions: b.protocolOptions,
+		etcdOptions:     options,
+	}
+}
+
 type ClientOptions struct {
 	serviceInfo     *ServiceInfo
 	protocolOptions *ProtocolOptions
+	etcdOptions     *EtcdOptions
 }
 
-func (b *ProtocolBuilder) Build() *ClientOptions {
+func (b *EtcdBuilder) Build() *ClientOptions {
 	return &ClientOptions{
 		serviceInfo:     b.serviceInfo,
 		protocolOptions: b.protocolOptions,
+		etcdOptions:     b.etcdOptions,
 	}
 }
 

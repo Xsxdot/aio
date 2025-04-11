@@ -5,18 +5,21 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	cache2 "github.com/xsxdot/aio/internal/cache"
 	engine2 "github.com/xsxdot/aio/internal/cache/engine"
 	protocol2 "github.com/xsxdot/aio/internal/cache/protocol"
 	"github.com/xsxdot/aio/pkg/common"
 	network2 "github.com/xsxdot/aio/pkg/network"
 	protocol3 "github.com/xsxdot/aio/pkg/protocol"
-	"os"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
+
+//todo 连接到主节点需要认证
 
 // DefaultReplBufferSize 默认复制缓冲区大小 (1MB)
 const DefaultReplBufferSize = 1024 * 1024
@@ -509,17 +512,17 @@ func (rm *DefaultReplicationManager) registerService(host string, port int) erro
 // registerReplicationHandlers 注册复制相关的消息处理器
 func (rm *DefaultReplicationManager) registerReplicationHandlers() {
 	// 创建复制服务处理器
-	replHandler := protocol3.NewServiceHandler()
+	replHandler := rm.protocolMgr
 
 	// 注册同步请求处理器
-	replHandler.RegisterHandler(MsgTypeReplSync, func(connID string, msg *protocol3.CustomMessage) error {
+	syncHandle := func(connID string, msg *protocol3.CustomMessage) (interface{}, error) {
 		// 处理同步请求
 		rm.logger.Infof("接收到从节点同步请求: %s", connID)
 
 		// 获取连接
 		conn, ok := rm.protocolMgr.GetConnection(connID)
 		if !ok || conn == nil {
-			return fmt.Errorf("连接不存在: %s", connID)
+			return nil, fmt.Errorf("连接不存在: %s", connID)
 		}
 
 		// 创建从节点信息
@@ -536,14 +539,14 @@ func (rm *DefaultReplicationManager) registerReplicationHandlers() {
 		// 执行全量同步
 		go rm.fullSync(slaveInfo)
 
-		return nil
-	})
+		return protocol3.OK, nil
+	}
 
 	// 注册同步响应处理器
-	replHandler.RegisterHandler(MsgTypeReplSyncResp, func(connID string, msg *protocol3.CustomMessage) error {
+	syncRespHandle := func(connID string, msg *protocol3.CustomMessage) (interface{}, error) {
 		// 只有从节点才处理同步响应
 		if rm.state.Role != RoleSlave {
-			return nil
+			return nil, nil
 		}
 
 		// 解析同步响应消息
@@ -557,7 +560,7 @@ func (rm *DefaultReplicationManager) registerReplicationHandlers() {
 			replicationID := parts[1]
 			offset, err := strconv.ParseInt(parts[2], 10, 64)
 			if err != nil {
-				return fmt.Errorf("解析偏移量失败: %v", err)
+				return nil, fmt.Errorf("解析偏移量失败: %v", err)
 			}
 
 			// 更新复制状态
@@ -568,17 +571,18 @@ func (rm *DefaultReplicationManager) registerReplicationHandlers() {
 
 			rm.logger.Infof("同步响应解析成功: 复制ID=%s, 偏移量=%d", replicationID, offset)
 		} else {
-			return fmt.Errorf("无效的同步响应格式: %s", respStr)
+			return nil, fmt.Errorf("无效的同步响应格式: %s", respStr)
 		}
 
-		return nil
-	})
+		return protocol3.OK, nil
+	}
 
 	// 注册数据处理器
-	replHandler.RegisterHandler(MsgTypeReplData, func(connID string, msg *protocol3.CustomMessage) error {
+	replDataHandle := func(connID string, msg *protocol3.CustomMessage) (interface{}, error) {
 		// 只有从节点才处理复制数据
 		if rm.state.Role != RoleSlave {
-			return nil
+			return nil, nil
+
 		}
 
 		data := msg.Payload()
@@ -609,20 +613,20 @@ func (rm *DefaultReplicationManager) registerReplicationHandlers() {
 		err := rm.protocolMgr.SendMessage(connID, MsgTypeReplACK, ServiceTypeReplication, []byte(offsetStr))
 		if err != nil {
 			rm.logger.Errorf("发送数据确认失败: %v", err)
-			return err
+			return nil, err
 		}
 
 		rm.logger.Infof("数据接收完成，当前偏移量: %d", offset)
-		return nil
-	})
+		return protocol3.OK, nil
+	}
 
 	// 注册确认消息处理器
-	replHandler.RegisterHandler(MsgTypeReplACK, func(connID string, msg *protocol3.CustomMessage) error {
+	replAckHandle := func(connID string, msg *protocol3.CustomMessage) (interface{}, error) {
 		// 解析复制确认信息
 		offsetStr := string(msg.Payload())
 		offset, err := strconv.ParseInt(offsetStr, 10, 64)
 		if err != nil {
-			return fmt.Errorf("解析偏移量失败: %v", err)
+			return nil, fmt.Errorf("解析偏移量失败: %v", err)
 		}
 
 		// 更新从节点复制偏移量
@@ -653,27 +657,27 @@ func (rm *DefaultReplicationManager) registerReplicationHandlers() {
 			rm.state.Slaves.Store(connID, slave)
 		}
 
-		return nil
-	})
+		return protocol3.OK, nil
+	}
 
 	// 注册命令消息处理器
-	replHandler.RegisterHandler(MsgTypeReplCommand, func(connID string, msg *protocol3.CustomMessage) error {
+	replCmd := func(connID string, msg *protocol3.CustomMessage) (interface{}, error) {
 		// 只有从节点才处理复制命令
 		if rm.state.Role != RoleSlave {
-			return nil
+			return nil, nil
 		}
 
 		// 获取命令数据
 		cmdData := msg.Payload()
 		if len(cmdData) == 0 {
-			return fmt.Errorf("空命令数据")
+			return nil, fmt.Errorf("空命令数据")
 		}
 
 		// 反序列化命令数据
 		replCmd, err := DeserializeReplCommand(cmdData)
 		if err != nil {
 			rm.logger.Errorf("解析复制命令失败: %v", err)
-			return err
+			return nil, err
 		}
 
 		// 获取命令偏移量和数据库索引
@@ -696,7 +700,7 @@ func (rm *DefaultReplicationManager) registerReplicationHandlers() {
 
 			// 发送确认消息
 			offsetStr := fmt.Sprintf("%d", offset)
-			return rm.protocolMgr.SendMessage(connID, MsgTypeReplACK, ServiceTypeReplication, []byte(offsetStr))
+			return offsetStr, nil
 		}
 
 		// 检查当前是否正在进行全量同步
@@ -721,7 +725,7 @@ func (rm *DefaultReplicationManager) registerReplicationHandlers() {
 
 			// 发送确认消息
 			offsetStr := fmt.Sprintf("%d", offset)
-			return rm.protocolMgr.SendMessage(connID, MsgTypeReplACK, ServiceTypeReplication, []byte(offsetStr))
+			return offsetStr, nil
 		}
 
 		// 标记该命令已处理
@@ -742,7 +746,7 @@ func (rm *DefaultReplicationManager) registerReplicationHandlers() {
 		cmd, err := parser.Parse(actualCmdData, "master")
 		if err != nil {
 			rm.logger.Errorf("解析复制命令失败: %v", err)
-			return err
+			return nil, err
 		}
 
 		// 执行命令
@@ -786,7 +790,7 @@ func (rm *DefaultReplicationManager) registerReplicationHandlers() {
 			db, err := rm.engine.Select(dbIndex)
 			if err != nil {
 				rm.logger.Errorf("选择数据库失败: %v", err)
-				return err
+				return nil, err
 			}
 
 			// 处理其他命令
@@ -802,12 +806,11 @@ func (rm *DefaultReplicationManager) registerReplicationHandlers() {
 		rm.mutex.Unlock()
 
 		// 发送确认消息
-		offsetStr := fmt.Sprintf("%d", rm.state.ReplicaOffset)
-		return rm.protocolMgr.SendMessage(connID, MsgTypeReplACK, ServiceTypeReplication, []byte(offsetStr))
-	})
+		return rm.state.ReplicaOffset, nil
+	}
 
 	// 注册客户端请求主节点地址的消息处理器
-	replHandler.RegisterHandler(MsgTypeGetMasterInfo, func(connID string, msg *protocol3.CustomMessage) error {
+	getMasterInfo := func(connID string, msg *protocol3.CustomMessage) (interface{}, error) {
 		// 获取当前主节点信息
 		var masterAddr string
 
@@ -854,11 +857,15 @@ func (rm *DefaultReplicationManager) registerReplicationHandlers() {
 		}
 
 		// 发送主节点地址信息给客户端
-		return rm.protocolMgr.SendMessage(connID, MsgTypeGetMasterInfo, ServiceTypeReplication, []byte(masterAddr))
-	})
+		return masterAddr, nil
+	}
+	replHandler.RegisterHandle(ServiceTypeReplication, MsgTypeReplCommand, replCmd)
+	replHandler.RegisterHandle(ServiceTypeReplication, MsgTypeReplACK, replAckHandle)
+	replHandler.RegisterHandle(ServiceTypeReplication, MsgTypeReplData, replDataHandle)
+	replHandler.RegisterHandle(ServiceTypeReplication, MsgTypeReplSyncResp, syncRespHandle)
+	replHandler.RegisterHandle(ServiceTypeReplication, MsgTypeReplSync, syncHandle)
+	replHandler.RegisterHandle(ServiceTypeReplication, MsgTypeGetMasterInfo, getMasterInfo)
 
-	// 注册复制服务
-	rm.protocolMgr.RegisterService(ServiceTypeReplication, "replication", replHandler)
 }
 
 // connectToMaster 连接到主节点

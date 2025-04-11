@@ -144,6 +144,9 @@ func (c *EtcdComponent) Init(config *config.BaseConfig, body []byte) error {
 		return err
 	}
 
+	serverConfig.BindIP = config.Network.BindIP
+	serverConfig.LocalIp = config.Network.LocalIp
+
 	c.status = consts.StatusInitialized
 
 	return nil

@@ -26,6 +26,7 @@ type ConnectionManager struct {
 	log         *zap.Logger
 	// 添加连接拦截器
 	interceptor ConnectionInterceptor
+	onlyClient  bool
 }
 
 // ConnectionInterceptor 连接拦截器接口
@@ -52,11 +53,12 @@ func NewConnectionManager(protocol Protocol, handler *MessageHandler, options *O
 	}
 
 	return &ConnectionManager{
-		protocol:  protocol,
-		handler:   handler,
-		options:   options,
-		closeChan: make(chan struct{}),
-		log:       common.GetLogger().ZapLogger().Named("connection-manager"),
+		protocol:   protocol,
+		handler:    handler,
+		options:    options,
+		onlyClient: options.OnlyClient,
+		closeChan:  make(chan struct{}),
+		log:        common.GetLogger().ZapLogger().Named("connection-manager"),
 	}
 }
 
@@ -110,15 +112,6 @@ func (m *ConnectionManager) Send(connID string, msg Message) error {
 	}
 
 	connection := conn.(*Connection)
-
-	// 设置写入超时
-	if m.options.WriteTimeout > 0 {
-		if err := connection.conn.SetWriteDeadline(time.Now().Add(m.options.WriteTimeout)); err != nil {
-			m.log.Error("设置写入超时失败",
-				zap.Error(err),
-				zap.String("connectionID", connID))
-		}
-	}
 
 	return connection.Send(msg)
 }
@@ -291,11 +284,11 @@ func (m *ConnectionManager) handleConnection(conn *Connection) {
 			return
 		default:
 			// 设置读取超时
-			if m.options.ReadTimeout > 0 {
-				if err := conn.conn.SetReadDeadline(time.Now().Add(m.options.ReadTimeout)); err != nil {
-					m.log.Error("设置读取超时失败", zap.Error(err))
-				}
-			}
+			//if m.options.ReadTimeout > 0 && !m.onlyClient {
+			//	if err := conn.conn.SetReadDeadline(time.Now().Add(m.options.ReadTimeout)); err != nil {
+			//		m.log.Error("设置读取超时失败", zap.Error(err))
+			//	}
+			//}
 
 			data, err := conn.protocol.Read(conn.conn)
 			if err != nil {
@@ -369,18 +362,14 @@ func (m *ConnectionManager) setupConnection(conn net.Conn) error {
 	}
 
 	// 设置初始读取超时
-	if m.options.ReadTimeout > 0 {
-		if err := conn.SetReadDeadline(time.Now().Add(m.options.ReadTimeout)); err != nil {
-			return fmt.Errorf("set read deadline error: %w", err)
-		}
-	}
+	//if m.options.ReadTimeout > 0 {
+	//	if err := conn.SetReadDeadline(time.Now().Add(m.options.ReadTimeout)); err != nil {
+	//		return fmt.Errorf("set read deadline error: %w", err)
+	//	}
+	//}
 
-	// 设置初始写入超时
-	if m.options.WriteTimeout > 0 {
-		if err := conn.SetWriteDeadline(time.Now().Add(m.options.WriteTimeout)); err != nil {
-			return fmt.Errorf("set write deadline error: %w", err)
-		}
-	}
+	// 不在初始化时设置永久写入超时
+	// 将在每次写入时单独设置
 
 	return nil
 }
