@@ -50,3 +50,4 @@ build.sh
 
 # 其他文件
 .env 
+cmd/aio/aio
