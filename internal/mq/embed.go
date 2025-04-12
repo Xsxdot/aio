@@ -177,6 +177,9 @@ func (s *NatsServer) Start(ctx context.Context) error {
 func (s *NatsServer) GetClient() (*NatsClient, error) {
 	var servers []string
 	serverConfig := s.config
+	if serverConfig == nil {
+		return nil, fmt.Errorf("服务器配置为空")
+	}
 	if len(serverConfig.Routes) > 0 {
 		servers = serverConfig.Routes
 	} else {

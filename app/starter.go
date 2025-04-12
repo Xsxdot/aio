@@ -106,9 +106,12 @@ func (a *App) startApp() error {
 	})
 
 	a.Manager.Register(func() (*ComponentEntity, error) {
-		client, err := a.MQServer.GetClient()
-		if err != nil {
-			logger.Errorf("创建消息队列客户端失败: %v", err)
+		var client *mq.NatsClient
+		if a.MQServer != nil {
+			client, err = a.MQServer.GetClient()
+			if err != nil {
+				logger.Errorf("创建消息队列客户端失败: %v", err)
+			}
 		}
 		monitor := monitoring.New(a.Etcd.GetClient(), client)
 		a.Monitor = monitor
