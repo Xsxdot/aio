@@ -2,6 +2,7 @@ package fiber
 
 import (
 	"context"
+	config2 "github.com/xsxdot/aio/pkg/config"
 	"strconv"
 
 	"github.com/xsxdot/aio/pkg/distributed/election"
@@ -14,7 +15,6 @@ import (
 	consts "github.com/xsxdot/aio/app/const"
 	"github.com/xsxdot/aio/internal/authmanager"
 	"github.com/xsxdot/aio/internal/cache/server"
-	configService "github.com/xsxdot/aio/internal/config"
 	"github.com/xsxdot/aio/internal/etcd"
 	"github.com/xsxdot/aio/internal/monitoring"
 	monitorapi "github.com/xsxdot/aio/internal/monitoring/api"
@@ -174,13 +174,13 @@ func (s *Server) RegisterCacheServerAPI(cacheServer *server.Server) {
 }
 
 // RegisterConfigAPI 注册配置中心API路由
-func (s *Server) RegisterConfigAPI(configSer *configService.Service) {
+func (s *Server) RegisterConfigAPI(configSer *config2.Service) {
 	if configSer == nil {
 		s.logger.Warn("配置中心服务为空，跳过API注册")
 		return
 	}
 
-	api := configService.NewAPI(configSer, s.logger)
+	api := config2.NewAPI(configSer, s.logger)
 	api.SetupRoutes(s.app)
 	s.logger.Info("已注册配置中心API路由")
 }

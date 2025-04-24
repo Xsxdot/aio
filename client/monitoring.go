@@ -68,7 +68,7 @@ func DefaultMonitoringOptions() *MonitoringOptions {
 }
 
 // NewMonitoringClient 创建一个新的监控客户端
-func NewMonitoringClient(client *Client, options *MonitoringOptions) (*MonitoringClient, error) {
+func NewMonitoringClient(client *Client,conn *nats.Conn,  options *MonitoringOptions) (*MonitoringClient, error) {
 	if client == nil {
 		return nil, fmt.Errorf("client cannot be nil")
 	}
@@ -95,7 +95,7 @@ func NewMonitoringClient(client *Client, options *MonitoringOptions) (*Monitorin
 
 	m := &MonitoringClient{
 		client:         client,
-		natsConn:       client.Nats.natsClient.GetConn(),
+		natsConn:       conn,
 		log:            client.log.Named("monitoring"),
 		serviceInfo:    client.GetServiceInfo(),
 		metricsSubject: options.MetricsSubject,

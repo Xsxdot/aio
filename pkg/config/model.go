@@ -70,7 +70,6 @@ const (
 	ValueTypeEncrypted ValueType = "encrypted" // 加密类型
 )
 
-// RefValue 表示对其他配置项的引用格式
 type RefValue struct {
 	Key      string `json:"key"`      // 引用的配置键
 	Property string `json:"property"` // 引用的属性路径，为空表示引用整个配置项

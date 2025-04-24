@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	configInternal "github.com/xsxdot/aio/pkg/config"
 	"os"
 	"path/filepath"
 	"sync"
@@ -16,8 +17,6 @@ import (
 	consts "github.com/xsxdot/aio/app/const"
 	"github.com/xsxdot/aio/pkg/common"
 	"github.com/xsxdot/aio/pkg/distributed/discovery"
-
-	configInternal "github.com/xsxdot/aio/internal/config"
 )
 
 type Component interface {

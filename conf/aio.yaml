@@ -10,7 +10,7 @@ logger:
     max_size: 100
 network:
     allow_external: false
-    bind_ip: localhost
+    bind_ip: auto
     http_allow_external: true
     http_port: 8080
 protocol:

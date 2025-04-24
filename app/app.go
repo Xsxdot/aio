@@ -4,6 +4,7 @@ package app
 import (
 	"context"
 	"fmt"
+	config3 "github.com/xsxdot/aio/pkg/config"
 	"gopkg.in/yaml.v3"
 	"log"
 	"os"
@@ -14,7 +15,6 @@ import (
 	"github.com/xsxdot/aio/app/fiber"
 	"github.com/xsxdot/aio/internal/authmanager"
 	"github.com/xsxdot/aio/internal/cache/server"
-	config2 "github.com/xsxdot/aio/internal/config"
 	"github.com/xsxdot/aio/internal/etcd"
 	"github.com/xsxdot/aio/internal/monitoring"
 	"github.com/xsxdot/aio/internal/mq"
@@ -45,7 +45,7 @@ type App struct {
 
 	// 分布式基础组件
 	Etcd          *etcd.EtcdComponent
-	ConfigService *config2.Service
+	ConfigService *config3.Service
 	Election      election.ElectionService
 	Discovery     discovery.DiscoveryService
 
@@ -179,7 +179,7 @@ func (a *App) SetInitialized(initialized bool) {
 }
 
 func (a *App) initTcpApi() error {
-	tcpapi := config2.NewTCPAPI(a.ConfigService, a.Logger.GetZapLogger("ConfigTcpApi"))
+	tcpapi := config3.NewTCPAPI(a.ConfigService, a.Logger.GetZapLogger("ConfigTcpApi"))
 	tcpapi.RegisterToManager(a.Protocol)
 
 	err := distributed.RegisterDiscoveryTCPHandlers(a.Discovery, a.Protocol)

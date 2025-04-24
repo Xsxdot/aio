@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/xsxdot/aio/pkg/common"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/xsxdot/aio/pkg/common"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -276,9 +277,9 @@ func TestCompositeConfig(t *testing.T) {
 
 	// 创建引用配置项
 	compositeKey := "composite-config"
-	refBaseValue, _ := json.Marshal(RefValue{Key: baseKey, Property: ""})
-	refDbValue, _ := json.Marshal(RefValue{Key: dbKey, Property: ""})
-	refAppNameValue, _ := json.Marshal(RefValue{Key: baseKey, Property: "app_name"})
+	refBaseValue := baseKey + ".app_name"
+	refDbValue := dbKey + ".host"
+	refAppNameValue := baseKey + ".app_name"
 
 	compositeValue := map[string]*ConfigValue{
 		"base":        {Value: string(refBaseValue), Type: ValueTypeRef},

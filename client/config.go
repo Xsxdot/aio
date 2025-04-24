@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	config2 "github.com/xsxdot/aio/pkg/config"
 
-	"github.com/xsxdot/aio/internal/config"
 	"github.com/xsxdot/aio/pkg/protocol"
 )
 
@@ -22,19 +22,19 @@ func NewConfigService(client *Client) *ConfigService {
 }
 
 // GetConfig 获取配置
-func (c *ConfigService) GetConfig(ctx context.Context, key string) (*config.Config, error) {
-	request := &config.GetConfigRequest{
+func (c *ConfigService) GetConfig(ctx context.Context, key string) (*config2.Config, error) {
+	request := &config2.GetConfigRequest{
 		Key: key,
 	}
 
 	msg := protocol.NewMessage(
-		config.MsgTypeGetConfig,
-		config.ServiceTypeConfig,
+		config2.MsgTypeGetConfig,
+		config2.ServiceTypeConfig,
 		"",
 		request,
 	)
 
-	var result config.Config
+	var result config2.Config
 	err := c.requestService.Request(msg, &result)
 	if err != nil {
 		return nil, fmt.Errorf("获取配置失败: %v", err)
@@ -55,13 +55,13 @@ func (c *ConfigService) GetConfigJSONParse(ctx context.Context, key string, resu
 
 // GetConfigJSON 获取JSON格式配置
 func (c *ConfigService) GetConfigJSON(ctx context.Context, key string) ([]byte, error) {
-	request := &config.GetConfigJSONRequest{
+	request := &config2.GetConfigJSONRequest{
 		Key: key,
 	}
 
 	msg := protocol.NewMessage(
-		config.MsgTypeGetConfigJSON,
-		config.ServiceTypeConfig,
+		config2.MsgTypeGetConfigJSON,
+		config2.ServiceTypeConfig,
 		"",
 		request,
 	)
@@ -75,21 +75,21 @@ func (c *ConfigService) GetConfigJSON(ctx context.Context, key string) ([]byte, 
 }
 
 // SetConfig 设置配置
-func (c *ConfigService) SetConfig(ctx context.Context, key string, value map[string]*config.ConfigValue, metadata map[string]string) (*config.Config, error) {
-	request := &config.SetConfigRequest{
+func (c *ConfigService) SetConfig(ctx context.Context, key string, value map[string]*config2.ConfigValue, metadata map[string]string) (*config2.Config, error) {
+	request := &config2.SetConfigRequest{
 		Key:      key,
 		Value:    value,
 		Metadata: metadata,
 	}
 
 	msg := protocol.NewMessage(
-		config.MsgTypeSetConfig,
-		config.ServiceTypeConfig,
+		config2.MsgTypeSetConfig,
+		config2.ServiceTypeConfig,
 		"",
 		request,
 	)
 
-	var result config.Config
+	var result config2.Config
 	err := c.requestService.Request(msg, &result)
 	if err != nil {
 		return nil, fmt.Errorf("设置配置失败: %v", err)
@@ -100,13 +100,13 @@ func (c *ConfigService) SetConfig(ctx context.Context, key string, value map[str
 
 // DeleteConfig 删除配置
 func (c *ConfigService) DeleteConfig(ctx context.Context, key string) error {
-	request := &config.DeleteConfigRequest{
+	request := &config2.DeleteConfigRequest{
 		Key: key,
 	}
 
 	msg := protocol.NewMessage(
-		config.MsgTypeDeleteConfig,
-		config.ServiceTypeConfig,
+		config2.MsgTypeDeleteConfig,
+		config2.ServiceTypeConfig,
 		"",
 		request,
 	)
@@ -121,15 +121,15 @@ func (c *ConfigService) DeleteConfig(ctx context.Context, key string) error {
 }
 
 // ListConfigs 列出所有配置
-func (c *ConfigService) ListConfigs(ctx context.Context) ([]*config.Config, error) {
+func (c *ConfigService) ListConfigs(ctx context.Context) ([]*config2.Config, error) {
 	msg := protocol.NewMessage(
-		config.MsgTypeListConfigs,
-		config.ServiceTypeConfig,
+		config2.MsgTypeListConfigs,
+		config2.ServiceTypeConfig,
 		"",
 		nil,
 	)
 
-	var result []*config.Config
+	var result []*config2.Config
 	err := c.requestService.Request(msg, &result)
 	if err != nil {
 		return nil, fmt.Errorf("获取配置列表失败: %v", err)
@@ -139,21 +139,21 @@ func (c *ConfigService) ListConfigs(ctx context.Context) ([]*config.Config, erro
 }
 
 // GetEnvConfig 获取环境配置
-func (c *ConfigService) GetEnvConfig(ctx context.Context, key string, env string, fallbacks []string) (*config.Config, error) {
-	request := &config.EnvConfigRequest{
+func (c *ConfigService) GetEnvConfig(ctx context.Context, key string, env string, fallbacks []string) (*config2.Config, error) {
+	request := &config2.EnvConfigRequest{
 		Key:       key,
 		Env:       env,
 		Fallbacks: fallbacks,
 	}
 
 	msg := protocol.NewMessage(
-		config.MsgTypeGetEnvConfig,
-		config.ServiceTypeConfig,
+		config2.MsgTypeGetEnvConfig,
+		config2.ServiceTypeConfig,
 		"",
 		request,
 	)
 
-	var result config.Config
+	var result config2.Config
 	err := c.requestService.Request(msg, &result)
 	if err != nil {
 		return nil, fmt.Errorf("获取环境配置失败: %v", err)
@@ -164,15 +164,15 @@ func (c *ConfigService) GetEnvConfig(ctx context.Context, key string, env string
 
 // GetEnvConfigJSON 获取环境配置的JSON表示
 func (c *ConfigService) GetEnvConfigJSON(ctx context.Context, key string, env string, fallbacks []string) ([]byte, error) {
-	request := &config.GetEnvConfigJSONRequest{
+	request := &config2.GetEnvConfigJSONRequest{
 		Key:       key,
 		Env:       env,
 		Fallbacks: fallbacks,
 	}
 
 	msg := protocol.NewMessage(
-		config.MsgTypeGetEnvConfigJSON,
-		config.ServiceTypeConfig,
+		config2.MsgTypeGetEnvConfigJSON,
+		config2.ServiceTypeConfig,
 		"",
 		request,
 	)
@@ -194,8 +194,8 @@ func (c *ConfigService) GetEnvConfigJSONParse(ctx context.Context, key string, e
 }
 
 // SetEnvConfig 设置环境配置
-func (c *ConfigService) SetEnvConfig(ctx context.Context, key string, env string, value map[string]*config.ConfigValue, metadata map[string]string) (*config.Config, error) {
-	request := &config.EnvConfigRequest{
+func (c *ConfigService) SetEnvConfig(ctx context.Context, key string, env string, value map[string]*config2.ConfigValue, metadata map[string]string) (*config2.Config, error) {
+	request := &config2.EnvConfigRequest{
 		Key:      key,
 		Env:      env,
 		Value:    value,
@@ -203,13 +203,13 @@ func (c *ConfigService) SetEnvConfig(ctx context.Context, key string, env string
 	}
 
 	msg := protocol.NewMessage(
-		config.MsgTypeSetEnvConfig,
-		config.ServiceTypeConfig,
+		config2.MsgTypeSetEnvConfig,
+		config2.ServiceTypeConfig,
 		"",
 		request,
 	)
 
-	var result config.Config
+	var result config2.Config
 	err := c.requestService.Request(msg, &result)
 	if err != nil {
 		return nil, fmt.Errorf("设置环境配置失败: %v", err)
@@ -219,19 +219,19 @@ func (c *ConfigService) SetEnvConfig(ctx context.Context, key string, env string
 }
 
 // ListEnvConfigs 列出环境配置
-func (c *ConfigService) ListEnvConfigs(ctx context.Context, key string) (map[string]*config.Config, error) {
-	request := &config.EnvConfigRequest{
+func (c *ConfigService) ListEnvConfigs(ctx context.Context, key string) (map[string]*config2.Config, error) {
+	request := &config2.EnvConfigRequest{
 		Key: key,
 	}
 
 	msg := protocol.NewMessage(
-		config.MsgTypeListEnvConfig,
-		config.ServiceTypeConfig,
+		config2.MsgTypeListEnvConfig,
+		config2.ServiceTypeConfig,
 		"",
 		request,
 	)
 
-	var result map[string]*config.Config
+	var result map[string]*config2.Config
 	err := c.requestService.Request(msg, &result)
 	if err != nil {
 		return nil, fmt.Errorf("获取环境配置列表失败: %v", err)
@@ -242,14 +242,14 @@ func (c *ConfigService) ListEnvConfigs(ctx context.Context, key string) (map[str
 
 // GetHistory 获取配置历史
 func (c *ConfigService) GetHistory(ctx context.Context, key string, limit int64) ([]map[string]interface{}, error) {
-	request := &config.HistoryRequest{
+	request := &config2.HistoryRequest{
 		Key:   key,
 		Limit: limit,
 	}
 
 	msg := protocol.NewMessage(
-		config.MsgTypeGetHistory,
-		config.ServiceTypeConfig,
+		config2.MsgTypeGetHistory,
+		config2.ServiceTypeConfig,
 		"",
 		request,
 	)
@@ -264,20 +264,20 @@ func (c *ConfigService) GetHistory(ctx context.Context, key string, limit int64)
 }
 
 // GetByRevision 获取特定版本的配置
-func (c *ConfigService) GetByRevision(ctx context.Context, key string, revision int64) (*config.Config, error) {
-	request := &config.HistoryRequest{
+func (c *ConfigService) GetByRevision(ctx context.Context, key string, revision int64) (*config2.Config, error) {
+	request := &config2.HistoryRequest{
 		Key:      key,
 		Revision: revision,
 	}
 
 	msg := protocol.NewMessage(
-		config.MsgTypeGetRevision,
-		config.ServiceTypeConfig,
+		config2.MsgTypeGetRevision,
+		config2.ServiceTypeConfig,
 		"",
 		request,
 	)
 
-	var result config.Config
+	var result config2.Config
 	err := c.requestService.Request(msg, &result)
 	if err != nil {
 		return nil, fmt.Errorf("获取配置版本失败: %v", err)
@@ -288,13 +288,13 @@ func (c *ConfigService) GetByRevision(ctx context.Context, key string, revision 
 
 // GetCompositeConfig 获取组合配置
 func (c *ConfigService) GetCompositeConfig(ctx context.Context, key string) (map[string]interface{}, error) {
-	request := &config.CompositeRequest{
+	request := &config2.CompositeRequest{
 		Key: key,
 	}
 
 	msg := protocol.NewMessage(
-		config.MsgTypeGetComposite,
-		config.ServiceTypeConfig,
+		config2.MsgTypeGetComposite,
+		config2.ServiceTypeConfig,
 		"",
 		request,
 	)
@@ -310,15 +310,15 @@ func (c *ConfigService) GetCompositeConfig(ctx context.Context, key string) (map
 
 // GetCompositeConfigForEnvironment 获取环境下的组合配置
 func (c *ConfigService) GetCompositeConfigForEnvironment(ctx context.Context, key string, env string, fallbacks []string) (map[string]interface{}, error) {
-	request := &config.CompositeRequest{
+	request := &config2.CompositeRequest{
 		Key:       key,
 		Env:       env,
 		Fallbacks: fallbacks,
 	}
 
 	msg := protocol.NewMessage(
-		config.MsgTypeGetComposite,
-		config.ServiceTypeConfig,
+		config2.MsgTypeGetComposite,
+		config2.ServiceTypeConfig,
 		"",
 		request,
 	)
@@ -334,13 +334,13 @@ func (c *ConfigService) GetCompositeConfigForEnvironment(ctx context.Context, ke
 
 // MergeCompositeConfigs 合并多个组合配置
 func (c *ConfigService) MergeCompositeConfigs(ctx context.Context, keys []string) (map[string]interface{}, error) {
-	request := &config.CompositeRequest{
+	request := &config2.CompositeRequest{
 		Keys: keys,
 	}
 
 	msg := protocol.NewMessage(
-		config.MsgTypeMergeComposite,
-		config.ServiceTypeConfig,
+		config2.MsgTypeMergeComposite,
+		config2.ServiceTypeConfig,
 		"",
 		request,
 	)
@@ -356,15 +356,15 @@ func (c *ConfigService) MergeCompositeConfigs(ctx context.Context, keys []string
 
 // MergeCompositeConfigsForEnvironment 在特定环境下合并多个组合配置
 func (c *ConfigService) MergeCompositeConfigsForEnvironment(ctx context.Context, keys []string, env string, fallbacks []string) (map[string]interface{}, error) {
-	request := &config.CompositeRequest{
+	request := &config2.CompositeRequest{
 		Keys:      keys,
 		Env:       env,
 		Fallbacks: fallbacks,
 	}
 
 	msg := protocol.NewMessage(
-		config.MsgTypeMergeComposite,
-		config.ServiceTypeConfig,
+		config2.MsgTypeMergeComposite,
+		config2.ServiceTypeConfig,
 		"",
 		request,
 	)

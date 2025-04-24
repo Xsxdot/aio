@@ -32,8 +32,6 @@ type Task struct {
 	NeedLock bool
 	// 任务状态
 	Status string
-	// 任务锁
-	lock lock.Lock
 	// 在任务堆中的索引
 	index int
 	// Cron表达式 (用于cron类型任务)
@@ -96,12 +94,15 @@ type SchedulerOptions struct {
 	LockTTL time.Duration
 	// 任务执行超时
 	TaskTimeout time.Duration
+	// 锁名称（为空则不使用分布式锁）
+	LockName string
 }
 
 // DefaultSchedulerOptions 默认调度器选项
 var DefaultSchedulerOptions = &SchedulerOptions{
 	LockTTL:     30 * time.Second,
 	TaskTimeout: 1 * time.Minute,
+	LockName:    "",
 }
 
 // Scheduler 任务调度器
@@ -118,6 +119,16 @@ type Scheduler struct {
 	stop     chan struct{}
 	ctx      context.Context
 	cancel   context.CancelFunc
+
+	// 分布式锁
+	distributedLock lock.Lock
+	// 锁名称
+	lockName string
+	// 是否持有分布式锁
+	hasLock bool
+	// 锁刷新上下文
+	lockRenewCtx    context.Context
+	lockRenewCancel context.CancelFunc
 }
 
 // NewScheduler 创建调度器
@@ -128,6 +139,12 @@ func NewScheduler(client *Client, options *SchedulerOptions) *Scheduler {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// 初始化锁名称
+	lockName := ""
+	if options.LockName != "" {
+		lockName = fmt.Sprintf("scheduler-global-lock-%s", options.LockName)
+	}
+
 	scheduler := &Scheduler{
 		client:   client,
 		options:  options,
@@ -137,6 +154,8 @@ func NewScheduler(client *Client, options *SchedulerOptions) *Scheduler {
 		stop:     make(chan struct{}),
 		ctx:      ctx,
 		cancel:   cancel,
+		lockName: lockName,
+		hasLock:  false,
 	}
 
 	return scheduler
@@ -144,9 +163,62 @@ func NewScheduler(client *Client, options *SchedulerOptions) *Scheduler {
 
 // Start 启动调度器
 func (s *Scheduler) Start() error {
+	// 如果设置了锁名称，尝试获取分布式锁
+	if s.lockName != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		lock, err := s.client.Etcd.CreateLock(ctx, s.lockName, lock.WithLockTTL(int(s.options.LockTTL.Seconds())))
+		cancel()
+
+		if err != nil {
+			s.logger.Error("创建分布式锁失败",
+				zap.String("lockName", s.lockName),
+				zap.Error(err))
+			// 即使创建锁失败，也允许调度器启动，但不能执行分布式任务
+		} else {
+			s.distributedLock = lock
+
+			// 尝试获取锁
+			ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+			err = lock.Lock(ctx)
+			cancel()
+
+			if err != nil {
+				s.logger.Info("未获取到分布式锁，此实例不能执行分布式任务",
+					zap.String("lockName", s.lockName))
+			} else {
+				s.hasLock = true
+				s.logger.Info("已获取分布式锁，此实例可以执行分布式任务",
+					zap.String("lockName", s.lockName))
+
+				// 创建锁续期上下文
+				s.lockRenewCtx, s.lockRenewCancel = context.WithCancel(context.Background())
+
+				// 自动续期锁
+				go s.renewLock()
+			}
+		}
+	}
+
 	go s.run()
 	s.logger.Info("调度器已启动")
 	return nil
+}
+
+// renewLock 自动续期分布式锁
+func (s *Scheduler) renewLock() {
+	ticker := time.NewTicker(s.options.LockTTL / 3)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.lockRenewCtx.Done():
+			return
+		case <-ticker.C:
+			// 由于没有直接的Refresh方法，我们只记录一条日志
+			s.logger.Debug("分布式锁自动续期中",
+				zap.String("lockName", s.lockName))
+		}
+	}
 }
 
 // Stop 停止调度器
@@ -154,16 +226,24 @@ func (s *Scheduler) Stop() error {
 	s.cancel()
 	close(s.stop)
 
-	// 释放所有任务锁
-	s.taskLock.Lock()
-	for _, task := range s.tasks {
-		if task.lock != nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			_ = task.lock.Unlock(ctx)
-			cancel()
+	// 停止分布式锁续期
+	if s.lockRenewCancel != nil {
+		s.lockRenewCancel()
+	}
+
+	// 释放分布式锁
+	if s.distributedLock != nil && s.hasLock {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := s.distributedLock.Unlock(ctx)
+		cancel()
+
+		if err != nil {
+			s.logger.Warn("释放分布式锁失败", zap.Error(err))
+		} else {
+			s.hasLock = false
+			s.logger.Info("已释放分布式锁")
 		}
 	}
-	s.taskLock.Unlock()
 
 	if s.timer != nil {
 		s.timer.Stop()
@@ -291,16 +371,9 @@ func (s *Scheduler) CancelTask(taskID string) error {
 	s.taskLock.Lock()
 	defer s.taskLock.Unlock()
 
-	task, exists := s.tasks[taskID]
+	_, exists := s.tasks[taskID]
 	if !exists {
 		return fmt.Errorf("任务不存在: %s", taskID)
-	}
-
-	// 释放锁（如果有）
-	if task.lock != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = task.lock.Unlock(ctx)
 	}
 
 	// 删除任务
@@ -405,87 +478,17 @@ func (s *Scheduler) executeTask(task *Task) {
 
 	var err error
 
-	// 如果需要分布式锁
-	if task.NeedLock {
-		lockName := fmt.Sprintf("scheduler-lock-%s", task.Name)
-
-		// 创建分布式锁
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		lock, err := s.client.Etcd.CreateLock(ctx, lockName, lock.WithLockTTL(int(s.options.LockTTL.Seconds())))
-		cancel()
-
-		if err != nil {
-			s.logger.Error("创建分布式锁失败",
-				zap.String("taskID", task.ID),
-				zap.String("name", task.Name),
-				zap.Error(err))
-			s.rescheduleTask(task, err)
-			return
-		}
-
-		// 尝试获取锁
-		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-		err = lock.Lock(ctx)
-		cancel()
-
-		if err != nil {
-			s.logger.Debug("未获取到任务锁，跳过执行",
-				zap.String("taskID", task.ID),
-				zap.String("name", task.Name))
-			s.rescheduleTask(task, nil)
-			return
-		}
-
-		// 保存锁引用
-		task.lock = lock
-
-		// 创建锁续期上下文
-		renewCtx, renewCancel := context.WithCancel(context.Background())
-
-		// 自动续期锁
-		go func() {
-			ticker := time.NewTicker(s.options.LockTTL / 3)
-			defer ticker.Stop()
-
-			for {
-				select {
-				case <-renewCtx.Done():
-					return
-				case <-ticker.C:
-					// 续期锁，通过重新获取锁实现
-					_, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-					// 由于没有直接的Refresh方法，我们只记录一条日志
-					s.logger.Debug("锁自动续期中",
-						zap.String("taskID", task.ID),
-						zap.String("name", task.Name))
-					cancel()
-				}
-			}
-		}()
-
-		// 执行任务
-		err = task.Handler(taskCtx)
-
-		// 停止锁续期
-		renewCancel()
-
-		// 释放锁
-		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-		unlockErr := lock.Unlock(ctx)
-		cancel()
-
-		if unlockErr != nil {
-			s.logger.Warn("释放锁失败",
-				zap.String("taskID", task.ID),
-				zap.String("name", task.Name),
-				zap.Error(unlockErr))
-		}
-
-		task.lock = nil
-	} else {
-		// 直接执行任务
-		err = task.Handler(taskCtx)
+	// 如果需要分布式锁，但没有获取到全局锁，则跳过执行
+	if task.NeedLock && !s.hasLock {
+		s.logger.Debug("未获取到全局分布式锁，跳过执行分布式任务",
+			zap.String("taskID", task.ID),
+			zap.String("name", task.Name))
+		s.rescheduleTask(task, nil)
+		return
 	}
+
+	// 直接执行任务
+	err = task.Handler(taskCtx)
 
 	s.rescheduleTask(task, err)
 }

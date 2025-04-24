@@ -266,7 +266,7 @@ func (c *Client) Close() error {
 }
 
 // InitMonitoring 初始化监控客户端
-func (c *Client) InitMonitoring(ctx context.Context, options *MonitoringOptions) (*MonitoringClient, error) {
+func (c *Client) InitMonitoring(ctx context.Context,conn *nats.Conn, options *MonitoringOptions) (*MonitoringClient, error) {
 	if c.Nats == nil {
 		return nil, fmt.Errorf("必须先初始化NATS客户端")
 	}
@@ -275,7 +275,7 @@ func (c *Client) InitMonitoring(ctx context.Context, options *MonitoringOptions)
 		options = DefaultMonitoringOptions()
 	}
 
-	client, err := NewMonitoringClient(c, options)
+	client, err := NewMonitoringClient(c,conn, options)
 	if err != nil {
 		c.log.Error("初始化监控客户端失败", zap.Error(err))
 		return nil, err

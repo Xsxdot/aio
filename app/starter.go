@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/xsxdot/aio/pkg/config"
 	"log"
 
 	cfg "github.com/xsxdot/aio/app/config"
@@ -10,7 +11,6 @@ import (
 	"github.com/xsxdot/aio/app/fiber"
 	"github.com/xsxdot/aio/internal/authmanager"
 	"github.com/xsxdot/aio/internal/cache/server"
-	"github.com/xsxdot/aio/internal/config"
 	"github.com/xsxdot/aio/internal/etcd"
 	"github.com/xsxdot/aio/internal/monitoring"
 	"github.com/xsxdot/aio/internal/mq"

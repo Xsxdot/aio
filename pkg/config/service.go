@@ -632,10 +632,20 @@ func (s *Service) parseConfigValue(ctx context.Context, value *ConfigValue) (int
 		}
 		return arr, nil
 	case ValueTypeRef:
+		// 使用点分隔符解析引用格式：如"log.base.dev.access-key"，其中最后一个部分是属性，前面部分是键
+		refStr := value.Value
+		lastDotIndex := strings.LastIndex(refStr, ".")
+
 		var ref RefValue
-		if err := json.Unmarshal([]byte(value.Value), &ref); err != nil {
-			return nil, fmt.Errorf("解析引用类型失败: %v", err)
+		if lastDotIndex > 0 {
+			ref.Key = refStr[:lastDotIndex]
+			ref.Property = refStr[lastDotIndex+1:]
+		} else {
+			// 如果没有点号，整个字符串作为键，属性为空
+			ref.Key = refStr
+			ref.Property = ""
 		}
+
 		return s.resolveReference(ctx, ref)
 	case ValueTypeEncrypted:
 		// 解密加密值
@@ -677,47 +687,33 @@ func (s *Service) resolveReference(ctx context.Context, ref RefValue) (interface
 }
 
 // resolveReferenceWithEnvironment 解析引用类型的配置值，支持环境感知
+// 注意：此方法已不再适用于当前的引用格式(点分隔符格式)，请使用resolveReference方法
+// 保留此方法仅为了兼容性，不建议在新代码中使用
 func (s *Service) resolveReferenceWithEnvironment(ctx context.Context, ref RefValue, envConfig *EnvironmentConfig) (interface{}, error) {
-	// 如果未指定环境配置，使用普通的引用解析
-	if envConfig == nil {
-		return s.resolveReference(ctx, ref)
-	}
-
-	// 获取指定环境的引用配置项
-	refItem, err := s.GetForEnvironment(ctx, ref.Key, envConfig)
-	if err != nil {
-		return nil, fmt.Errorf("获取环境引用配置项失败 [%s@%s]: %v", ref.Key, envConfig.Environment, err)
-	}
-
-	// 解析引用的配置项
-	config, err := s.parseCompositeConfig(ctx, refItem)
-	if err != nil {
-		return nil, fmt.Errorf("解析环境引用配置项失败 [%s@%s]: %v", ref.Key, envConfig.Environment, err)
-	}
-
-	// 如果Property为空，返回整个配置项
-	if ref.Property == "" {
-		return config, nil
-	}
-
-	// 否则查找指定的属性
-	value, exists := config[ref.Property]
-	if !exists {
-		return nil, fmt.Errorf("环境引用的属性不存在 [%s@%s.%s]", ref.Key, envConfig.Environment, ref.Property)
-	}
-
-	return value, nil
+	// 不再支持环境感知的引用解析，直接使用普通引用解析
+	return s.resolveReference(ctx, ref)
 }
 
 // parseConfigValueWithEnvironment 解析单个配置值，支持环境感知
 func (s *Service) parseConfigValueWithEnvironment(ctx context.Context, value *ConfigValue, envConfig *EnvironmentConfig) (interface{}, error) {
-	// 对于引用类型，使用环境感知的解析方法
+	// 对于引用类型，不使用环境感知的解析方法，而是使用普通解析
 	if value.Type == ValueTypeRef {
+		// 使用点分隔符解析引用格式：如"log.base.dev.access-key"，其中最后一个部分是属性，前面部分是键
+		refStr := value.Value
+		lastDotIndex := strings.LastIndex(refStr, ".")
+
 		var ref RefValue
-		if err := json.Unmarshal([]byte(value.Value), &ref); err != nil {
-			return nil, fmt.Errorf("解析引用类型失败: %v", err)
+		if lastDotIndex > 0 {
+			ref.Key = refStr[:lastDotIndex]
+			ref.Property = refStr[lastDotIndex+1:]
+		} else {
+			// 如果没有点号，整个字符串作为键，属性为空
+			ref.Key = refStr
+			ref.Property = ""
 		}
-		return s.resolveReferenceWithEnvironment(ctx, ref, envConfig)
+
+		// 注意：这里直接使用resolveReference，不使用环境感知解析
+		return s.resolveReference(ctx, ref)
 	}
 
 	// 对于加密类型，直接使用普通解析方法（会解密）
