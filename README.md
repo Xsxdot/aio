@@ -1,9 +1,5 @@
 # AIO (All-In-One) 服务框架
 
-> **Tips**: This project's code was entirely developed with the assistance of Cursor AI. Special thanks to Cursor for making this project possible!
-> 
-> **提示**: 本项目的代码完全由Cursor AI协助开发完成。特别感谢Cursor使这个项目成为可能！
-
 [English](#english) | [中文](#chinese)
 
 ## English
