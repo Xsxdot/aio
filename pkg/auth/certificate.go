@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/xsxdot/aio/app/config"
 	"github.com/xsxdot/aio/pkg/common"
 )
 
@@ -25,6 +27,9 @@ type CertificateManager struct {
 	nodeCerts    map[string]NodeCertificate
 	logger       *common.Logger
 	certDir      string // 证书存储目录
+	ClientCert   *config.TLSConfig
+	NodeCert     *config.TLSConfig
+	JwtConfig    *AuthJWTConfig
 }
 
 // CertConfig 证书配置项
@@ -38,12 +43,42 @@ type CertConfig struct {
 	IsClient     bool     // 是否为客户端证书
 }
 
+var GlobalCertManager *CertificateManager
+
 // NewCertificateManager 创建证书管理器
-func NewCertificateManager(caCertPath, caKeyPath string, certDir string) (*CertificateManager, error) {
+func NewCertificateManager(cfg *config.BaseConfig) (*CertificateManager, error) {
+	isMaster := false
+	for _, node := range cfg.Nodes {
+		if node.NodeId == cfg.System.NodeId && node.Master {
+			isMaster = true
+		}
+	}
+
+	certDir := filepath.Join(cfg.System.DataDir, "cert")
+
+	jwtConfig := &AuthJWTConfig{
+		PrivateKeyPath:    filepath.Join(certDir, "jwt.key"),
+		PublicKeyPath:     filepath.Join(certDir, "jwt.key.pub"),
+		AccessTokenExpiry: 48 * time.Hour,
+		Issuer:            "aio-system",
+		Audience:          "aio-api",
+	}
+	var keyPair *RSAKeyPair
+	if _, err := os.Stat(jwtConfig.PrivateKeyPath); err != nil {
+		if !isMaster {
+			return nil, fmt.Errorf("master节点才能创建jwt密钥")
+		}
+		keyPair, _ = GenerateAndSaveRSAKeyPair(2048, jwtConfig.PrivateKeyPath, jwtConfig.PublicKeyPath)
+	} else {
+		keyPair, _ = LoadRSAKeyPairFromFiles(jwtConfig.PrivateKeyPath, jwtConfig.PublicKeyPath)
+	}
+	jwtConfig.KeyPair = *keyPair
+
 	manager := &CertificateManager{
 		nodeCerts: make(map[string]NodeCertificate),
 		logger:    common.GetLogger().WithField("component", "certificate_manager"),
 		certDir:   certDir,
+		JwtConfig: jwtConfig,
 	}
 
 	// 确保证书目录存在
@@ -53,24 +88,32 @@ func NewCertificateManager(caCertPath, caKeyPath string, certDir string) (*Certi
 		}
 	}
 
-	// 如果提供了CA证书和私钥路径，则加载
-	if caCertPath != "" && caKeyPath != "" {
-		// 加载CA证书
-		caCertPEM, err := LoadFile(caCertPath)
+	caCertPath := filepath.Join(certDir, "trustedCA.crt")
+	caKeyPath := filepath.Join(certDir, "trustedCA.key")
+
+	// 加载CA证书
+	caCertPEM, err := LoadFile(caCertPath)
+	// 加载CA私钥
+	caKeyPEM, err2 := LoadFile(caKeyPath)
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err2, os.ErrNotExist) {
+		if !isMaster {
+			return nil, fmt.Errorf("master节点才能创建CA证书")
+		}
+		// 创建新的CA证书和私钥
+		ca, caKey, caCertPEM, caKeyPEM, err := manager.CreateCACertificate()
 		if err != nil {
-			return nil, fmt.Errorf("加载CA证书失败: %w", err)
+			return nil, fmt.Errorf("创建CA证书失败: %w", err)
 		}
 
+		manager.ca = ca
+		manager.caPrivKey = caKey
+		manager.caCertPEM = caCertPEM
+		manager.caPrivKeyPEM = caKeyPEM
+	} else {
 		// 解码CA证书
 		caCert, err := DecodeCertificatePEM(caCertPEM)
 		if err != nil {
 			return nil, fmt.Errorf("解码CA证书失败: %w", err)
-		}
-
-		// 加载CA私钥
-		caKeyPEM, err := LoadFile(caKeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("加载CA私钥失败: %w", err)
 		}
 
 		// 解码CA私钥
@@ -83,41 +126,56 @@ func NewCertificateManager(caCertPath, caKeyPath string, certDir string) (*Certi
 		manager.caPrivKey = caKey
 		manager.caCertPEM = caCertPEM
 		manager.caPrivKeyPEM = caKeyPEM
-	} else {
-		// 创建新的CA证书和私钥
-		ca, caKey, caCertPEM, caKeyPEM, err := CreateCACertificate()
+	}
+
+	err = manager.LoadAllCertificates()
+	if err != nil {
+		return nil, err
+	}
+
+	certificate, err := manager.GetNodeCertificate("client")
+	if err != nil {
+		// 使用新函数生成纯客户端证书
+		certificate, err = manager.GenerateClientCertificate("client", 365)
 		if err != nil {
-			return nil, fmt.Errorf("创建CA证书失败: %w", err)
+			return nil, err
 		}
+	}
+	manager.ClientCert = &config.TLSConfig{
+		TLSEnabled: true,
+		AutoTls:    true,
+		Cert:       certificate.CertPath,
+		Key:        certificate.KeyPath,
+		TrustedCA:  manager.GetCAFilePath(),
+	}
 
-		manager.ca = ca
-		manager.caPrivKey = caKey
-		manager.caCertPEM = caCertPEM
-		manager.caPrivKeyPEM = caKeyPEM
-
-		// 如果提供了保存目录，则保存CA证书和私钥
-		if certDir != "" {
-			caCertPath = filepath.Join(certDir, "ca.crt")
-			caKeyPath = filepath.Join(certDir, "ca.key")
-
-			if err := os.WriteFile(caCertPath, caCertPEM, 0644); err != nil {
-				return nil, fmt.Errorf("保存CA证书失败: %w", err)
-			}
-
-			if err := os.WriteFile(caKeyPath, caKeyPEM, 0600); err != nil {
-				return nil, fmt.Errorf("保存CA私钥失败: %w", err)
-			}
-
-			manager.logger.Infof("CA证书已保存至: %s", caCertPath)
-			manager.logger.Infof("CA私钥已保存至: %s", caKeyPath)
+	certificate, err = manager.GetNodeCertificate(cfg.System.NodeId)
+	if err != nil {
+		ips := []string{cfg.Network.LocalIP, cfg.Network.PublicIp, "127.0.0.1"}
+		for _, node := range cfg.Nodes {
+			ips = append(ips, node.Addr)
 		}
+		// 使用新函数生成纯服务器证书
+		certificate, err = manager.GenerateServerCertificate(cfg.System.NodeId, ips, 365)
+		if err != nil {
+			return nil, err
+		}
+	}
+	manager.NodeCert = &config.TLSConfig{
+		TLSEnabled: true,
+		AutoTls:    true,
+		Cert:       certificate.CertPath,
+		Key:        certificate.KeyPath,
+		TrustedCA:  manager.GetCAFilePath(),
 	}
 
 	return manager, nil
 }
 
 // CreateCACertificate 创建CA证书
-func CreateCACertificate() (*x509.Certificate, *rsa.PrivateKey, []byte, []byte, error) {
+func (m *CertificateManager) CreateCACertificate() (*x509.Certificate, *rsa.PrivateKey, []byte, []byte, error) {
+	caCertPath := filepath.Join(m.certDir, "trustedCA.crt")
+	caKeyPath := filepath.Join(m.certDir, "trustedCA.key")
 	// 生成私钥
 	privKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
@@ -169,20 +227,57 @@ func CreateCACertificate() (*x509.Certificate, *rsa.PrivateKey, []byte, []byte, 
 		Bytes: x509.MarshalPKCS1PrivateKey(privKey),
 	})
 
+	if err := os.WriteFile(caCertPath, certPEM, 0644); err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("保存CA证书失败: %w", err)
+	}
+
+	if err := os.WriteFile(caKeyPath, privKeyPEM, 0600); err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("保存CA私钥失败: %w", err)
+	}
+
 	return cert, privKey, certPEM, privKeyPEM, nil
 }
 
 // GenerateNodeCertificate 生成节点证书 - 适用于etcd和NATS的通用证书
+// 注意：此函数同时设置了服务器和客户端认证，在某些场景可能导致认证问题
+// 建议使用 GenerateServerCertificate 或 GenerateClientCertificate 替代
 func (m *CertificateManager) GenerateNodeCertificate(nodeID string, ips []string, validityDays int) (*NodeCertificate, error) {
 	return m.GenerateCustomCertificate(CertConfig{
 		CommonName:   nodeID,
 		Organization: []string{"AIO Node"},
-		DNSNames:     []string{nodeID},
 		IPAddresses:  ips,
 		ValidDays:    validityDays,
 		IsServer:     true,
 		IsClient:     true,
 	}, nodeID)
+}
+
+// GenerateServerCertificate 专门生成服务器证书
+// 用于节点间通信和客户端连接服务器时的服务器身份验证
+func (m *CertificateManager) GenerateServerCertificate(nodeID string, ips []string, validityDays int) (*NodeCertificate, error) {
+	return m.GenerateCustomCertificate(CertConfig{
+		CommonName:   nodeID,
+		Organization: []string{"AIO Server Node"},
+		IPAddresses:  ips,
+		ValidDays:    validityDays,
+		IsServer:     true,
+		IsClient:     false, // 服务器证书不需要客户端认证功能
+	}, nodeID)
+}
+
+// GenerateClientCertificate 专门生成客户端证书
+// 用于客户端连接服务器时的客户端身份验证
+func (m *CertificateManager) GenerateClientCertificate(clientID string, validityDays int) (*NodeCertificate, error) {
+	return m.GenerateCustomCertificate(CertConfig{
+		CommonName:   clientID,
+		Organization: []string{"AIO Client"},
+		// 客户端证书不需要绑定IP地址
+		IPAddresses: []string{},
+		DNSNames:    []string{},
+		ValidDays:   validityDays,
+		IsServer:    false, // 客户端证书不需要服务器认证功能
+		IsClient:    true,
+	}, clientID)
 }
 
 // GenerateCustomCertificate 生成自定义证书
@@ -370,7 +465,7 @@ func (m *CertificateManager) GetCAFilePath() string {
 	if m.certDir == "" {
 		return ""
 	}
-	return filepath.Join(m.certDir, "ca.crt")
+	return filepath.Join(m.certDir, "trustedCA.crt")
 }
 
 // RevokeCertificate 撤销证书
@@ -411,7 +506,7 @@ func (m *CertificateManager) LoadAllCertificates() error {
 	}
 
 	for _, file := range files {
-		if file.IsDir() || filepath.Ext(file.Name()) != ".crt" || file.Name() == "ca.crt" {
+		if file.IsDir() || filepath.Ext(file.Name()) != ".crt" || file.Name() == "trustedCA.crt" {
 			continue
 		}
 

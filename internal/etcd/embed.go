@@ -1,15 +1,16 @@
 package etcd
 
 import (
-	"context"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/xsxdot/aio/app/config"
+	"github.com/xsxdot/aio/pkg/auth"
+
 	"go.etcd.io/etcd/client/pkg/v3/transport"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.uber.org/zap"
 )
@@ -45,11 +46,11 @@ type ServerConfig struct {
 	// 初始集群令牌
 	InitialClusterToken string
 	// 安全配置
-	ClientTLSConfig TLSConfig
-	PeerTLSConfig   TLSConfig
+	ClientTLSConfig config.TLSConfig
+	PeerTLSConfig   config.TLSConfig
 	AuthToken       string
 	// JWT认证配置
-	JWT JWTConfig
+	JWT auth.AuthJWTConfig
 	// 用户名密码认证配置
 	UserAuthConfig UserAuthConfig
 }
@@ -132,6 +133,11 @@ func NewEtcdServer(config *ServerConfig, logger *zap.Logger) (*EtcdServer, error
 					KeyFile:       clientTLSConfig.Key,
 					TrustedCAFile: clientTLSConfig.TrustedCA,
 				}
+				// 输出证书信息
+				logger.Info("客户端证书路径", zap.String("path", clientTLSConfig.Cert))
+				logger.Info("客户端私钥路径", zap.String("path", clientTLSConfig.Key))
+				logger.Info("CA路径", zap.String("path", clientTLSConfig.TrustedCA))
+
 			}
 		}
 	}
@@ -148,6 +154,9 @@ func NewEtcdServer(config *ServerConfig, logger *zap.Logger) (*EtcdServer, error
 					KeyFile:       peerTLSConfig.Key,
 					TrustedCAFile: peerTLSConfig.TrustedCA,
 				}
+				logger.Info("节点证书路径", zap.String("path", peerTLSConfig.Cert))
+				logger.Info("节点私钥路径", zap.String("path", peerTLSConfig.Key))
+				logger.Info("CA路径", zap.String("path", peerTLSConfig.TrustedCA))
 			}
 		}
 	}
@@ -155,18 +164,14 @@ func NewEtcdServer(config *ServerConfig, logger *zap.Logger) (*EtcdServer, error
 	// 设置认证选项
 	// 注意：etcd v3中，不是通过配置文件直接设置认证，而是在服务启动后通过API启用
 
-	setRoot := false
 	switch config.AuthToken {
 	case "jwt":
-		if config.JWT.PublicKey != "" && config.JWT.PrivateKey != "" {
+		if config.JWT.PublicKeyPath != "" && config.JWT.PrivateKeyPath != "" {
 			signMethod := "RS256" // 默认签名方法
-			if config.JWT.SignMethod != "" {
-				signMethod = config.JWT.SignMethod
-			}
 
 			cfg.AuthToken = fmt.Sprintf("jwt,pub-key=%s,priv-key=%s,sign-method=%s",
-				config.JWT.PublicKey,
-				config.JWT.PrivateKey,
+				config.JWT.PublicKeyPath,
+				config.JWT.PrivateKeyPath,
 				signMethod)
 
 			logger.Info("已启用JWT认证")
@@ -175,7 +180,6 @@ func NewEtcdServer(config *ServerConfig, logger *zap.Logger) (*EtcdServer, error
 		// 使用用户名密码认证
 		// 注意：etcd使用simple token作为认证系统的一部分
 		cfg.AuthToken = "simple"
-		setRoot = true
 		logger.Info("已配置用户名密码认证支持")
 	default:
 		// 如果没有配置认证，使用简单认证模式
@@ -237,84 +241,7 @@ func NewEtcdServer(config *ServerConfig, logger *zap.Logger) (*EtcdServer, error
 		logger: logger,
 	}
 
-	// 如果启用了用户认证，并且需要自动设置根用户
-	authConfig := config.UserAuthConfig
-	if setRoot && authConfig.RootUsername != "" && authConfig.RootPassword != "" {
-		// 等待服务器完全启动
-		time.Sleep(1 * time.Second)
-
-		// 设置根用户
-		if err := server.setupRootUser(authConfig.RootUsername, authConfig.RootPassword); err != nil {
-			logger.Warn("设置根用户失败", zap.Error(err))
-		} else {
-			logger.Info("成功设置根用户", zap.String("username", authConfig.RootUsername))
-		}
-	}
-
 	return server, nil
-}
-
-// setupRootUser 设置etcd根用户
-func (s *EtcdServer) setupRootUser(username, password string) error {
-	clientURL := s.server.Clients[0].Addr().String()
-	if clientURL == "" && len(s.cfg.AdvertiseClientUrls) > 0 {
-		clientURL = s.cfg.AdvertiseClientUrls[0].String()
-	}
-
-	s.logger.Info("准备设置根用户",
-		zap.String("clientURL", clientURL),
-		zap.String("username", username))
-
-	// 创建一个新的客户端
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{clientURL},
-		DialTimeout: 5 * time.Second,
-	})
-	if err != nil {
-		return fmt.Errorf("创建etcd客户端失败: %v", err)
-	}
-	defer cli.Close()
-
-	// 创建一个上下文，用于API调用
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// 检查认证是否已启用
-	authStatus, err := cli.AuthStatus(ctx)
-	if err != nil {
-		return fmt.Errorf("获取认证状态失败: %v", err)
-	}
-
-	if authStatus.Enabled {
-		s.logger.Info("认证已经启用，跳过设置")
-		return nil
-	}
-
-	// 添加根用户
-	_, err = cli.UserAdd(ctx, username, password)
-	if err != nil {
-		// 如果用户已存在，忽略错误
-		if strings.Contains(err.Error(), "user name already exists") {
-			s.logger.Info("用户已存在", zap.String("username", username))
-		} else {
-			return fmt.Errorf("添加用户失败: %v", err)
-		}
-	}
-
-	// 为根用户授予root角色
-	_, err = cli.UserGrantRole(ctx, username, "root")
-	if err != nil {
-		return fmt.Errorf("授予root角色失败: %v", err)
-	}
-
-	// 启用认证
-	_, err = cli.AuthEnable(ctx)
-	if err != nil {
-		return fmt.Errorf("启用认证失败: %v", err)
-	}
-
-	s.logger.Info("成功启用认证并设置根用户", zap.String("username", username))
-	return nil
 }
 
 // Close 关闭etcd服务器

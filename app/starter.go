@@ -3,8 +3,12 @@ package app
 import (
 	"context"
 	"fmt"
-	"github.com/xsxdot/aio/pkg/config"
 	"log"
+
+	"github.com/xsxdot/aio/internal/certmanager"
+	"github.com/xsxdot/aio/pkg/auth"
+	"github.com/xsxdot/aio/pkg/config"
+	"github.com/xsxdot/aio/pkg/scheduler"
 
 	cfg "github.com/xsxdot/aio/app/config"
 	consts "github.com/xsxdot/aio/app/const"
@@ -33,14 +37,27 @@ func (a *App) startApp() error {
 	common2.ErrorDebugMode = a.BaseConfig.Errors.DebugMode
 	a.Logger = logger
 
-	if !a.initialized {
-		a.BaseConfig.System.DataDir = "./init"
+	certificateManager, err := auth.NewCertificateManager(a.BaseConfig)
+	if err != nil {
+		return err
 	}
+	a.CertificateManager = certificateManager
+	auth.GlobalCertManager = certificateManager
 
 	a.Manager.Register(func() (*ComponentEntity, error) {
 		etcdComponent := etcd.NewEtcdComponent()
 		a.Etcd = etcdComponent
 		return NewBaseComponentEntity(etcdComponent, "etcd.conf"), nil
+	})
+
+	a.Manager.Register(func() (*ComponentEntity, error) {
+		schedulerWithEtcd, err := scheduler.NewSchedulerWithEtcd(a.Etcd.GetClient(), scheduler.DefaultSchedulerOptions("aio-scheduler"))
+		if err != nil {
+			return nil, err
+		}
+		a.Scheduler = schedulerWithEtcd
+		scheduler.GlobalScheduler = schedulerWithEtcd
+		return NewMustComponentEntity(schedulerWithEtcd, cfg.ReadTypeNil), nil
 	})
 
 	a.Manager.Register(func() (*ComponentEntity, error) {
@@ -50,37 +67,37 @@ func (a *App) startApp() error {
 	})
 
 	a.Manager.Register(func() (*ComponentEntity, error) {
-		discoveryComponent, err := discovery.NewDiscoveryService(a.Etcd.GetClient().GetClient(), common2.GetLogger().GetZapLogger(consts.ComponentDiscovery))
+		discoveryComponent, err := discovery.NewDiscoveryService(a.Etcd.GetClient(), common2.GetLogger().GetZapLogger(consts.ComponentDiscovery))
 		if err != nil {
 			return nil, err
 		}
 		a.Discovery = discoveryComponent
-		return NewMustComponentEntity(discoveryComponent, cfg.ReadTypeNil), nil
+		return NewBaseComponentEntityWithNilConfig(discoveryComponent), nil
 	})
 
 	a.Manager.Register(func() (*ComponentEntity, error) {
 		storage := authmanager.NewEtcdStorage(a.Etcd.GetClient())
-		manager, err := authmanager.NewAuthManager(storage)
+		manager, err := authmanager.NewAuthManager(storage, a.CertificateManager, a.Scheduler)
 		if err != nil {
 			return nil, err
 		}
 		a.AuthManager = manager
-		return NewMustComponentEntity(manager, cfg.ReadTypeCenter), nil
+		return NewBaseComponentEntityWithNilConfig(manager), nil
 	})
 
 	a.Manager.Register(func() (*ComponentEntity, error) {
 		protocolManager := protocol.NewServer(a.AuthManager)
 		a.Protocol = protocolManager
-		return NewMustComponentEntity(protocolManager, cfg.ReadTypeNil), nil
+		return NewBaseComponentEntityWithNilConfig(protocolManager), nil
 	})
 
 	a.Manager.Register(func() (*ComponentEntity, error) {
-		electionService, err2 := election.NewElectionService(a.Etcd.GetClient().GetClient(), common2.GetLogger().GetZapLogger(consts.ComponentElection))
+		electionService, err2 := election.NewElectionService(a.Etcd.GetClient(), common2.GetLogger().GetZapLogger(consts.ComponentElection))
 		if err2 != nil {
 			return nil, err2
 		}
 		a.Election = electionService
-		return NewNormalComponentEntity(electionService, cfg.ReadTypeCenter), nil
+		return NewMustComponentEntity(electionService, cfg.ReadTypeNil), nil
 	})
 
 	a.Manager.Register(func() (*ComponentEntity, error) {
@@ -115,7 +132,16 @@ func (a *App) startApp() error {
 		}
 		monitor := monitoring.New(a.Etcd.GetClient(), client)
 		a.Monitor = monitor
-		return NewNormalComponentEntity(monitor, cfg.ReadTypeCenter), nil
+		return NewMustComponentEntity(monitor, cfg.ReadTypeNil), nil
+	})
+
+	a.Manager.Register(func() (*ComponentEntity, error) {
+		certManager, err := certmanager.NewCertManager(a.Etcd.GetClient(), a.Scheduler)
+		if err != nil {
+			return nil, err
+		}
+		a.SSL = certManager
+		return NewNormalComponentEntity(certManager, cfg.ReadTypeCenter), nil
 	})
 
 	a.Manager.Register(a.initHTTPServer)
@@ -139,6 +165,7 @@ func (a *App) startApp() error {
 // initHTTPServer 初始化HTTP服务
 func (a *App) initHTTPServer() (*ComponentEntity, error) {
 	fiberServer := fiber.NewFiberServer()
+	fiberServer.RegisterStaticFiles("./web", "/")
 	// 如果认证管理器已配置，注册认证API
 	if a.AuthManager != nil {
 		fiberServer.RegisterAuthManagerAPI(a.AuthManager)
@@ -174,8 +201,15 @@ func (a *App) initHTTPServer() (*ComponentEntity, error) {
 		a.Logger.Warn("监控服务未初始化，跳过API注册")
 	}
 
+	// 注册证书管理器API
+	if a.SSL != nil {
+		fiberServer.RegisterCertManagerAPI(a.SSL)
+	} else {
+		a.Logger.Warn("证书管理器未初始化，跳过API注册")
+	}
+
 	apiHandler := NewAPIHandler(a)
-	apiHandler.SetupRoutes(fiberServer.GetApp())
+	apiHandler.SetupRoutes(fiberServer.GetRouter())
 
 	a.FiberServer = fiberServer
 	return NewMustComponentEntity(fiberServer, cfg.ReadTypeNil), nil

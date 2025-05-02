@@ -3,11 +3,12 @@ package server
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+
 	cache2 "github.com/xsxdot/aio/internal/cache"
 	"github.com/xsxdot/aio/internal/cache/protocol"
 	"github.com/xsxdot/aio/pkg/utils"
-	"strconv"
-	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
@@ -35,31 +36,31 @@ func NewAPI(server *Server, logger *zap.Logger) *API {
 	}
 }
 
-// SetupRoutes 设置API路由
-func (a *API) SetupRoutes(app *fiber.App) {
+// RegisterRoutes 注册API路由
+func (a *API) RegisterRoutes(router fiber.Router, authHandler func(*fiber.Ctx) error, adminRoleHandler func(*fiber.Ctx) error) {
 	// 创建缓存服务API组
-	api := app.Group("/api/cache")
+	api := router.Group("/cache")
 
 	// 服务器状态和管理
-	api.Get("/status", a.GetStatus)
-	api.Get("/cluster/info", a.GetClusterInfo)
-	api.Post("/server/start", a.StartServer)
-	api.Post("/server/stop", a.StopServer)
-	api.Post("/server/restart", a.RestartServer)
+	api.Get("/status", authHandler, a.GetStatus)
+	api.Get("/cluster/info", authHandler, a.GetClusterInfo)
+	api.Post("/server/start", authHandler, adminRoleHandler, a.StartServer)
+	api.Post("/server/stop", authHandler, adminRoleHandler, a.StopServer)
+	api.Post("/server/restart", authHandler, adminRoleHandler, a.RestartServer)
 
 	// 键值操作
-	api.Get("/keys", a.GetKeys)
-	api.Get("/key/:key", a.GetValue)
-	api.Put("/key/:key", a.SetValue)
-	api.Delete("/key/:key", a.DeleteValue)
+	api.Get("/keys", authHandler, a.GetKeys)
+	api.Get("/key/:key", authHandler, a.GetValue)
+	api.Put("/key/:key", authHandler, adminRoleHandler, a.SetValue)
+	api.Delete("/key/:key", authHandler, adminRoleHandler, a.DeleteValue)
 
 	// 高级命令
-	api.Post("/command", a.ExecCommand)
-	api.Post("/flushall", a.FlushAll)
-	api.Post("/flushdb", a.FlushDB)
+	api.Post("/command", authHandler, adminRoleHandler, a.ExecCommand)
+	api.Post("/flushall", authHandler, adminRoleHandler, a.FlushAll)
+	api.Post("/flushdb", authHandler, adminRoleHandler, a.FlushDB)
 
 	// 数据库操作
-	api.Post("/select/:db", a.SelectDB)
+	api.Post("/select/:db", authHandler, adminRoleHandler, a.SelectDB)
 
 	a.logger.Info("已注册缓存服务器API路由")
 }

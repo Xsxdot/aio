@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	mathrand "math/rand"
@@ -12,17 +11,17 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/xsxdot/aio/pkg/common"
-
+	"github.com/google/uuid"
 	"github.com/xsxdot/aio/app/config"
 	consts "github.com/xsxdot/aio/app/const"
 	auth2 "github.com/xsxdot/aio/pkg/auth"
+	"github.com/xsxdot/aio/pkg/common"
+	"github.com/xsxdot/aio/pkg/scheduler"
 	"go.uber.org/zap"
-
-	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
+// todo 检查证书有效期，过期则重新生成并放到etcd中
 // 初始化
 func init() {
 	// 初始化随机数种子
@@ -58,6 +57,8 @@ type AuthManager struct {
 	certManager *auth2.CertificateManager
 	log         *zap.Logger
 	status      consts.ComponentStatus
+	scheduler   *scheduler.Scheduler
+	isMaster    bool
 }
 
 func (m *AuthManager) RegisterMetadata() (bool, int, map[string]string) {
@@ -75,19 +76,13 @@ func (m *AuthManager) Status() consts.ComponentStatus {
 func (m *AuthManager) Init(config *config.BaseConfig, body []byte) error {
 	a := m.genConfig(config)
 
-	if len(body) > 6 {
-		if err := json.Unmarshal(body, a); err != nil {
-			return fmt.Errorf("unmarshal config failed: %w", err)
+	isMaster := false
+	for _, node := range config.Nodes {
+		if node.NodeId == config.System.NodeId && !node.Master {
+			isMaster = true
 		}
 	}
-
-	var keyPair *auth2.RSAKeyPair
-	if _, err := os.Stat(a.JWTConfig.PrivateKeyPath); err != nil {
-		keyPair, _ = auth2.GenerateAndSaveRSAKeyPair(2048, a.JWTConfig.PrivateKeyPath, a.JWTConfig.PublicKeyPath)
-	} else {
-		keyPair, _ = auth2.LoadRSAKeyPairFromFiles(a.JWTConfig.PrivateKeyPath, a.JWTConfig.PublicKeyPath)
-	}
-	a.JWTConfig.KeyPair = *keyPair
+	m.isMaster = isMaster
 
 	m.config = a
 	m.status = consts.StatusInitialized
@@ -97,18 +92,12 @@ func (m *AuthManager) Init(config *config.BaseConfig, body []byte) error {
 func (m *AuthManager) genConfig(config *config.BaseConfig) *AuthManagerConfig {
 	certPath := filepath.Join(config.System.DataDir, "cert")
 	a := &AuthManagerConfig{
-		EnableCert:   true,
-		CertPath:     certPath,
-		NodeId:       config.System.NodeId,
-		Ip:           config.Network.LocalIp,
-		ValidityDays: 365,
-		JWTConfig: auth2.AuthJWTConfig{
-			PrivateKeyPath:    filepath.Join(certPath, "jwt.key"),
-			PublicKeyPath:     filepath.Join(certPath, "jwt.key.pub"),
-			AccessTokenExpiry: 48 * time.Hour,
-			Issuer:            "aio-system",
-			Audience:          "aio-api",
-		},
+		EnableCert:       true,
+		CertPath:         certPath,
+		NodeId:           config.System.NodeId,
+		Ip:               config.Network.LocalIP,
+		ValidityDays:     365,
+		JWTConfig:        auth2.GlobalCertManager.JwtConfig,
 		PasswordHashCost: 10,
 		InitialAdmin: &User{
 			Username:    "admin",
@@ -125,11 +114,29 @@ func (m *AuthManager) Start(ctx context.Context) error {
 		return fmt.Errorf("initialize certificates failed: %w", err)
 	}
 
-	// 启动CA证书监听
-	go m.watchCACertificate(ctx)
+	if m.isMaster {
+		m.log.Info("在主节点注册证书有效期检查任务")
 
-	// 启动客户端证书监听
-	// go m.watchClientCertificate(ctx)
+		// 添加每天运行一次的cron任务，在每天凌晨3点执行
+		_, err := m.scheduler.AddCronTask(
+			"ca-certificate-expiry-check", // 任务名称
+			"0 0 3 * * ?",                 // cron表达式，每天凌晨3点执行
+			func(ctx context.Context) error {
+				return m.checkAndRenewCertificates(ctx)
+			},
+			true, // 需要分布式锁，确保只有一个节点执行
+		)
+
+		if err != nil {
+			m.log.Error("注册证书检查任务失败", zap.Error(err))
+			return err
+		}
+
+		m.log.Info("证书有效期检查任务注册成功")
+	} else {
+		// 启动CA证书监听
+		go m.watchCACertificate(ctx)
+	}
 
 	// 初始化默认管理员账户（如果配置了）
 	if m.config.InitialAdmin != nil {
@@ -174,10 +181,12 @@ func (m *AuthManager) DefaultConfig(config *config.BaseConfig) interface{} {
 }
 
 // NewAuthManager 创建认证管理器
-func NewAuthManager(storage StorageProvider) (*AuthManager, error) {
+func NewAuthManager(storage StorageProvider, certManager *auth2.CertificateManager, scheduler *scheduler.Scheduler) (*AuthManager, error) {
 	manager := &AuthManager{
-		storage: storage,
-		log:     common.GetLogger().GetZapLogger(consts.ComponentAuthManager),
+		storage:     storage,
+		certManager: certManager,
+		scheduler:   scheduler,
+		log:         common.GetLogger().GetZapLogger(consts.ComponentAuthManager),
 	}
 
 	return manager, nil
@@ -750,74 +759,13 @@ func generateFallbackSecret(length int) string {
 // 检查etcd中是否已有CA证书和私钥
 // etcd中已有CA证书和私钥，保存到本地
 func (m *AuthManager) initializeCertificates(ctx context.Context) error {
-	caCertFile := filepath.Join(m.config.CertPath, "ca.crt")
-	caKeyFile := filepath.Join(m.config.CertPath, "ca.key")
-
-	caCert, err := m.storage.GetCACertificate()
-	caKey, err2 := m.storage.GetCAPrivateKey()
-
-	if err == nil && err2 == nil {
-		if err := os.WriteFile(caCertFile, caCert, 0644); err != nil {
-			return fmt.Errorf("write CA certificate to file failed: %w", err)
-		}
-		if err := os.WriteFile(caKeyFile, caKey, 0600); err != nil {
-			return fmt.Errorf("write CA private key to file failed: %w", err)
-		}
-		m.log.Info("saved CA certificate and private key from etcd to local files")
-		manager, err := auth2.NewCertificateManager(caCertFile, caKeyFile, m.config.CertPath)
-		if err != nil {
-			return fmt.Errorf("create certificate manager failed: %w", err)
-		}
-		m.certManager = manager
-
-		certificate, err := m.storage.GetNodeCertificate("client")
-		if err != nil {
-			return err
-		}
-
-		clientCrt := filepath.Join(m.config.CertPath, "client.crt")
-		err = os.WriteFile(clientCrt, []byte(certificate.CertificatePEM), 0644)
-		if err != nil {
-			return fmt.Errorf("write client certificate to file failed: %w", err)
-		}
-		clientKey := filepath.Join(m.config.CertPath, "client.key")
-		err = os.WriteFile(clientKey, []byte(certificate.PrivateKeyPEM), 0600)
-		if err != nil {
-			return fmt.Errorf("write client private key to file failed: %w", err)
-		}
-
-	} else {
-		manager, err := auth2.NewCertificateManager("", "", m.config.CertPath)
-		if err != nil {
-			return fmt.Errorf("create certificate manager failed: %w", err)
-		}
-		m.certManager = manager
-	}
-
-	// 检查是否已有节点证书
-	nodeID := m.config.NodeId
-	err = m.certManager.LoadAllCertificates()
-	if err != nil {
-		return err
-	}
-
-	_, err = m.certManager.GetNodeCertificate(nodeID)
-	if err != nil {
-		// 如果没有节点证书，创建新的
-		m.log.Info("creating new node certificate", zap.String("nodeID", nodeID))
-		_, err = m.certManager.GenerateNodeCertificate(nodeID, []string{m.config.Ip}, m.config.ValidityDays)
-		if err != nil {
-			return fmt.Errorf("generate node certificate failed: %w", err)
-		}
-
-	}
 
 	client := "client"
 	clientCert, err := m.certManager.GetNodeCertificate(client)
 	if err != nil {
 		// 如果没有节点证书，创建新的
 		m.log.Info("creating new node certificate", zap.String("nodeID", client))
-		clientCert, err = m.certManager.GenerateNodeCertificate(client, []string{}, m.config.ValidityDays)
+		clientCert, err = m.certManager.GenerateClientCertificate(client, m.config.ValidityDays)
 		if err != nil {
 			return fmt.Errorf("generate node certificate failed: %w", err)
 		}
@@ -857,34 +805,6 @@ func (m *AuthManager) watchCACertificate(ctx context.Context) {
 	}
 }
 
-// // watchClientCertificate 监听Client证书变动
-// func (m *AuthManager) watchClientCertificate(ctx context.Context) {
-// 	clientID := "client"
-// 	// 使用存储提供者的监听方法
-// 	err := m.storage.WatchNodeCertificate(ctx, clientID, func(certificate *auth2.NodeCertificate) {
-// 		// 保存到本地
-// 		clientCrtPath := filepath.Join(m.config.CertPath, "client.crt")
-// 		clientKeyPath := filepath.Join(m.config.CertPath, "client.key")
-
-// 		if err := os.WriteFile(clientCrtPath, []byte(certificate.CertificatePEM), 0644); err != nil {
-// 			m.log.Error("写入客户端证书到文件失败", zap.Error(err))
-// 			return
-// 		}
-// 		if err := os.WriteFile(clientKeyPath, []byte(certificate.PrivateKeyPEM), 0600); err != nil {
-// 			m.log.Error("写入客户端私钥到文件失败", zap.Error(err))
-// 			return
-// 		}
-
-// 		m.certManager.LoadAllCertificates()
-
-// 		m.log.Info("从etcd更新了本地客户端证书和私钥", zap.String("clientID", clientID))
-// 	})
-
-// 	if err != nil {
-// 		m.log.Error("监听客户端证书失败", zap.Error(err))
-// 	}
-// }
-
 // GetCACertPath 获取CA证书文件路径
 func (m *AuthManager) GetCACertPath() string {
 	return m.certManager.GetCAFilePath()
@@ -911,4 +831,74 @@ func (m *AuthManager) GetNodeKeyPath(nodeID string) (string, error) {
 // GetClientConfig 实现Component接口，返回客户端配置
 func (m *AuthManager) GetClientConfig() (bool, *config.ClientConfig) {
 	return false, nil
+}
+
+// checkAndRenewCertificates 检查并更新即将过期的证书
+func (m *AuthManager) checkAndRenewCertificates(ctx context.Context) error {
+	m.log.Info("开始检查CA证书有效期")
+
+	// 解析并获取当前CA证书
+	caCertBytes, err := m.certManager.GetCACertificate()
+	if err != nil {
+		m.log.Error("获取CA证书失败", zap.Error(err))
+		return err
+	}
+
+	caCert, err := auth2.DecodeCertificatePEM(caCertBytes)
+	if err != nil {
+		m.log.Error("解析CA证书失败", zap.Error(err))
+		return err
+	}
+
+	// 计算证书剩余有效期
+	now := time.Now()
+	remainingDays := int(caCert.NotAfter.Sub(now).Hours() / 24)
+
+	m.log.Info("当前CA证书信息",
+		zap.Time("过期时间", caCert.NotAfter),
+		zap.Int("剩余天数", remainingDays))
+
+	// 如果证书有效期小于30天，则创建新证书
+	if remainingDays < 30 {
+		m.log.Warn("CA证书即将在30天内过期，开始创建新证书")
+
+		// 创建新的CA证书（使用certManager会自动保存到本地文件）
+		cert, _, certPEM, privKeyPEM, err := m.certManager.CreateCACertificate()
+		if err != nil {
+			m.log.Error("创建新CA证书失败", zap.Error(err))
+			return err
+		}
+
+		// 将新证书保存到存储中
+		err = m.saveCertificateToStorage(ctx, certPEM, privKeyPEM)
+		if err != nil {
+			m.log.Error("保存新CA证书到存储失败", zap.Error(err))
+			return err
+		}
+
+		m.log.Info("成功创建并保存新的CA证书",
+			zap.Time("新证书过期时间", cert.NotAfter))
+	} else {
+		m.log.Info("CA证书有效期充足，无需更新")
+	}
+
+	return nil
+}
+
+// saveCertificateToStorage 保存证书到存储
+func (m *AuthManager) saveCertificateToStorage(ctx context.Context, certPEM, privKeyPEM []byte) error {
+	// 保存CA证书到存储
+	err := m.storage.SaveCACertificate(certPEM)
+	if err != nil {
+		return fmt.Errorf("保存CA证书到存储失败: %w", err)
+	}
+
+	// 保存CA私钥到存储
+	err = m.storage.SaveCAPrivateKey(privKeyPEM)
+	if err != nil {
+		return fmt.Errorf("保存CA私钥到存储失败: %w", err)
+	}
+
+	m.log.Info("已将新证书保存到存储")
+	return nil
 }

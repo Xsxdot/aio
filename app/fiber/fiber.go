@@ -2,8 +2,9 @@ package fiber
 
 import (
 	"context"
-	config2 "github.com/xsxdot/aio/pkg/config"
 	"strconv"
+
+	config2 "github.com/xsxdot/aio/pkg/config"
 
 	"github.com/xsxdot/aio/pkg/distributed/election"
 
@@ -15,6 +16,7 @@ import (
 	consts "github.com/xsxdot/aio/app/const"
 	"github.com/xsxdot/aio/internal/authmanager"
 	"github.com/xsxdot/aio/internal/cache/server"
+	"github.com/xsxdot/aio/internal/certmanager"
 	"github.com/xsxdot/aio/internal/etcd"
 	"github.com/xsxdot/aio/internal/monitoring"
 	monitorapi "github.com/xsxdot/aio/internal/monitoring/api"
@@ -26,11 +28,14 @@ import (
 
 // Server 代表Fiber Web服务器
 type Server struct {
-	app      *fiber.App
-	config   *ApiConfig
-	logger   *zap.Logger
-	status   consts.ComponentStatus
-	shutdown chan struct{}
+	app              *fiber.App
+	config           *ApiConfig
+	logger           *zap.Logger
+	status           consts.ComponentStatus
+	shutdown         chan struct{}
+	router           fiber.Router
+	baseAuthHandler  func(c *fiber.Ctx) error
+	adminRoleHandler func(c *fiber.Ctx) error
 }
 
 func (s *Server) RegisterMetadata() (bool, int, map[string]string) {
@@ -62,6 +67,7 @@ func NewFiberServer() *Server {
 
 	return &Server{
 		app:      fiberApp,
+		router:   fiberApp.Group("/api"),
 		logger:   common.GetLogger().GetZapLogger(consts.ComponentFiberServer),
 		shutdown: make(chan struct{}),
 	}
@@ -85,8 +91,12 @@ func (s *Server) DefaultConfig(config *config.BaseConfig) interface{} {
 	return s.genConfig(config)
 }
 
+func (s *Server) GetRouter() (fiber.Router, func(c *fiber.Ctx) error, func(c *fiber.Ctx) error) {
+	return s.router, s.baseAuthHandler, s.adminRoleHandler
+}
+
 func (s *Server) genConfig(config *config.BaseConfig) *ApiConfig {
-	ip := config.Network.LocalIp
+	ip := config.Network.LocalIP
 	if config.Network.HttpAllowExternal {
 		ip = "0.0.0.0"
 	}
@@ -137,6 +147,61 @@ func (s *Server) GetApp() *fiber.App {
 	return s.app
 }
 
+// RegisterStaticFiles 配置静态文件服务，用于提供Vue打包的前端页面
+func (s *Server) RegisterStaticFiles(staticPath string, prefixPath string) {
+	if staticPath == "" {
+		s.logger.Warn("静态文件路径为空，跳过静态文件服务配置")
+		return
+	}
+
+	// 注册静态文件目录
+	s.app.Static(prefixPath, staticPath, fiber.Static{
+		Compress:      true,           // 启用压缩
+		ByteRange:     true,           // 启用字节范围请求
+		Browse:        false,          // 禁止目录浏览
+		Index:         "index.html",   // 默认索引文件
+		CacheDuration: 24 * 3600 * 10, // 设置缓存时间（例如10天）
+	})
+
+	// 处理SPA路由 - 将所有不匹配的请求重定向到index.html
+	// 注意：这应该在API路由配置之后添加
+	s.app.Get("*", func(c *fiber.Ctx) error {
+		// 检查请求的路径是否以API路径开头，如果是API请求则跳过
+		path := c.Path()
+		if len(path) >= 4 && path[0:4] == "/api" {
+			return c.Next()
+		}
+
+		// 静态资源文件检查（不重定向常见的静态资源请求）
+		if len(path) > 0 {
+			ext := getFileExtension(path)
+			if ext == ".js" || ext == ".css" || ext == ".png" || ext == ".jpg" ||
+				ext == ".jpeg" || ext == ".gif" || ext == ".svg" || ext == ".ico" ||
+				ext == ".woff" || ext == ".woff2" || ext == ".ttf" || ext == ".eot" {
+				return c.Next()
+			}
+		}
+
+		// 重定向到index.html以支持SPA路由
+		return c.SendFile(staticPath + "/index.html")
+	})
+
+	s.logger.Info("已注册静态文件服务", zap.String("路径", staticPath), zap.String("前缀", prefixPath))
+}
+
+// 辅助函数：获取文件扩展名
+func getFileExtension(path string) string {
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '.' {
+			return path[i:]
+		}
+		if path[i] == '/' {
+			break
+		}
+	}
+	return ""
+}
+
 // RegisterAuthManagerAPI 注册AuthManager API路由
 func (s *Server) RegisterAuthManagerAPI(authManager *authmanager.AuthManager) {
 	if authManager == nil {
@@ -145,7 +210,11 @@ func (s *Server) RegisterAuthManagerAPI(authManager *authmanager.AuthManager) {
 	}
 
 	api := authmanager.NewAPI(authManager)
-	api.RegisterRoutes(s.app)
+
+	s.baseAuthHandler = api.AuthMiddleware
+	s.adminRoleHandler = api.AdminRoleMiddleware
+
+	api.RegisterRoutes(s.router, s.baseAuthHandler, s.adminRoleHandler)
 	s.logger.Info("已注册AuthManager API路由")
 }
 
@@ -157,7 +226,7 @@ func (s *Server) RegisterEtcdAPI(etcdServer *etcd.EtcdServer, etcdClient *etcd.E
 	}
 
 	api := etcd.NewAPI(etcdServer, etcdClient, s.logger)
-	api.SetupRoutes(s.app)
+	api.RegisterRoutes(s.router, s.baseAuthHandler, s.adminRoleHandler)
 	s.logger.Info("已注册ETCD API路由")
 }
 
@@ -169,7 +238,7 @@ func (s *Server) RegisterCacheServerAPI(cacheServer *server.Server) {
 	}
 
 	api := server.NewAPI(cacheServer, s.logger)
-	api.SetupRoutes(s.app)
+	api.RegisterRoutes(s.router, s.baseAuthHandler, s.adminRoleHandler)
 	s.logger.Info("已注册缓存服务器API路由")
 }
 
@@ -181,7 +250,7 @@ func (s *Server) RegisterConfigAPI(configSer *config2.Service) {
 	}
 
 	api := config2.NewAPI(configSer, s.logger)
-	api.SetupRoutes(s.app)
+	api.RegisterRoutes(s.router, s.baseAuthHandler, s.adminRoleHandler)
 	s.logger.Info("已注册配置中心API路由")
 }
 
@@ -193,8 +262,7 @@ func (s *Server) RegisterDistributedAPI(manager discovery.DiscoveryService, elec
 	}
 
 	api := distributed.NewAPI(manager, election, s.logger)
-
-	api.SetupRoutes(s.app)
+	api.RegisterRoutes(s.router, s.baseAuthHandler, s.adminRoleHandler)
 	s.logger.Info("已注册分布式组件API路由")
 }
 
@@ -206,8 +274,20 @@ func (s *Server) RegisterMonitorAPI(monitorService *monitoring.Monitor) {
 	}
 
 	api := monitorapi.NewAPI(monitorService.GetStorage(), monitorService.GetAlertManager(), monitorService.GetNotifierManager(), s.logger)
-	api.SetupRoutes(s.app)
+	api.RegisterRoutes(s.router, s.baseAuthHandler, s.adminRoleHandler)
 	s.logger.Info("已注册监控API路由")
+}
+
+// RegisterCertManagerAPI 注册证书管理器API路由
+func (s *Server) RegisterCertManagerAPI(certManager *certmanager.CertManager) {
+	if certManager == nil {
+		s.logger.Warn("证书管理器为空，跳过API注册")
+		return
+	}
+
+	api := certmanager.NewAPI(certManager, s.logger)
+	api.RegisterRoutes(s.router, s.baseAuthHandler, s.adminRoleHandler)
+	s.logger.Info("已注册证书管理器API路由")
 }
 
 // 自定义错误处理程序

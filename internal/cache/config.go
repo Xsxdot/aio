@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"github.com/xsxdot/aio/app/config"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,25 +10,21 @@ import (
 // DefaultConfig 返回默认配置
 func DefaultConfig() Config {
 	return Config{
-		DBCount:         16,    // 默认支持16个数据库
-		MaxMemory:       0,     // 默认不限制内存使用
-		MaxClients:      10000, // 默认最大连接数10000
-		Password:        "",    // 默认无密码
-		EnableRDB:       false, // 默认启用RDB持久化
-		RDBFilePath:     "cache/rdb",
-		RDBSaveInterval: 3600,  // 默认每小时保存一次
-		EnableAOF:       false, // 默认不启用AOF持久化
-		AOFFilePath:     "cache/aof",
-		AOFSyncStrategy: 1, // 默认每秒同步一次
+		CacheConfig: config.CacheConfig{
+			DBCount:         16,    // 默认支持16个数据库
+			MaxMemory:       0,     // 默认不限制内存使用
+			MaxClients:      10000, // 默认最大连接数10000
+			Password:        "",    // 默认无密码
+			EnableRDB:       false, // 默认启用RDB持久化
+			RDBFilePath:     "cache/6379.rdb",
+			RDBSaveInterval: 3600,  // 默认每小时保存一次
+			EnableAOF:       false, // 默认不启用AOF持久化
+			AOFFilePath:     "cache/6379.aof",
+			AOFSyncStrategy: 1, // 默认每秒同步一次
 
-		// 服务器配置
-		Host:             "127.0.0.1", // 默认监听所有接口
-		Port:             6379,        // 默认端口
-		ReadTimeout:      60,          // 默认读超时时间(秒)
-		WriteTimeout:     60,          // 默认写超时时间(秒)
-		HeartbeatTimeout: 30,          // 默认心跳超时时间(秒)
-
-		NodeID: "", // 默认节点ID为空
+			// 服务器配置
+			Port: 6379, // 默认端口
+		},
 	}
 }
 
@@ -45,28 +42,12 @@ type SentinelMonitorInfo struct {
 
 // Config 表示缓存服务的配置
 type Config struct {
-	// 基本配置
-	DBCount    int    `yaml:"db_count" json:"db_count"`       // 数据库数量
-	MaxMemory  int64  `yaml:"max_memory" json:"max_memory"`   // 最大内存使用量(MB)，0表示不限制
-	MaxClients int    `yaml:"max_clients" json:"max_clients"` // 最大客户端连接数
-	Password   string `yaml:"password" json:"password"`       // 访问密码，空表示不需要密码
-	NodeID     string `yaml:"node_id" json:"node_id"`         // 节点ID，用于服务注册和发现
-
-	// 持久化配置
-	EnableRDB       bool   `yaml:"enable_rdb" json:"enable_rdb"`               // 是否启用RDB持久化
-	RDBFilePath     string `yaml:"rdb_file_path" json:"rdb_file_path"`         // RDB文件路径
-	RDBSaveInterval int    `yaml:"rdb_save_interval" json:"rdb_save_interval"` // RDB保存间隔(秒)
-	EnableAOF       bool   `yaml:"enable_aof" json:"enable_aof"`               // 是否启用AOF持久化
-	AOFFilePath     string `yaml:"aof_file_path" json:"aof_file_path"`         // AOF文件路径
-	AOFSyncStrategy int    `yaml:"aof_sync_strategy" json:"aof_sync_strategy"` // AOF同步策略：0=always, 1=everysec, 2=no
-
-	// 服务器配置
-	Host             string `yaml:"host" json:"host"`                           // 服务器地址
-	Port             int    `yaml:"port" json:"port"`                           // 服务器端口
-	ReadTimeout      int    `yaml:"read_timeout" json:"read_timeout"`           // 读超时(秒)
-	WriteTimeout     int    `yaml:"write_timeout" json:"write_timeout"`         // 写超时(秒)
-	HeartbeatTimeout int    `yaml:"heartbeat_timeout" json:"heartbeat_timeout"` // 心跳超时(秒)
-
+	NodeID string `yaml:"node_id" json:"node_id"` // 节点ID，用于服务注册和发现
+	Host   string `yaml:"host" json:"host"`       // 服务器地址
+	config.CacheConfig
+	ReadTimeout      int `yaml:"read_timeout" json:"read_timeout"`           // 读超时(秒)
+	WriteTimeout     int `yaml:"write_timeout" json:"write_timeout"`         // 写超时(秒)
+	HeartbeatTimeout int `yaml:"heartbeat_timeout" json:"heartbeat_timeout"` // 心跳超时(秒)
 }
 
 // WithMaxMemory 设置最大内存限制

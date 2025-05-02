@@ -3,6 +3,10 @@ package client
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+
 	"github.com/nats-io/nats.go"
 	"github.com/xsxdot/aio/app/config"
 	consts "github.com/xsxdot/aio/app/const"
@@ -87,13 +91,60 @@ func (s *NatsClient) GetClientConfigFromCenter(ctx context.Context) (*mq.ClientC
 	}
 
 	if config.EnableTls {
-		m.TLS = &mq.TLSConfig{
-			CertFile:      config.Cert,
-			KeyFile:       config.Key,
-			TrustedCAFile: config.TrustedCAFile,
+		tlsConfig := &mq.TLSConfig{}
+
+		// 使用证书内容创建临时文件
+		if config.CertContent != "" && config.KeyContent != "" && config.CATrustedContent != "" {
+			// 创建临时文件夹
+			tmpDir, err := os.MkdirTemp("", "nats-certs-")
+			if err != nil {
+				s.log.Warn("创建临时证书目录失败", zap.Error(err))
+			} else {
+				// 创建证书文件
+				certFile := filepath.Join(tmpDir, "cert.pem")
+				keyFile := filepath.Join(tmpDir, "key.pem")
+				caFile := filepath.Join(tmpDir, "ca.pem")
+
+				// 写入证书内容
+				if err := os.WriteFile(certFile, []byte(config.CertContent), 0600); err == nil {
+					tlsConfig.CertFile = certFile
+				} else {
+					s.log.Warn("写入证书文件失败", zap.Error(err))
+				}
+
+				// 写入密钥内容
+				if err := os.WriteFile(keyFile, []byte(config.KeyContent), 0600); err == nil {
+					tlsConfig.KeyFile = keyFile
+				} else {
+					s.log.Warn("写入密钥文件失败", zap.Error(err))
+				}
+
+				// 写入CA证书内容
+				if err := os.WriteFile(caFile, []byte(config.CATrustedContent), 0600); err == nil {
+					tlsConfig.TrustedCAFile = caFile
+				} else {
+					s.log.Warn("写入CA证书文件失败", zap.Error(err))
+				}
+
+				// 设置清理函数，在程序退出时删除临时文件
+				finalizer := func() {
+					os.RemoveAll(tmpDir)
+				}
+
+				// 注册清理函数
+				runtime.SetFinalizer(tlsConfig, func(_ *mq.TLSConfig) {
+					finalizer()
+				})
+			}
+		} else if config.Cert != "" && config.Key != "" && config.TrustedCAFile != "" {
+			// 如果没有证书内容但有证书路径，使用路径
+			tlsConfig.CertFile = config.Cert
+			tlsConfig.KeyFile = config.Key
+			tlsConfig.TrustedCAFile = config.TrustedCAFile
 		}
+
+		m.TLS = tlsConfig
 	}
 
 	return m, nil
-
 }

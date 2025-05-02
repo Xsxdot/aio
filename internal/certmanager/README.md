@@ -1,233 +1,187 @@
-# 证书管理器 (CertManager)
+# 证书管理器
 
-该模块提供从Let's Encrypt自动申请SSL证书和自动续期的功能。
+这个包提供了自动申请和管理Let's Encrypt证书的功能，支持使用DNS验证方式来申请证书。
 
-## 功能特性
+## 支持的DNS提供商
 
-- 自动从Let's Encrypt申请免费SSL证书
-- 证书到期前自动续期
-- 支持多域名配置
-- 支持HTTP-01和DNS-01验证方式
-- 支持阿里云DNS验证（可用于申请通配符证书）
-- 支持测试环境(staging)和生产环境
-- 本地文件存储证书和私钥
-- 简单易用的API接口
+目前支持以下DNS提供商：
 
-## 配置项
+- 阿里云DNS (alidns/aliyun)
+- Cloudflare (cloudflare)
+- 腾讯云DNS/DNSPod (dnspod/tencentcloud)
+- GoDaddy (godaddy)
+- AWS Route53 (route53/aws)
+- DigitalOcean (digitalocean/do)
+- Namesilo (namesilo)
+- 测试用模拟提供商 (mock)
 
-```go
-type Config struct {
-    // 是否启用自动证书管理
-    Enabled bool `json:"enabled"`
-    
-    // 证书存储路径
-    CertDir string `json:"cert_dir"`
-    
-    // Let's Encrypt 账户邮箱
-    Email string `json:"email"`
-    
-    // 要申请证书的域名列表
-    Domains []string `json:"domains"`
-    
-    // 证书有效期小于此天数时自动续期
-    RenewBefore int `json:"renew_before"`
-    
-    // 使用测试环境（staging）
-    Staging bool `json:"staging"`
-    
-    // 自动检查证书并续期的间隔
-    CheckInterval time.Duration `json:"check_interval"`
-    
-    // 验证方式：VerifyHTTP 或 VerifyDNS
-    VerifyMethod VerifyMethod `json:"verify_method"`
-    
-    // DNS提供商类型（如：DNSProviderAliyun）
-    DNSProvider DNSProviderType `json:"dns_provider"`
-    
-    // DNS提供商配置
-    DNSConfig DNSConfig `json:"dns_config"`
-    
-    // DNS记录传播等待时间
-    DNSPropagationTimeout time.Duration `json:"dns_propagation_timeout"`
-}
+## DNS提供商配置参数
 
-// DNS配置
-type DNSConfig struct {
-    // 阿里云AccessKey ID
-    AliyunAccessKeyID string `json:"aliyun_access_key_id"`
-    
-    // 阿里云AccessKey Secret
-    AliyunAccessKeySecret string `json:"aliyun_access_key_secret"`
-    
-    // 阿里云区域
-    AliyunRegionID string `json:"aliyun_region_id"`
-}
-```
+每个DNS提供商都配置了以下默认参数：
+
+| DNS提供商 | TTL (秒) | 传播等待时间 | 轮询间隔 | 备注 |
+|----------|---------|------------|---------|------|
+| 阿里云DNS | 600 | 15分钟 | 30秒 | - |
+| Cloudflare | 120 | 10分钟 | 10秒 | 传播速度较快 |
+| 腾讯云DNS/DNSPod | 600 | 15分钟 | 20秒 | - |
+| GoDaddy | 600 | 30分钟 | 30秒 | 传播较慢 |
+| AWS Route53 | 300 | 15分钟 | 20秒 | 配置了5次API重试 |
+| DigitalOcean | 30 | 10分钟 | 15秒 | TTL默认值较低 |
+| Namesilo | 7200 | 40分钟 | 60秒 | 传播非常慢，TTL较高 |
+
+这些参数代表：
+
+- **TTL**: DNS记录的生存时间，即DNS缓存的有效期
+- **传播等待时间**: 等待DNS记录在全球范围内传播的最长时间
+- **轮询间隔**: 检查DNS记录是否已成功传播的间隔时间
 
 ## 使用方法
 
-### 使用HTTP-01验证方式（默认）
+### 环境变量设置
 
-```go
-import (
-    "context"
-    "github.com/sirupsen/logrus"
-    "aio/internal/certmanager"
-)
+根据你使用的DNS提供商，需要设置相应的环境变量：
 
-// 创建配置
-config := &certmanager.Config{
-    Enabled:       true,
-    CertDir:       "./certs",
-    Email:         "your@email.com",
-    Domains:       []string{"example.com", "www.example.com"},
-    RenewBefore:   30, // 有效期小于30天时自动续期
-    Staging:       false, // 生产环境
-    CheckInterval: 24 * time.Hour, // 每天检查一次
-    VerifyMethod:  certmanager.VerifyHTTP, // 使用HTTP-01验证
-}
+- 阿里云DNS
+  ```
+  ALICLOUD_ACCESS_KEY=your_access_key
+  ALICLOUD_SECRET_KEY=your_secret_key
+  ```
 
-// 创建日志器
-logger := logrus.New()
+- Cloudflare
+  ```
+  CF_API_TOKEN=your_api_token
+  # 或者使用API密钥和邮箱
+  CF_API_KEY=your_api_key
+  CF_API_EMAIL=your_email
+  ```
 
-// 创建服务
-service := certmanager.NewService(config, logger)
+- 腾讯云DNS/DNSPod
+  ```
+  TENCENTCLOUD_SECRET_ID=your_secret_id
+  TENCENTCLOUD_SECRET_KEY=your_secret_key
+  ```
 
-// 启动服务
-ctx := context.Background()
-if err := service.Start(ctx); err != nil {
-    logger.Fatalf("启动证书管理服务失败: %v", err)
-}
+- GoDaddy
+  ```
+  GODADDY_API_KEY=your_api_key
+  GODADDY_API_SECRET=your_api_secret
+  ```
 
-// 获取证书
-cert, err := service.GetCertificate("example.com")
-if err != nil {
-    logger.Errorf("获取证书失败: %v", err)
-} else {
-    logger.Infof("证书文件: %s", cert.CertFile)
-    logger.Infof("私钥文件: %s", cert.KeyFile)
-}
+- AWS Route53
+  ```
+  AWS_ACCESS_KEY_ID=your_access_key_id
+  AWS_SECRET_ACCESS_KEY=your_secret_access_key
+  AWS_REGION=us-east-1  # 可选，默认为us-east-1
+  ```
 
-// 停止服务
-if err := service.Stop(); err != nil {
-    logger.Errorf("停止服务失败: %v", err)
-}
-```
+- DigitalOcean
+  ```
+  DO_AUTH_TOKEN=your_auth_token
+  ```
 
-### 使用阿里云DNS验证方式（支持通配符证书）
+- Namesilo
+  ```
+  NAMESILO_API_KEY=your_api_key
+  ```
 
-```go
-// 创建配置
-config := &certmanager.Config{
-    Enabled:       true,
-    CertDir:       "./certs",
-    Email:         "your@email.com",
-    Domains:       []string{"*.example.com", "example.com"}, // 通配符证书
-    RenewBefore:   30,
-    Staging:       false,
-    CheckInterval: 24 * time.Hour,
-    // 使用DNS验证
-    VerifyMethod:  certmanager.VerifyDNS,
-    DNSProvider:   certmanager.DNSProviderAliyun,
-    DNSConfig: certmanager.DNSConfig{
-        AliyunAccessKeyID:     "你的阿里云AccessKey ID",
-        AliyunAccessKeySecret: "你的阿里云AccessKey Secret",
-        AliyunRegionID:        "cn-hangzhou", // 可选
-    },
-    DNSPropagationTimeout: 120 * time.Second, // DNS记录传播等待时间
-}
+### 示例程序
 
-// 其他代码同上...
-```
-
-## 依赖说明
-
-该模块依赖以下外部库：
-
-- github.com/go-acme/lego/v4 - 与Let's Encrypt通信的ACME客户端
-- github.com/sirupsen/logrus - 日志库
-
-请确保在项目的go.mod中添加这些依赖：
-
-```
-go get github.com/go-acme/lego/v4
-go get github.com/sirupsen/logrus
-```
-
-## 验证方式说明
-
-### HTTP-01 验证
-
-HTTP-01验证需要服务器的80端口可访问，Let's Encrypt会请求你域名的`/.well-known/acme-challenge/`路径下的特定文件。因此，你需要确保：
-
-1. 域名已正确解析到你的服务器
-2. 服务器的80端口可访问（用于验证）
-3. 没有防火墙或代理阻止这些请求
-
-**注意**: HTTP-01验证**不支持**通配符证书申请。
-
-### DNS-01 验证
-
-DNS-01验证通过在域名的DNS记录中添加特定的TXT记录来验证域名所有权。使用此方式的优势：
-
-1. 服务器80端口不需要对外开放
-2. 可以申请通配符证书（如 *.example.com）
-3. 适用于内网服务器或无公网IP的场景
-
-使用阿里云DNS验证时，需要提供有权限管理域名DNS记录的AccessKey。请确保：
-
-1. 域名已添加到阿里云DNS
-2. 提供的AccessKey有管理DNS记录的权限
-3. 考虑DNS记录的传播时间（默认等待2分钟）
-
-## 通配符证书申请
-
-要申请通配符证书（如 *.example.com），你**必须**使用DNS-01验证方式：
-
-```go
-config := &certmanager.Config{
-    // ... 其他配置 ...
-    Domains:      []string{"*.example.com"},
-    VerifyMethod: certmanager.VerifyDNS,
-    DNSProvider:  certmanager.DNSProviderAliyun,
-    // ... DNS配置 ...
-}
-```
-
-## 测试环境
-
-在正式使用前，建议先启用`Staging`模式进行测试，以避免触发Let's Encrypt的速率限制：
-
-```go
-config.Staging = true
-```
-
-测试通过后再切换到生产环境：
-
-```go
-config.Staging = false
-```
-
-## 命令行工具使用示例
+使用提供的示例程序申请证书：
 
 ```bash
-# HTTP验证方式申请证书
-./certmanager -email your@email.com -domain example.com -verify http-01
+# 设置环境变量
+export ALICLOUD_ACCESS_KEY=your_access_key
+export ALICLOUD_SECRET_KEY=your_secret_key
 
-# 阿里云DNS验证方式申请通配符证书
-./certmanager -email your@email.com -domain "*.example.com" \
-  -verify dns-01 -dns-provider aliyun \
-  -aliyun-key-id YOUR_KEY_ID -aliyun-key-secret YOUR_KEY_SECRET
+# 运行证书申请程序
+go run cmd/certdemo/main.go \
+  --email your_email@example.com \
+  --domain example.com \
+  --dns-provider alidns \
+  --cert-dir ./certs \
+  --staging  # 在测试环境申请，不会消耗真实配额
 ```
+
+### 在代码中使用
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "time"
+    
+    "github.com/xsxdot/aio/internal/certmanager"
+    "go.uber.org/zap"
+)
+
+func main() {
+    // 初始化日志
+    logger, _ := zap.NewProduction()
+    defer logger.Sync()
+    
+    certmanager.SetLogger(logger)
+    
+    // 初始化ACME客户端
+    email := "your_email@example.com"
+    useStaging := true // 测试环境
+    err := certmanager.InitWithEmail(email, useStaging)
+    if err != nil {
+        log.Fatalf("初始化ACME客户端失败: %v", err)
+    }
+    
+    // DNS提供商配置
+    domain := "example.com"
+    certDir := "./certs"
+    dnsProvider := "alidns"
+    credentials := map[string]string{
+        "ALICLOUD_ACCESS_KEY": "your_access_key",
+        "ALICLOUD_SECRET_KEY": "your_secret_key",
+    }
+    
+    // 设置超时
+    ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute) // 注意:应比DNS传播时间更长
+    defer cancel()
+    
+    // 申请证书
+    certPath, keyPath, issuedAt, expiresAt, err := certmanager.GetCertificate(
+        ctx, domain, certDir, dnsProvider, credentials,
+    )
+    if err != nil {
+        log.Fatalf("申请证书失败: %v", err)
+    }
+    
+    log.Printf("证书申请成功! 路径: %s, %s", certPath, keyPath)
+    log.Printf("有效期: %s 至 %s", issuedAt, expiresAt)
+}
+```
+
+## DNS记录传播和验证过程
+
+Let's Encrypt在验证您的域名所有权时，会查询您添加的DNS TXT记录。DNS记录传播需要时间，这个时间因DNS提供商而异:
+
+1. 系统会在您的DNS服务商添加一条特定的TXT记录
+2. 系统会等待这个记录在全球DNS系统中传播（等待时间基于上述配置）
+3. Let's Encrypt会验证这条记录是否存在
+4. 验证成功后，会颁发证书
+
+## 故障排除
+
+如果证书申请失败，可能有以下原因：
+
+1. **DNS记录传播时间不足**: 某些DNS提供商需要更长的传播时间。如果遇到这种情况，可以考虑增加`PropagationTimeout`参数。
+
+2. **API凭证不正确**: 确认您的API密钥和令牌有足够的权限来创建和删除DNS记录。
+
+3. **网络问题**: 如果遇到网络连接超时，可能需要配置HTTP代理或修改超时设置。
+
+4. **域名配置问题**: 确保该域名确实由您配置的DNS提供商管理。
 
 ## 注意事项
 
-- 证书有效期为90天，模块会在到期前自动续期
-- Let's Encrypt有速率限制，请不要频繁请求生产环境证书
-- 通配符证书只能使用DNS验证方式申请
-- 请妥善保管证书私钥和阿里云AccessKey
-- 请确保证书存储目录有适当的权限
-
-## 示例程序
-
-在`example`目录下有一个完整的示例程序，展示了如何使用此模块。 
+1. 请确保你有权限管理域名的DNS记录
+2. 在生产环境使用时，请关闭staging模式
+3. Let's Encrypt有速率限制，请合理使用
+4. 证书有效期通常为90天，建议在到期前至少30天续期
+5. 不同DNS提供商的传播时间差异很大，配置的等待时间可能需要根据实际情况调整 

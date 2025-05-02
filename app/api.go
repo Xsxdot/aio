@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/xsxdot/aio/pkg/utils"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
+
+	configInternal "github.com/xsxdot/aio/pkg/config"
+	"github.com/xsxdot/aio/pkg/utils"
 
 	"github.com/gofiber/fiber/v2"
 	consts "github.com/xsxdot/aio/app/const"
@@ -27,9 +29,9 @@ func NewAPIHandler(app *App) *APIHandler {
 }
 
 // SetupRoutes 设置所有API路由
-func (h *APIHandler) SetupRoutes(router *fiber.App) {
+func (h *APIHandler) SetupRoutes(router fiber.Router, authHandler func(*fiber.Ctx) error, adminRoleHandler func(*fiber.Ctx) error) {
 	// 创建API组
-	apiGroup := router.Group("/api/system")
+	apiGroup := router.Group("/system", authHandler, adminRoleHandler)
 
 	// 组件管理相关路由
 	apiGroup.Get("/components", h.getAllComponentsStatus)
@@ -37,10 +39,8 @@ func (h *APIHandler) SetupRoutes(router *fiber.App) {
 	apiGroup.Post("/components/:name/stop", h.stopComponent)
 	apiGroup.Post("/components/:name/restart", h.restartComponent)
 	apiGroup.Get("/components/:name/default-config", h.getComponentDefaultConfig)
-	apiGroup.Get("/components/default-configs", h.getAllComponentsDefaultConfig)
 
 	// 应用状态相关路由
-	apiGroup.Get("/status", h.getAppStatus)
 	apiGroup.Post("/restart", h.restartApp)
 
 	// 配置管理相关路由
@@ -177,17 +177,6 @@ func (h *APIHandler) restartComponent(c *fiber.Ctx) error {
 	})
 }
 
-// getAppStatus 获取应用的初始化状态
-func (h *APIHandler) getAppStatus(c *fiber.Ctx) error {
-	status := map[string]interface{}{
-		"initialized": h.app.IsInitialized(),
-		"mode":        h.app.mode,
-		"nodeId":      h.app.nodeID,
-	}
-
-	return utils.SuccessResponse(c, status)
-}
-
 // restartApp 重启应用
 func (h *APIHandler) restartApp(c *fiber.Ctx) error {
 	// 先返回成功响应
@@ -196,7 +185,7 @@ func (h *APIHandler) restartApp(c *fiber.Ctx) error {
 	})
 
 	if err != nil {
-		return err
+		return utils.FailResponse(c, utils.StatusInternalError, "发送重启响应失败: "+err.Error())
 	}
 
 	// 使用goroutine异步执行重启操作
@@ -208,7 +197,7 @@ func (h *APIHandler) restartApp(c *fiber.Ctx) error {
 		}
 	}()
 
-	return err
+	return nil
 }
 
 // updateConfig 更新配置
@@ -220,20 +209,12 @@ func (h *APIHandler) updateConfig(c *fiber.Ctx) error {
 		return utils.FailResponse(c, utils.StatusBadRequest, "请求格式错误: "+err.Error())
 	}
 
-	if request.Name == "aio" {
-		err := saveYAMLConfig(filepath.Join(h.app.configDirPath, "aio.yaml"), request.Data)
-		if err != nil {
-			return utils.FailResponse(c, utils.StatusInternalError, "更新配置文件失败: "+err.Error())
-		} else {
-			return utils.SuccessResponse(c, map[string]string{
-				"message": "配置更新成功",
-			})
-		}
-	}
-
 	component := h.app.Manager.Get(request.Name)
 	if component == nil {
 		return utils.FailResponse(c, utils.StatusNotFound, "找不到指定的组件")
+	}
+	if component.Type != TypeNormal {
+		return utils.FailResponse(c, utils.StatusBadRequest, "该组件无法热更新配置")
 	}
 
 	jsonData, err := json.Marshal(request.Data)
@@ -241,10 +222,34 @@ func (h *APIHandler) updateConfig(c *fiber.Ctx) error {
 		return utils.FailResponse(c, utils.StatusBadRequest, "配置数据格式错误: "+err.Error())
 	}
 
-	h.app.Manager.reinitConfig[request.Name] = jsonData
+	cfg := new(configInternal.ConfigItem)
+	err = json.Unmarshal(jsonData, cfg)
+	if err != nil {
+		return utils.FailResponse(c, utils.StatusInternalError, "解析初始化保存的配置失败: "+err.Error())
+	}
+	err = h.app.ConfigService.Set(context.Background(), component.Name(), cfg.Value, cfg.Metadata)
+	if err != nil {
+		return utils.FailResponse(c, utils.StatusInternalError, "保存配置到配置中心失败: "+err.Error())
+	}
 	if component.Type == TypeNormal {
-		component.Enable = request.Enable
-		h.app.Manager.enables[request.Name] = request.Enable
+		oldEnable := component.Enable
+		enable, ok := cfg.Metadata["enable"]
+		if ok {
+			component.Enable = enable == "true"
+		}
+		if oldEnable != component.Enable {
+			if component.Enable {
+				err := h.app.Manager.Start(context.Background(), component.Name())
+				if err != nil {
+					return utils.FailResponse(c, utils.StatusInternalError, "启动组件失败: "+err.Error())
+				}
+			} else {
+				err := h.app.Manager.Stop(context.Background(), component.Name())
+				if err != nil {
+					return utils.FailResponse(c, utils.StatusInternalError, "停止组件失败: "+err.Error())
+				}
+			}
+		}
 	}
 
 	return utils.SuccessResponse(c, map[string]string{
@@ -255,11 +260,6 @@ func (h *APIHandler) updateConfig(c *fiber.Ctx) error {
 // getConfig 获取配置文件内容
 // 此API仅在系统初始化完成之前可用
 func (h *APIHandler) getConfig(c *fiber.Ctx) error {
-	// 检查系统是否已初始化
-	if h.app.IsInitialized() {
-		return utils.FailResponse(c, utils.StatusForbidden, "系统已初始化，无法获取配置信息")
-	}
-
 	// 从查询参数获取要查询的配置类型
 	fileType := c.Query("type", "aio") // 默认为aio配置
 
@@ -302,16 +302,18 @@ func (h *APIHandler) getComponentDefaultConfig(c *fiber.Ctx) error {
 		return utils.FailResponse(c, utils.StatusNotFound, "找不到指定的组件")
 	}
 
+	data := h.app.Manager.GetConfigData(entity)
+
+	m := make(map[string]interface{})
+	err := json.Unmarshal(data, &m)
+	if err != nil {
+		return utils.FailResponse(c, utils.StatusInternalError, "解析组件配置数据失败: "+err.Error())
+	}
+
 	return utils.SuccessResponse(c, &ConfigInfo{
 		Name:   entity.Name(),
-		Data:   entity.DefaultConfig(h.app.BaseConfig),
+		Data:   m,
 		Enable: entity.Enable,
 		Type:   entity.Type,
 	})
-}
-
-// getAllComponentsDefaultConfig 获取所有组件的默认配置
-func (h *APIHandler) getAllComponentsDefaultConfig(c *fiber.Ctx) error {
-	configs := h.app.Manager.GetAllDefaultConfigs()
-	return utils.SuccessResponse(c, configs)
 }

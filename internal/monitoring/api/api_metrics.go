@@ -12,9 +12,9 @@ import (
 )
 
 // setupAPIMetricsRoutes 设置API指标查询和聚合相关的路由
-func (api *API) setupAPIMetricsRoutes(monitoringGroup fiber.Router) {
+func (api *API) setupAPIMetricsRoutes(monitoringGroup fiber.Router, handler func(*fiber.Ctx) error, roleHandler func(*fiber.Ctx) error) {
 	// API指标聚合查询
-	apiGroup := monitoringGroup.Group("/api-metrics")
+	apiGroup := monitoringGroup.Group("/api-metrics", handler)
 
 	// API概要统计
 	apiGroup.Get("/summary", api.getAPISummary)

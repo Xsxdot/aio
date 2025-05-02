@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/xsxdot/aio/pkg/distributed/common"
 	"path"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/xsxdot/aio/internal/etcd"
+	"github.com/xsxdot/aio/pkg/distributed/common"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
@@ -90,7 +92,7 @@ type StateManagerService interface {
 
 // 状态管理服务实现
 type stateManagerServiceImpl struct {
-	etcdClient *clientv3.Client
+	etcdClient *etcd.EtcdClient
 	logger     *zap.Logger
 	managers   map[string]StateManager
 	mutex      sync.RWMutex
@@ -101,7 +103,7 @@ type stateManagerServiceImpl struct {
 type stateManagerImpl struct {
 	prefix       string
 	ttl          int64
-	etcdClient   *clientv3.Client
+	etcdClient   *etcd.EtcdClient
 	logger       *zap.Logger
 	watchCancels map[string]context.CancelFunc
 	mutex        sync.RWMutex
@@ -110,7 +112,7 @@ type stateManagerImpl struct {
 }
 
 // NewStateManagerService 创建状态管理服务
-func NewStateManagerService(etcdClient *clientv3.Client, logger *zap.Logger) (StateManagerService, error) {
+func NewStateManagerService(etcdClient *etcd.EtcdClient, logger *zap.Logger) (StateManagerService, error) {
 	return &stateManagerServiceImpl{
 		etcdClient: etcdClient,
 		logger:     logger,
@@ -252,7 +254,7 @@ func (s *stateManagerServiceImpl) Delete(prefix string) error {
 
 	// 从etcd删除管理器配置
 	configKey := fmt.Sprintf("/distributed/components/states/%s/config", prefix)
-	_, err := s.etcdClient.Delete(context.Background(), configKey)
+	err := s.etcdClient.Delete(context.Background(), configKey)
 	if err != nil {
 		s.logger.Error("Failed to delete manager config from etcd", zap.Error(err))
 		return err
@@ -278,14 +280,14 @@ func (s *stateManagerServiceImpl) saveManagerConfig(ctx context.Context, prefix 
 	}
 
 	key := fmt.Sprintf("/distributed/components/states/%s/config", prefix)
-	_, err = s.etcdClient.Put(ctx, key, string(data))
+	err = s.etcdClient.Put(ctx, key, string(data))
 	return err
 }
 
 // 修改恢复状态管理器的方法，避免锁嵌套
 func (s *stateManagerServiceImpl) restoreManagersFromEtcd(ctx context.Context) error {
 	prefix := "/distributed/components/states/"
-	resp, err := s.etcdClient.Get(ctx, prefix, clientv3.WithPrefix())
+	resp, err := s.etcdClient.Client.Get(ctx, prefix, clientv3.WithPrefix())
 	if err != nil {
 		return err
 	}
@@ -410,7 +412,7 @@ func (m *stateManagerImpl) Put(ctx context.Context, key string, value interface{
 		opts = append(opts, clientv3.WithLease(lease.ID))
 	}
 
-	_, err = m.etcdClient.Put(ctx, fullKey, string(data), opts...)
+	_, err = m.etcdClient.Client.Put(ctx, fullKey, string(data), opts...)
 	if err != nil {
 		return fmt.Errorf("failed to put value: %w", err)
 	}
@@ -422,7 +424,7 @@ func (m *stateManagerImpl) Put(ctx context.Context, key string, value interface{
 func (m *stateManagerImpl) Get(ctx context.Context, key string, value interface{}) (bool, error) {
 	fullKey := m.getFullKey(key)
 
-	resp, err := m.etcdClient.Get(ctx, fullKey)
+	resp, err := m.etcdClient.Client.Get(ctx, fullKey)
 	if err != nil {
 		return false, fmt.Errorf("failed to get value: %w", err)
 	}
@@ -452,7 +454,7 @@ func (m *stateManagerImpl) Get(ctx context.Context, key string, value interface{
 func (m *stateManagerImpl) Delete(ctx context.Context, key string) error {
 	fullKey := m.getFullKey(key)
 
-	_, err := m.etcdClient.Delete(ctx, fullKey)
+	err := m.etcdClient.Delete(ctx, fullKey)
 	if err != nil {
 		return fmt.Errorf("failed to delete key: %w", err)
 	}
@@ -476,7 +478,7 @@ func (m *stateManagerImpl) Watch(ctx context.Context, key string) (<-chan StateE
 	m.mutex.Unlock()
 
 	// 开始监听
-	watchCh := m.etcdClient.Watch(watchCtx, fullKey, clientv3.WithPrefix())
+	watchCh := m.etcdClient.Client.Watch(watchCtx, fullKey, clientv3.WithPrefix())
 
 	// 启动处理协程
 	go func() {
@@ -544,7 +546,7 @@ func (m *stateManagerImpl) Watch(ctx context.Context, key string) (<-chan StateE
 func (m *stateManagerImpl) ListKeys(ctx context.Context, prefix string) ([]string, error) {
 	fullPrefix := m.getFullKey(prefix)
 
-	resp, err := m.etcdClient.Get(ctx, fullPrefix, clientv3.WithPrefix(), clientv3.WithKeysOnly())
+	resp, err := m.etcdClient.Client.Get(ctx, fullPrefix, clientv3.WithPrefix(), clientv3.WithKeysOnly())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list keys: %w", err)
 	}

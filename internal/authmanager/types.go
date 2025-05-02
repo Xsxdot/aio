@@ -89,7 +89,7 @@ type AuthManagerConfig struct {
 	Ip           string `json:"ip" yaml:"ip"`
 	ValidityDays int    `json:"validityDays" yaml:"validity_days"`
 	// JWTConfig JWT配置
-	JWTConfig auth.AuthJWTConfig `json:"jwt_config" yaml:"jwt_config"`
+	JWTConfig *auth.AuthJWTConfig `json:"jwt_config" yaml:"jwt_config"`
 	// PasswordHashCost 密码哈希成本
 	PasswordHashCost int `json:"password_hash_cost" yaml:"password_hash_cost"`
 	// InitialAdmin 初始管理员用户
@@ -151,7 +151,4 @@ type StorageProvider interface {
 
 	// WatchCACertificate 监听CA证书变更
 	WatchCACertificate(ctx context.Context, handler func(cert []byte, key []byte)) error
-
-	// WatchNodeCertificate 监听节点证书变更
-	// WatchNodeCertificate(ctx context.Context, nodeID string, handler func(cert *auth.NodeCertificate)) error
 }

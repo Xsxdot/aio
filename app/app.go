@@ -4,17 +4,21 @@ package app
 import (
 	"context"
 	"fmt"
-	config3 "github.com/xsxdot/aio/pkg/config"
-	"gopkg.in/yaml.v3"
 	"log"
 	"os"
 	"path/filepath"
 	"sync"
 
+	"github.com/xsxdot/aio/pkg/auth"
+	config3 "github.com/xsxdot/aio/pkg/config"
+	"github.com/xsxdot/aio/pkg/scheduler"
+	"gopkg.in/yaml.v3"
+
 	"github.com/xsxdot/aio/app/config"
 	"github.com/xsxdot/aio/app/fiber"
 	"github.com/xsxdot/aio/internal/authmanager"
 	"github.com/xsxdot/aio/internal/cache/server"
+	"github.com/xsxdot/aio/internal/certmanager"
 	"github.com/xsxdot/aio/internal/etcd"
 	"github.com/xsxdot/aio/internal/monitoring"
 	"github.com/xsxdot/aio/internal/mq"
@@ -30,18 +34,18 @@ type App struct {
 	// 配置
 	BaseConfig    *config.BaseConfig
 	configDirPath string // 配置文件目录路径
-	// 状态
-	initialized bool //为false则整个服务未初始化，仅用默认etcd服务器启动项目，等待用户初始化
-	mode        string
-	nodeID      string
-	mu          sync.Mutex // 保护并发访问
+	mode          string
+	nodeID        string
+	mu            sync.Mutex // 保护并发访问
 
 	Manager *ComponentManager
 
 	// 核心组件
-	Logger      *common.Logger
-	AuthManager *authmanager.AuthManager
-	Protocol    *protocol.ProtocolManager
+	Logger             *common.Logger
+	AuthManager        *authmanager.AuthManager
+	Protocol           *protocol.ProtocolManager
+	CertificateManager *auth.CertificateManager
+	Scheduler          *scheduler.Scheduler
 
 	// 分布式基础组件
 	Etcd          *etcd.EtcdComponent
@@ -53,6 +57,7 @@ type App struct {
 	MQServer    *mq.NatsServer
 	CacheServer *server.Server
 	Monitor     *monitoring.Monitor
+	SSL         *certmanager.CertManager
 
 	// Fiber
 	FiberServer *fiber.Server
@@ -60,9 +65,7 @@ type App struct {
 
 // New 创建一个新的应用实例
 func New() *App {
-	a := &App{
-		initialized: false,
-	}
+	a := &App{}
 	return a
 }
 
@@ -71,7 +74,7 @@ func (a *App) LoadConfig(configDirPath string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	cfg, hasEtcd, err := config.LoadConfig(configDirPath)
+	cfg, err := config.LoadConfig(configDirPath)
 	if err != nil {
 		return fmt.Errorf("加载配置失败: %w", err)
 	}
@@ -80,7 +83,6 @@ func (a *App) LoadConfig(configDirPath string) error {
 	a.configDirPath = configDirPath
 	a.mode = cfg.System.Mode
 	a.nodeID = cfg.System.NodeId
-	a.initialized = hasEtcd
 
 	return nil
 }
@@ -93,11 +95,7 @@ func (a *App) Start() error {
 	if a.BaseConfig == nil {
 		return fmt.Errorf("未加载配置，无法启动应用")
 	}
-	oldManager := a.Manager
 	a.Manager = NewComponentRegistry(a)
-	if oldManager != nil && oldManager.reinitConfig != nil {
-		a.Manager.WithReinitConfig(oldManager.reinitConfig, oldManager.enables)
-	}
 
 	// 应用启动逻辑，将在starter.go中实现
 	return a.startApp()
@@ -117,10 +115,6 @@ func (a *App) Stop() error {
 
 	log.Println("应用已停止")
 	return nil
-}
-
-func (a *App) IsFirstStart() bool {
-	return !a.IsInitialized()
 }
 
 // Restart 重启应用
@@ -146,7 +140,6 @@ func (a *App) Restart() error {
 	return nil
 }
 
-// 保存配置到YAML文件
 func saveYAMLConfig(path string, config interface{}) error {
 	data, err := yaml.Marshal(config)
 	if err != nil {
@@ -162,20 +155,6 @@ func saveYAMLConfig(path string, config interface{}) error {
 	}
 
 	return nil
-}
-
-// IsInitialized 返回应用是否已初始化
-func (a *App) IsInitialized() bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.initialized
-}
-
-// SetInitialized 设置应用初始化状态
-func (a *App) SetInitialized(initialized bool) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.initialized = initialized
 }
 
 func (a *App) initTcpApi() error {

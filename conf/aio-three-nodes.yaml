@@ -1,0 +1,65 @@
+errors:
+  debug_mode: true
+logger:
+  compress: true
+  console: true
+  file: ./logs/aio.log
+  level: info
+  max_age: 7
+  max_backups: 10
+  max_size: 100
+network:
+  allow_external: true
+  bind_ip: 0.0.0.0
+  http_allow_external: true
+  http_port: 8080
+  local_ip: auto
+  public_ip: auto
+protocol:
+  buffer_size: 4096
+  enable_auth: true
+  enable_keepalive: true
+  heartbeat_timeout: 30s
+  idle_timeout: 60s
+  max_connections: 1000
+  port: 6666
+  read_timeout: 30s
+  write_timeout: 30s
+system:
+  config_salt: "123456789087654321"
+  data_dir: ./data
+  mode: cluster
+  node_id: node1
+nodes:
+  - node_id: node1
+    addr: 192.168.1.101
+    port: 6666
+    master: true
+  - node_id: node2
+    addr: 192.168.1.102
+    port: 6666
+    master: false
+  - node_id: node3
+    addr: 192.168.1.103
+    port: 6666
+    master: false
+etcd:
+  client_port: 2379
+  peer_port: 2380
+  initial_cluster_token: "etcd-cluster"
+  auth_token: "root"
+  client_tls_config:
+    tls_enabled: true
+    auto_tls: true
+    cert_file: ""
+    key_file: ""
+    trusted_ca_file: ""
+  server_tls_config:
+    tls_enabled: true
+    auto_tls: true
+    cert_file: ""
+    key_file: ""
+    trusted_ca_file: ""
+  jwt: false
+  username: "root"
+  password: "123456" 

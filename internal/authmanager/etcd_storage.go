@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/xsxdot/aio/internal/etcd"
 	"path"
 	"time"
 
@@ -11,8 +12,6 @@ import (
 	auth2 "github.com/xsxdot/aio/pkg/auth"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
-
-	"github.com/xsxdot/aio/internal/etcd"
 )
 
 const (
@@ -48,7 +47,7 @@ func (s *EtcdStorage) GetUser(id string) (*User, error) {
 	defer cancel()
 
 	key := path.Join(userPrefixPath, id)
-	resp, err := s.client.GetClient().Get(ctx, key)
+	resp, err := s.client.Client.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +71,7 @@ func (s *EtcdStorage) GetUserByUsername(username string) (*User, error) {
 	defer cancel()
 
 	// 根据用户名查找用户需要遍历
-	resp, err := s.client.GetClient().Get(ctx, userPrefixPath, clientv3.WithPrefix())
+	resp, err := s.client.Client.Get(ctx, userPrefixPath, clientv3.WithPrefix())
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +117,7 @@ func (s *EtcdStorage) CreateUser(user *User, credential *UserCredential) error {
 	}
 
 	// 使用事务保证原子性
-	_, err = s.client.GetClient().Txn(ctx).
+	_, err = s.client.Client.Txn(ctx).
 		Then(
 			clientv3.OpPut(userKey, string(userValue)),
 			clientv3.OpPut(credKey, string(credValue)),
@@ -144,7 +143,7 @@ func (s *EtcdStorage) UpdateUser(user *User) error {
 		return fmt.Errorf("marshal user failed: %w", err)
 	}
 
-	_, err = s.client.GetClient().Put(ctx, userKey, string(userValue))
+	_, err = s.client.Client.Put(ctx, userKey, string(userValue))
 	if err != nil {
 		return fmt.Errorf("update user failed: %w", err)
 	}
@@ -171,7 +170,7 @@ func (s *EtcdStorage) DeleteUser(id string) error {
 	subjectKey := path.Join(subjectPrefixPath, id)
 
 	// 使用事务保证原子性
-	_, err = s.client.GetClient().Txn(ctx).
+	_, err = s.client.Client.Txn(ctx).
 		Then(
 			clientv3.OpDelete(userKey),
 			clientv3.OpDelete(credKey),
@@ -191,7 +190,7 @@ func (s *EtcdStorage) ListUsers() ([]*User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	resp, err := s.client.GetClient().Get(ctx, userPrefixPath, clientv3.WithPrefix())
+	resp, err := s.client.Client.Get(ctx, userPrefixPath, clientv3.WithPrefix())
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +214,7 @@ func (s *EtcdStorage) GetUserCredential(username string) (*UserCredential, error
 	defer cancel()
 
 	key := path.Join(credentialPrefixPath, username)
-	resp, err := s.client.GetClient().Get(ctx, key)
+	resp, err := s.client.Client.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +243,7 @@ func (s *EtcdStorage) UpdateUserCredential(username string, credential *UserCred
 		return fmt.Errorf("marshal credential failed: %w", err)
 	}
 
-	_, err = s.client.GetClient().Put(ctx, key, string(value))
+	_, err = s.client.Client.Put(ctx, key, string(value))
 	if err != nil {
 		return fmt.Errorf("update credential failed: %w", err)
 	}
@@ -263,7 +262,7 @@ func (s *EtcdStorage) SaveRole(role *auth.Role) error {
 		return fmt.Errorf("marshal role failed: %w", err)
 	}
 
-	_, err = s.client.GetClient().Put(ctx, key, string(value))
+	_, err = s.client.Client.Put(ctx, key, string(value))
 	if err != nil {
 		return fmt.Errorf("save role failed: %w", err)
 	}
@@ -277,7 +276,7 @@ func (s *EtcdStorage) GetRole(id string) (*auth.Role, error) {
 	defer cancel()
 
 	key := path.Join(rolePrefixPath, id)
-	resp, err := s.client.GetClient().Get(ctx, key)
+	resp, err := s.client.Client.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +300,7 @@ func (s *EtcdStorage) DeleteRole(id string) error {
 	defer cancel()
 
 	key := path.Join(rolePrefixPath, id)
-	_, err := s.client.GetClient().Delete(ctx, key)
+	_, err := s.client.Client.Delete(ctx, key)
 	if err != nil {
 		return fmt.Errorf("delete role failed: %w", err)
 	}
@@ -314,7 +313,7 @@ func (s *EtcdStorage) ListRoles() ([]*auth.Role, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	resp, err := s.client.GetClient().Get(ctx, rolePrefixPath, clientv3.WithPrefix())
+	resp, err := s.client.Client.Get(ctx, rolePrefixPath, clientv3.WithPrefix())
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +347,7 @@ func (s *EtcdStorage) SaveSubject(subject *auth.Subject) error {
 	typeKey := path.Join(subjectsByTypePath, string(subject.Type), subject.ID)
 
 	// 使用事务保证原子性
-	_, err = s.client.GetClient().Txn(ctx).
+	_, err = s.client.Client.Txn(ctx).
 		Then(
 			clientv3.OpPut(subjectKey, string(subjectValue)),
 			clientv3.OpPut(typeKey, ""),
@@ -368,7 +367,7 @@ func (s *EtcdStorage) GetSubject(id string) (*auth.Subject, error) {
 	defer cancel()
 
 	key := path.Join(subjectPrefixPath, id)
-	resp, err := s.client.GetClient().Get(ctx, key)
+	resp, err := s.client.Client.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -403,7 +402,7 @@ func (s *EtcdStorage) DeleteSubject(id string) error {
 	typeKey := path.Join(subjectsByTypePath, string(subject.Type), id)
 
 	// 使用事务保证原子性
-	_, err = s.client.GetClient().Txn(ctx).
+	_, err = s.client.Client.Txn(ctx).
 		Then(
 			clientv3.OpDelete(subjectKey),
 			clientv3.OpDelete(typeKey),
@@ -424,7 +423,7 @@ func (s *EtcdStorage) ListSubjects(subjectType auth.SubjectType) ([]*auth.Subjec
 
 	// 获取指定类型的主体ID列表
 	typePrefix := path.Join(subjectsByTypePath, string(subjectType))
-	resp, err := s.client.GetClient().Get(ctx, typePrefix, clientv3.WithPrefix())
+	resp, err := s.client.Client.Get(ctx, typePrefix, clientv3.WithPrefix())
 	if err != nil {
 		return nil, err
 	}
@@ -456,7 +455,7 @@ func (s *EtcdStorage) GetClientCredential(clientID string) (*ClientCredential, e
 	defer cancel()
 
 	key := path.Join(clientCredPath, clientID)
-	resp, err := s.client.GetClient().Get(ctx, key)
+	resp, err := s.client.Client.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -485,7 +484,7 @@ func (s *EtcdStorage) SaveClientCredential(credential *ClientCredential) error {
 		return fmt.Errorf("marshal client credential failed: %w", err)
 	}
 
-	_, err = s.client.GetClient().Put(ctx, key, string(value))
+	_, err = s.client.Client.Put(ctx, key, string(value))
 	if err != nil {
 		return fmt.Errorf("save client credential failed: %w", err)
 	}
@@ -499,7 +498,7 @@ func (s *EtcdStorage) DeleteClientCredential(clientID string) error {
 	defer cancel()
 
 	key := path.Join(clientCredPath, clientID)
-	_, err := s.client.GetClient().Delete(ctx, key)
+	_, err := s.client.Client.Delete(ctx, key)
 	if err != nil {
 		return fmt.Errorf("delete client credential failed: %w", err)
 	}
@@ -513,7 +512,7 @@ func (s *EtcdStorage) GetCACertificate() ([]byte, error) {
 	defer cancel()
 
 	key := caCertPath
-	resp, err := s.client.GetClient().Get(ctx, key)
+	resp, err := s.client.Client.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -531,7 +530,7 @@ func (s *EtcdStorage) SaveCACertificate(cert []byte) error {
 	defer cancel()
 
 	key := caCertPath
-	_, err := s.client.GetClient().Put(ctx, key, string(cert))
+	_, err := s.client.Client.Put(ctx, key, string(cert))
 	if err != nil {
 		return fmt.Errorf("save CA certificate failed: %w", err)
 	}
@@ -556,7 +555,7 @@ func (s *EtcdStorage) SaveNodeCertificate(nodeID string, cert *auth2.NodeCertifi
 	keyValue := cert.PrivateKeyPEM
 
 	// 使用事务保证原子性
-	_, err = s.client.GetClient().Txn(ctx).
+	_, err = s.client.Client.Txn(ctx).
 		Then(
 			clientv3.OpPut(certKey, string(certValue)),
 			clientv3.OpPut(keyKey, keyValue),
@@ -577,7 +576,7 @@ func (s *EtcdStorage) GetNodeCertificate(nodeID string) (*auth2.NodeCertificate,
 
 	// 获取证书
 	certKey := path.Join(nodeCertPath, nodeID, "cert")
-	resp, err := s.client.GetClient().Get(ctx, certKey)
+	resp, err := s.client.Client.Get(ctx, certKey)
 	if err != nil {
 		return nil, err
 	}
@@ -601,7 +600,7 @@ func (s *EtcdStorage) GetCAPrivateKey() ([]byte, error) {
 	defer cancel()
 
 	key := caKeyPath
-	resp, err := s.client.GetClient().Get(ctx, key)
+	resp, err := s.client.Client.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -619,7 +618,7 @@ func (s *EtcdStorage) SaveCAPrivateKey(key []byte) error {
 	defer cancel()
 
 	keyPath := caKeyPath
-	_, err := s.client.GetClient().Put(ctx, keyPath, string(key))
+	_, err := s.client.Client.Put(ctx, keyPath, string(key))
 	if err != nil {
 		return fmt.Errorf("save CA private key failed: %w", err)
 	}
@@ -630,7 +629,7 @@ func (s *EtcdStorage) SaveCAPrivateKey(key []byte) error {
 // WatchCACertificate 监听CA证书变更
 func (s *EtcdStorage) WatchCACertificate(ctx context.Context, handler func(cert []byte, key []byte)) error {
 	// 监听CA证书和私钥路径
-	watchChan := s.client.GetClient().Watch(ctx, authPrefixPath+"/ca", clientv3.WithPrefix())
+	watchChan := s.client.Client.Watch(ctx, authPrefixPath+"/ca", clientv3.WithPrefix())
 
 	go func() {
 		for {

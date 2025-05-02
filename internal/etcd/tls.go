@@ -31,6 +31,8 @@ func LoadTLSConfig(certFile, keyFile, caFile string) (*tls.Config, error) {
 			return nil, fmt.Errorf("解析CA证书失败")
 		}
 		tlsConfig.RootCAs = caCertPool
+		// 设置服务器CA
+		tlsConfig.ClientCAs = caCertPool
 	}
 
 	return tlsConfig, nil

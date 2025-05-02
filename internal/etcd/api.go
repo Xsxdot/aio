@@ -3,9 +3,10 @@ package etcd
 import (
 	"context"
 	"fmt"
-	"github.com/xsxdot/aio/pkg/utils"
 	"strconv"
 	"time"
+
+	"github.com/xsxdot/aio/pkg/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -37,34 +38,34 @@ func NewAPI(server *EtcdServer, client *EtcdClient, logger *zap.Logger) *API {
 	}
 }
 
-// SetupRoutes 设置API路由
-func (a *API) SetupRoutes(app *fiber.App) {
-	api := app.Group("/api/etcd")
+// RegisterRoutes 注册API路由
+func (a *API) RegisterRoutes(router fiber.Router, authHandler func(*fiber.Ctx) error, adminRoleHandler func(*fiber.Ctx) error) {
+	api := router.Group("/etcd")
 
 	// 集群状态管理
-	api.Get("/status", a.GetClusterStatus)
+	api.Get("/status", authHandler, adminRoleHandler, a.GetClusterStatus)
 
 	// 成员管理
-	api.Get("/members", a.GetMembers)
-	api.Post("/members", a.AddMember)
-	api.Put("/members/:id", a.UpdateMember)
-	api.Delete("/members/:id", a.RemoveMember)
+	api.Get("/members", authHandler, adminRoleHandler, a.GetMembers)
+	api.Post("/members", authHandler, adminRoleHandler, a.AddMember)
+	api.Put("/members/:id", authHandler, adminRoleHandler, a.UpdateMember)
+	api.Delete("/members/:id", authHandler, adminRoleHandler, a.RemoveMember)
 
 	// 键值管理
-	api.Get("/kv/:key", a.GetValue)
-	api.Get("/kv", a.GetValuesWithPrefix)
-	api.Put("/kv/:key", a.PutValue)
-	api.Delete("/kv/:key", a.DeleteValue)
+	api.Get("/kv/:key", authHandler, adminRoleHandler, a.GetValue)
+	api.Get("/kv", authHandler, adminRoleHandler, a.GetValuesWithPrefix)
+	api.Put("/kv/:key", authHandler, adminRoleHandler, a.PutValue)
+	api.Delete("/kv/:key", authHandler, adminRoleHandler, a.DeleteValue)
 
 	// 租约管理
-	api.Get("/leases", a.GetAllLeases)
-	api.Post("/leases", a.CreateLease)
-	api.Put("/leases/:id/keepalive", a.KeepAlive)
-	api.Delete("/leases/:id", a.RevokeLease)
+	api.Get("/leases", authHandler, adminRoleHandler, a.GetAllLeases)
+	api.Post("/leases", authHandler, adminRoleHandler, a.CreateLease)
+	api.Put("/leases/:id/keepalive", authHandler, adminRoleHandler, a.KeepAlive)
+	api.Delete("/leases/:id", authHandler, adminRoleHandler, a.RevokeLease)
 
 	// 认证管理
-	api.Put("/auth/enable", a.EnableAuth)
-	api.Put("/auth/disable", a.DisableAuth)
+	api.Put("/auth/enable", authHandler, adminRoleHandler, a.EnableAuth)
+	api.Put("/auth/disable", authHandler, adminRoleHandler, a.DisableAuth)
 }
 
 // =================================
@@ -73,7 +74,7 @@ func (a *API) SetupRoutes(app *fiber.App) {
 
 // GetClusterStatus 获取集群状态
 func (a *API) GetClusterStatus(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -81,15 +82,15 @@ func (a *API) GetClusterStatus(c *fiber.Ctx) error {
 	defer cancel()
 
 	// 获取成员列表
-	memberListResp, err := a.client.GetClient().MemberList(ctx)
+	memberListResp, err := a.client.Client.MemberList(ctx)
 	if err != nil {
 		a.logger.Error("获取成员列表失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("获取成员列表失败: %v", err))
 	}
 
 	// 获取当前集群状态
-	endpoint := a.client.GetClient().Endpoints()[0]
-	statusResp, err := a.client.GetClient().Status(ctx, endpoint)
+	endpoint := a.client.Client.Endpoints()[0]
+	statusResp, err := a.client.Client.Status(ctx, endpoint)
 	if err != nil {
 		a.logger.Error("获取集群状态失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("获取集群状态失败: %v", err))
@@ -130,7 +131,7 @@ func (a *API) GetClusterStatus(c *fiber.Ctx) error {
 
 // GetMembers 获取集群成员列表
 func (a *API) GetMembers(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -138,7 +139,7 @@ func (a *API) GetMembers(c *fiber.Ctx) error {
 	defer cancel()
 
 	// 获取成员列表
-	resp, err := a.client.GetClient().MemberList(ctx)
+	resp, err := a.client.Client.MemberList(ctx)
 	if err != nil {
 		a.logger.Error("获取成员列表失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("获取成员列表失败: %v", err))
@@ -169,7 +170,7 @@ type MemberAddRequest struct {
 
 // AddMember 添加集群成员
 func (a *API) AddMember(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -190,7 +191,7 @@ func (a *API) AddMember(c *fiber.Ctx) error {
 	defer cancel()
 
 	// 添加成员
-	resp, err := a.client.GetClient().MemberAdd(ctx, req.PeerURLs)
+	resp, err := a.client.Client.MemberAdd(ctx, req.PeerURLs)
 	if err != nil {
 		a.logger.Error("添加成员失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("添加成员失败: %v", err))
@@ -238,7 +239,7 @@ type MemberUpdateRequest struct {
 
 // UpdateMember 更新集群成员
 func (a *API) UpdateMember(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -263,14 +264,14 @@ func (a *API) UpdateMember(c *fiber.Ctx) error {
 	defer cancel()
 
 	// 更新成员
-	_, err = a.client.GetClient().MemberUpdate(ctx, id, req.PeerURLs)
+	_, err = a.client.Client.MemberUpdate(ctx, id, req.PeerURLs)
 	if err != nil {
 		a.logger.Error("更新成员失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("更新成员失败: %v", err))
 	}
 
 	// 获取更新后的成员信息
-	resp, err := a.client.GetClient().MemberList(ctx)
+	resp, err := a.client.Client.MemberList(ctx)
 	if err != nil {
 		a.logger.Error("获取成员列表失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("获取成员列表失败: %v", err))
@@ -303,7 +304,7 @@ func (a *API) UpdateMember(c *fiber.Ctx) error {
 
 // RemoveMember 删除集群成员
 func (a *API) RemoveMember(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -318,7 +319,7 @@ func (a *API) RemoveMember(c *fiber.Ctx) error {
 	defer cancel()
 
 	// 删除成员
-	_, err = a.client.GetClient().MemberRemove(ctx, id)
+	_, err = a.client.Client.MemberRemove(ctx, id)
 	if err != nil {
 		a.logger.Error("删除成员失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("删除成员失败: %v", err))
@@ -335,7 +336,7 @@ func (a *API) RemoveMember(c *fiber.Ctx) error {
 
 // GetValue 获取指定键的值
 func (a *API) GetValue(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -349,7 +350,7 @@ func (a *API) GetValue(c *fiber.Ctx) error {
 	defer cancel()
 
 	// 获取键值
-	resp, err := a.client.GetClient().Get(ctx, key)
+	resp, err := a.client.Client.Get(ctx, key)
 	if err != nil {
 		a.logger.Error("获取键值失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("获取键值失败: %v", err))
@@ -373,7 +374,7 @@ func (a *API) GetValue(c *fiber.Ctx) error {
 
 // GetValuesWithPrefix 获取具有指定前缀的所有键值
 func (a *API) GetValuesWithPrefix(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -387,7 +388,7 @@ func (a *API) GetValuesWithPrefix(c *fiber.Ctx) error {
 	defer cancel()
 
 	// 获取前缀键值
-	resp, err := a.client.GetClient().Get(ctx, prefix, clientv3.WithPrefix())
+	resp, err := a.client.Client.Get(ctx, prefix, clientv3.WithPrefix())
 	if err != nil {
 		a.logger.Error("获取前缀键值失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("获取前缀键值失败: %v", err))
@@ -418,7 +419,7 @@ type PutValueRequest struct {
 
 // PutValue 创建或更新键值
 func (a *API) PutValue(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -453,14 +454,14 @@ func (a *API) PutValue(c *fiber.Ctx) error {
 	}
 
 	// 放置键值
-	_, err := a.client.GetClient().Put(ctx, key, req.Value, opts...)
+	_, err := a.client.Client.Put(ctx, key, req.Value, opts...)
 	if err != nil {
 		a.logger.Error("放置键值失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("放置键值失败: %v", err))
 	}
 
 	// 获取更新后的键值信息
-	getResp, err := a.client.GetClient().Get(ctx, key)
+	getResp, err := a.client.Client.Get(ctx, key)
 	if err != nil {
 		a.logger.Error("获取更新后的键值失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("获取更新后的键值失败: %v", err))
@@ -484,7 +485,7 @@ func (a *API) PutValue(c *fiber.Ctx) error {
 
 // DeleteValue 删除指定键值
 func (a *API) DeleteValue(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -506,7 +507,7 @@ func (a *API) DeleteValue(c *fiber.Ctx) error {
 	}
 
 	// 删除键值
-	resp, err := a.client.GetClient().Delete(ctx, key, opts...)
+	resp, err := a.client.Client.Delete(ctx, key, opts...)
 	if err != nil {
 		a.logger.Error("删除键值失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("删除键值失败: %v", err))
@@ -533,7 +534,7 @@ type LeaseCreateRequest struct {
 
 // CreateLease 创建租约
 func (a *API) CreateLease(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -551,7 +552,7 @@ func (a *API) CreateLease(c *fiber.Ctx) error {
 	defer cancel()
 
 	// 创建租约
-	resp, err := a.client.GetClient().Grant(ctx, req.TTL)
+	resp, err := a.client.Client.Grant(ctx, req.TTL)
 	if err != nil {
 		a.logger.Error("创建租约失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("创建租约失败: %v", err))
@@ -565,7 +566,7 @@ func (a *API) CreateLease(c *fiber.Ctx) error {
 
 // KeepAlive 续约指定租约
 func (a *API) KeepAlive(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -580,7 +581,7 @@ func (a *API) KeepAlive(c *fiber.Ctx) error {
 	defer cancel()
 
 	// 续约
-	resp, err := a.client.GetClient().KeepAliveOnce(ctx, clientv3.LeaseID(id))
+	resp, err := a.client.Client.KeepAliveOnce(ctx, clientv3.LeaseID(id))
 	if err != nil {
 		a.logger.Error("续约租约失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("续约租约失败: %v", err))
@@ -594,7 +595,7 @@ func (a *API) KeepAlive(c *fiber.Ctx) error {
 
 // RevokeLease 撤销指定租约
 func (a *API) RevokeLease(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -609,7 +610,7 @@ func (a *API) RevokeLease(c *fiber.Ctx) error {
 	defer cancel()
 
 	// 撤销租约
-	_, err = a.client.GetClient().Revoke(ctx, clientv3.LeaseID(id))
+	_, err = a.client.Client.Revoke(ctx, clientv3.LeaseID(id))
 	if err != nil {
 		a.logger.Error("撤销租约失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("撤销租约失败: %v", err))
@@ -626,7 +627,7 @@ func (a *API) RevokeLease(c *fiber.Ctx) error {
 
 // EnableAuth 启用认证
 func (a *API) EnableAuth(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -634,7 +635,7 @@ func (a *API) EnableAuth(c *fiber.Ctx) error {
 	defer cancel()
 
 	// 启用认证
-	_, err := a.client.GetClient().AuthEnable(ctx)
+	_, err := a.client.Client.AuthEnable(ctx)
 	if err != nil {
 		a.logger.Error("启用认证失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("启用认证失败: %v", err))
@@ -647,7 +648,7 @@ func (a *API) EnableAuth(c *fiber.Ctx) error {
 
 // DisableAuth 禁用认证
 func (a *API) DisableAuth(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -655,7 +656,7 @@ func (a *API) DisableAuth(c *fiber.Ctx) error {
 	defer cancel()
 
 	// 禁用认证
-	_, err := a.client.GetClient().AuthDisable(ctx)
+	_, err := a.client.Client.AuthDisable(ctx)
 	if err != nil {
 		a.logger.Error("禁用认证失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("禁用认证失败: %v", err))
@@ -668,7 +669,7 @@ func (a *API) DisableAuth(c *fiber.Ctx) error {
 
 // GetAllLeases 获取所有租约
 func (a *API) GetAllLeases(c *fiber.Ctx) error {
-	if a.client == nil || a.client.GetClient() == nil {
+	if a.client == nil || a.client.Client == nil {
 		return utils.FailResponse(c, utils.StatusInternalError, "ETCD客户端未初始化")
 	}
 
@@ -676,7 +677,7 @@ func (a *API) GetAllLeases(c *fiber.Ctx) error {
 	defer cancel()
 
 	// 获取所有租约
-	resp, err := a.client.GetClient().Lease.Leases(ctx)
+	resp, err := a.client.Client.Lease.Leases(ctx)
 	if err != nil {
 		a.logger.Error("获取租约列表失败", zap.Error(err))
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("获取租约列表失败: %v", err))
@@ -686,7 +687,7 @@ func (a *API) GetAllLeases(c *fiber.Ctx) error {
 	leases := make([]map[string]interface{}, 0, len(resp.Leases))
 	for _, lease := range resp.Leases {
 		// 获取租约详细信息，包括TTL
-		ttlResp, err := a.client.GetClient().Lease.TimeToLive(ctx, clientv3.LeaseID(lease.ID), clientv3.WithAttachedKeys())
+		ttlResp, err := a.client.Client.Lease.TimeToLive(ctx, clientv3.LeaseID(lease.ID), clientv3.WithAttachedKeys())
 		if err != nil {
 			a.logger.Warn("获取租约详情失败", zap.String("id", fmt.Sprintf("%x", lease.ID)), zap.Error(err))
 			continue

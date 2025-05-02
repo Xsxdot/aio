@@ -2,6 +2,7 @@ package distributed
 
 import (
 	"fmt"
+
 	"github.com/xsxdot/aio/pkg/distributed/discovery"
 	"github.com/xsxdot/aio/pkg/distributed/election"
 	"github.com/xsxdot/aio/pkg/utils"
@@ -26,19 +27,19 @@ func NewAPI(discoveryService discovery.DiscoveryService, election election.Elect
 	}
 }
 
-// SetupRoutes 设置API路由
-func (a *API) SetupRoutes(app *fiber.App) {
-	g := app.Group("/api/distributed")
+// RegisterRoutes 注册API路由
+func (a *API) RegisterRoutes(router fiber.Router, authHandler func(*fiber.Ctx) error, adminRoleHandler func(*fiber.Ctx) error) {
+	g := router.Group("/distributed")
 
 	electionGroup := g.Group("/election")
-	electionGroup.Get("/:name/leader", a.getElectionLeader)
+	electionGroup.Get("/:name/leader", authHandler, a.getElectionLeader)
+
 	// 服务发现API
 	discoveryGroup := g.Group("/discovery")
-	discoveryGroup.Get("/services", a.getAllServices)
-	discoveryGroup.Get("/services/:name", a.getServicesByName)
-	discoveryGroup.Post("/services", a.registerService)
-	discoveryGroup.Delete("/services/:id", a.deregisterService)
-
+	discoveryGroup.Get("/services", authHandler, a.getAllServices)
+	discoveryGroup.Get("/services/:name", authHandler, a.getServicesByName)
+	discoveryGroup.Post("/services", authHandler, adminRoleHandler, a.registerService)
+	discoveryGroup.Delete("/services/:id", authHandler, adminRoleHandler, a.deregisterService)
 }
 
 func (a *API) getElectionLeader(c *fiber.Ctx) error {

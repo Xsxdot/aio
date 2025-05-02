@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/xsxdot/aio/pkg/distributed/common"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/xsxdot/aio/internal/etcd"
+	"github.com/xsxdot/aio/pkg/distributed/common"
 	clientv3 "go.etcd.io/etcd/client/v3"
+
 	"go.uber.org/zap"
 )
 
@@ -72,7 +74,7 @@ type IDGeneratorService interface {
 
 // ID生成器服务实现
 type idGeneratorServiceImpl struct {
-	etcdClient *clientv3.Client
+	etcdClient *etcd.EtcdClient
 	logger     *zap.Logger
 	generators map[string]IDGenerator
 	mutex      sync.RWMutex
@@ -86,7 +88,7 @@ type idGeneratorImpl struct {
 	currentID  int64
 	buffer     []int64
 	bufferPos  int
-	etcdClient *clientv3.Client
+	etcdClient *etcd.EtcdClient
 	logger     *zap.Logger
 	mutex      sync.Mutex
 	status     common.ComponentStatus
@@ -95,7 +97,7 @@ type idGeneratorImpl struct {
 }
 
 // NewIDGeneratorService 创建ID生成器服务
-func NewIDGeneratorService(etcdClient *clientv3.Client, logger *zap.Logger) (IDGeneratorService, error) {
+func NewIDGeneratorService(etcdClient *etcd.EtcdClient, logger *zap.Logger) (IDGeneratorService, error) {
 	return &idGeneratorServiceImpl{
 		etcdClient: etcdClient,
 		logger:     logger,
@@ -279,7 +281,7 @@ func (s *idGeneratorServiceImpl) saveGeneratorConfig(ctx context.Context, name s
 	}
 
 	key := fmt.Sprintf("/distributed/components/idgens/%s/config", name)
-	_, err = s.etcdClient.Put(ctx, key, string(data))
+	err = s.etcdClient.Put(ctx, key, string(data))
 	if err != nil {
 		return err
 	}
@@ -301,14 +303,14 @@ func (s *idGeneratorServiceImpl) saveGeneratorState(ctx context.Context, name st
 	}
 
 	key := fmt.Sprintf("/distributed/components/idgens/%s/state", name)
-	_, err = s.etcdClient.Put(ctx, key, string(data))
+	err = s.etcdClient.Put(ctx, key, string(data))
 	return err
 }
 
 // 修改恢复ID生成器的方法，避免锁嵌套
 func (s *idGeneratorServiceImpl) restoreGeneratorsFromEtcd(ctx context.Context) error {
 	prefix := "/distributed/components/idgens/"
-	resp, err := s.etcdClient.Get(ctx, prefix, clientv3.WithPrefix())
+	resp, err := s.etcdClient.Client.Get(ctx, prefix, clientv3.WithPrefix())
 	if err != nil {
 		return err
 	}
@@ -567,7 +569,7 @@ func (g *idGeneratorImpl) allocateNewIDRange(ctx context.Context) error {
 		return err
 	}
 
-	_, err = g.etcdClient.Put(ctx, stateKey, string(data))
+	err = g.etcdClient.Put(ctx, stateKey, string(data))
 	if err != nil {
 		g.logger.Error("Failed to save state", zap.Error(err))
 		return err

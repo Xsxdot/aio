@@ -23,7 +23,7 @@ func Example_basic() {
 	storage := authmanager.NewEtcdStorage(etcdClient)
 
 	// 创建认证管理器
-	manager, err := authmanager.NewAuthManager(storage)
+	manager, err := authmanager.NewAuthManager(storage, nil)
 	if err != nil {
 		fmt.Printf("创建认证管理器失败: %v\n", err)
 		return

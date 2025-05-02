@@ -2,12 +2,14 @@ package etcd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/xsxdot/aio/pkg/auth"
 
 	"github.com/xsxdot/aio/app/config"
 	consts "github.com/xsxdot/aio/app/const"
@@ -16,27 +18,13 @@ import (
 
 type Config struct {
 	// 节点名称，必须唯一
-	Name string `json:"name" yaml:"name"`
-	// 数据目录
-	DataDir    string `json:"data_dir" yaml:"data_dir"`
-	BindIP     string `json:"bind_ip" yaml:"bind_ip"`
-	LocalIp    string `json:"local_ip" yaml:"local_ip"`
-	ClientPort int    `json:"client_port" yaml:"client_port"`
-	PeerPort   int    `json:"peer_port" yaml:"peer_port"`
-	// 初始集群配置，格式为: nodeName1=http://ip1:2380,nodeName2=http://ip2:2380
-	InitialCluster string `json:"initial_cluster" yaml:"initial_cluster"`
-	// 初始集群状态: "new" 或 "existing"
-	InitialClusterState string `json:"initial_cluster_state" yaml:"initial_cluster_state"`
-	// 初始集群令牌
-	InitialClusterToken string `json:"initial_cluster_token" yaml:"initial_cluster_token"`
-	AuthToken           string `json:"auth_token" yaml:"auth_token"`
-	// 客户端TLS
-	ClientTLSConfig TLSConfig `json:"client_tls_config" yaml:"client_tls_config"`
-	ServerTLSConfig TLSConfig `json:"server_tls_config" yaml:"server_tls_config"`
-	// JWT认证配置
-	Jwt JWTConfig `json:"jwt" yaml:"jwt"`
-	// 用户名密码认证配置
-	User UserAuthConfig `json:"user" yaml:"user"`
+	name              string
+	bindIP            string
+	localIp           string
+	dataDir           string
+	isMaster          bool
+	initialClusterUrl string
+	config.EtcdConfig
 }
 
 func (c *Config) ToServerConfig() *ServerConfig {
@@ -49,29 +37,75 @@ func (c *Config) ToServerConfig() *ServerConfig {
 		serverProto = "https://"
 	}
 
-	clientURLs := []string{clientProto + c.BindIP + ":" + fmt.Sprintf("%d", c.ClientPort)}
-	peerURLs := []string{serverProto + c.BindIP + ":" + fmt.Sprintf("%d", c.PeerPort)}
+	clientURLs := []string{clientProto + c.bindIP + ":" + fmt.Sprintf("%d", c.ClientPort)}
+	peerURLs := []string{serverProto + c.localIp + ":" + fmt.Sprintf("%d", c.PeerPort)}
 
-	if c.BindIP != c.LocalIp {
-		clientURLs = append(clientURLs, clientProto+c.LocalIp+":"+fmt.Sprintf("%d", c.ClientPort))
-		peerURLs = append(peerURLs, serverProto+c.LocalIp+":"+fmt.Sprintf("%d", c.PeerPort))
+	state := "new"
+
+	if c.isMaster {
+		_, err := os.Stat(filepath.Join(c.dataDir, "member", "wal"))
+		if err == nil {
+			state = "existing"
+		}
+	} else {
+		state = "existing"
+	}
+
+	authToken := c.AuthToken
+	if c.Jwt {
+		authToken = "jwt"
 	}
 
 	serverConfig := &ServerConfig{
-		Name:       c.Name,
-		DataDir:    c.DataDir,
+		Name:       c.name,
+		DataDir:    c.dataDir,
 		ClientURLs: clientURLs,
 		//ListenClientHttpUrls: []string{ip + "/v3"},
 		PeerURLs:            peerURLs,
-		InitialCluster:      fmt.Sprintf("%s=%s%s:%d", c.Name, serverProto, c.LocalIp, c.PeerPort),
-		InitialClusterState: c.InitialClusterState,
+		InitialCluster:      c.initialClusterUrl,
+		InitialClusterState: state,
 		InitialClusterToken: c.InitialClusterToken,
 		PeerTLSConfig:       c.ServerTLSConfig,
 		ClientTLSConfig:     c.ClientTLSConfig,
-		AuthToken:           c.AuthToken,
-		JWT:                 c.Jwt,
-		UserAuthConfig:      c.User,
+		AuthToken:           authToken,
+		UserAuthConfig: UserAuthConfig{
+			RootUsername: c.Username,
+			RootPassword: c.Password,
+		},
 	}
+
+	if c.Jwt {
+		jwtConfig := auth.GlobalCertManager.JwtConfig
+		serverConfig.JWT = *jwtConfig
+	}
+
+	server := auth.GlobalCertManager.NodeCert
+	//client := auth.GlobalCertManager.ClientCert
+
+	if c.ServerTLSConfig.TLSEnabled {
+		if c.ServerTLSConfig.AutoTls {
+			serverConfig.PeerTLSConfig = config.TLSConfig{
+				AutoTls:    false,
+				TLSEnabled: true,
+				Cert:       server.Cert,
+				Key:        server.Key,
+				TrustedCA:  auth.GlobalCertManager.GetCAFilePath(),
+			}
+		}
+	}
+
+	if c.ClientTLSConfig.TLSEnabled {
+		if c.ClientTLSConfig.AutoTls {
+			serverConfig.ClientTLSConfig = config.TLSConfig{
+				AutoTls:    false,
+				TLSEnabled: true,
+				Cert:       server.Cert,
+				Key:        server.Key,
+				TrustedCA:  auth.GlobalCertManager.GetCAFilePath(),
+			}
+		}
+	}
+
 	return serverConfig
 }
 
@@ -80,37 +114,45 @@ func (c *Config) ToClientConfig() (*ClientConfig, error) {
 	if c.ClientTLSConfig.TLSEnabled {
 		proto = "https://"
 	}
-	ip := proto + c.BindIP + ":" + fmt.Sprintf("%d", c.ClientPort)
+
+	tlsConfig := config.TLSConfig{
+		AutoTls:    false,
+		TLSEnabled: false,
+	}
+
+	if c.ClientTLSConfig.TLSEnabled {
+		if c.ClientTLSConfig.AutoTls {
+			client := auth.GlobalCertManager.ClientCert
+			tlsConfig.TLSEnabled = true
+			tlsConfig.Cert = client.Cert
+			tlsConfig.Key = client.Key
+			tlsConfig.TrustedCA = auth.GlobalCertManager.GetCAFilePath()
+		}
+	}
+	ip := proto + c.localIp + ":" + fmt.Sprintf("%d", c.ClientPort)
 	return &ClientConfig{
 		Endpoints:         []string{ip},
 		DialTimeout:       5 * time.Second,
-		Username:          c.User.RootUsername,
-		Password:          c.User.RootPassword,
+		Username:          c.Username,
+		Password:          c.Password,
 		AutoSyncEndpoints: true,
-		TLS:               &c.ClientTLSConfig,
+		TLS:               &tlsConfig,
 	}, nil
 }
 
 // NewDefaultConfig 创建默认的服务器配置
-func NewDefaultConfig(config *config.BaseConfig) *Config {
-	name := "aio-etcd-" + config.System.NodeId
+func NewDefaultConfig() *Config {
 	return &Config{
-		Name:                name,
-		DataDir:             filepath.Join(config.System.DataDir, "etcd"),
-		BindIP:              config.Network.BindIP,
-		LocalIp:             config.Network.LocalIp,
-		ClientPort:          2379,
-		PeerPort:            2380,
-		InitialCluster:      fmt.Sprintf("%s=https://%s:2380", name, config.Network.LocalIp),
-		InitialClusterState: "new",
-		InitialClusterToken: "etcd-cluster",
-		AuthToken:           "root",
-		ClientTLSConfig:     TLSConfig{AutoTls: true},
-		ServerTLSConfig:     TLSConfig{AutoTls: true},
-		Jwt:                 JWTConfig{},
-		User: UserAuthConfig{
-			RootUsername: "root",
-			RootPassword: "123456",
+		EtcdConfig: config.EtcdConfig{
+			ClientPort:          2379,
+			PeerPort:            2380,
+			InitialClusterToken: "etcd-cluster",
+			AuthToken:           "jwt",
+			ClientTLSConfig:     config.TLSConfig{AutoTls: true, TLSEnabled: true},
+			ServerTLSConfig:     config.TLSConfig{AutoTls: true, TLSEnabled: true},
+			Jwt:                 true,
+			Username:            "root",
+			Password:            "123456",
 		},
 	}
 }
@@ -136,16 +178,27 @@ func (c *EtcdComponent) Name() string {
 }
 
 func (c *EtcdComponent) Init(config *config.BaseConfig, body []byte) error {
-	serverConfig := NewDefaultConfig(config)
+	serverConfig := NewDefaultConfig()
+	serverConfig.EtcdConfig = *config.Etcd
 	c.cfg = serverConfig
 
-	err := json.Unmarshal(body, serverConfig)
-	if err != nil {
-		return err
+	proto := "http://"
+	if serverConfig.ServerTLSConfig.TLSEnabled {
+		proto = "https://"
 	}
 
-	serverConfig.BindIP = config.Network.BindIP
-	serverConfig.LocalIp = config.Network.LocalIp
+	name := "aio-etcd-" + config.System.NodeId
+	serverConfig.name = name
+	serverConfig.dataDir = filepath.Join(config.System.DataDir, "etcd")
+	serverConfig.bindIP = config.Network.BindIP
+	serverConfig.localIp = config.Network.LocalIP
+
+	for _, node := range config.Nodes {
+		if node.Master {
+			serverConfig.isMaster = node.NodeId == config.System.NodeId
+			serverConfig.initialClusterUrl = fmt.Sprintf("%s=%s%s:%d", name, proto, node.Addr, serverConfig.PeerPort)
+		}
+	}
 
 	c.status = consts.StatusInitialized
 
@@ -174,12 +227,6 @@ func (c *EtcdComponent) Start(ctx context.Context) error {
 	} else if c.status == consts.StatusNotInitialized {
 		return fmt.Errorf("组件未初始化，无法启动")
 	}
-
-	clientConfig, err := c.cfg.ToClientConfig()
-	if err != nil {
-		return err
-	}
-
 	serverConfig := c.cfg.ToServerConfig()
 
 	c.log.Infof("正在启动嵌入式etcd服务器，数据目录: %v", serverConfig.DataDir)
@@ -191,6 +238,11 @@ func (c *EtcdComponent) Start(ctx context.Context) error {
 	} else {
 		c.Server = server
 		c.log.Infof("嵌入式etcd服务器已启动，客户端地址: %v", serverConfig.ClientURLs)
+	}
+
+	clientConfig, err := c.cfg.ToClientConfig()
+	if err != nil {
+		return err
 	}
 
 	client, err := NewEtcdClient(clientConfig, c.log.GetZapLogger("etcd-client"))
@@ -251,21 +303,54 @@ func (c *EtcdComponent) GetClient() *EtcdClient {
 
 // DefaultConfig 返回组件的默认配置
 func (c *EtcdComponent) DefaultConfig(baseConfig *config.BaseConfig) interface{} {
-	return NewDefaultConfig(baseConfig)
+	return NewDefaultConfig()
 }
 
 // GetClientConfig 返回客户端配置
 func (c *EtcdComponent) GetClientConfig() (bool, *config.ClientConfig) {
 	value := config.ClientConfigFixedValue{
-		Username:  c.cfg.User.RootUsername,
-		Password:  c.cfg.User.RootPassword,
+		Username:  c.cfg.Username,
+		Password:  c.cfg.Password,
 		EnableTls: c.cfg.ClientTLSConfig.TLSEnabled,
 	}
 
-	if c.cfg.ClientTLSConfig.TLSEnabled && !c.cfg.ClientTLSConfig.AutoTls {
-		value.Cert = c.cfg.ClientTLSConfig.Cert
-		value.Key = c.cfg.ClientTLSConfig.Key
-		value.TrustedCAFile = c.cfg.ClientTLSConfig.TrustedCA
+	if c.cfg.ClientTLSConfig.TLSEnabled {
+		// 读取证书文件内容
+		certFile := c.cfg.ClientTLSConfig.Cert
+		keyFile := c.cfg.ClientTLSConfig.Key
+		caFile := c.cfg.ClientTLSConfig.TrustedCA
+		if c.cfg.ClientTLSConfig.AutoTls {
+			client := auth.GlobalCertManager.ClientCert
+			certFile = client.Cert
+			keyFile = client.Key
+			caFile = auth.GlobalCertManager.GetCAFilePath()
+		}
+
+		// 保存文件路径以便兼容
+		value.Cert = certFile
+		value.Key = keyFile
+		value.TrustedCAFile = caFile
+
+		// 读取证书内容
+		if certContent, err := os.ReadFile(certFile); err == nil {
+			value.CertContent = string(certContent)
+		} else {
+			c.log.Errorf("读取证书文件失败: %v", err)
+		}
+
+		// 读取密钥内容
+		if keyContent, err := os.ReadFile(keyFile); err == nil {
+			value.KeyContent = string(keyContent)
+		} else {
+			c.log.Errorf("读取密钥文件失败: %v", err)
+		}
+
+		// 读取CA证书内容
+		if caContent, err := os.ReadFile(caFile); err == nil {
+			value.CATrustedContent = string(caContent)
+		} else {
+			c.log.Errorf("读取CA证书文件失败: %v", err)
+		}
 	}
 
 	return true, config.NewClientConfig("etcd", value)

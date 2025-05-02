@@ -14,12 +14,18 @@ type ClientConfigFixedValue struct {
 	Password string `json:"password,omitempty"`
 	// 是否启用TLS
 	EnableTls bool `json:"enable_tls,omitempty"`
-	// 客户端证书
+	// 客户端证书路径
 	Cert string `json:"cert,omitempty"`
-	// 客户端密钥
+	// 客户端密钥路径
 	Key string `json:"key,omitempty"`
-	// 可信CA证书
+	// 可信CA证书路径
 	TrustedCAFile string `json:"trusted_ca_file,omitempty"`
+	// 客户端证书内容
+	CertContent string `json:"cert_content,omitempty"`
+	// 客户端密钥内容
+	KeyContent string `json:"key_content,omitempty"`
+	// 可信CA证书内容
+	CATrustedContent string `json:"ca_trusted_content,omitempty"`
 }
 
 // ClientConfig 表示返回给客户端的配置

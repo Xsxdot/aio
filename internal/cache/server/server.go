@@ -82,15 +82,25 @@ func (s *Server) GetClientConfig() (bool, *config.ClientConfig) {
 
 // DefaultConfig 返回组件的默认配置
 func (s *Server) DefaultConfig(config *config.BaseConfig) interface{} {
-	return s.genConfig(config)
+	cacheConfig := cache.DefaultConfig().CacheConfig
+	return &cacheConfig
 }
 
 func (s *Server) genConfig(config *config.BaseConfig) *cache.Config {
-	defaultConfig := cache.DefaultConfig()
-	defaultConfig.Host = config.Network.BindIP
-	defaultConfig.NodeID = config.System.NodeId
-	defaultConfig.RDBFilePath = filepath.Join(config.System.DataDir, defaultConfig.RDBFilePath, "rdb", fmt.Sprintf("%s.rdb", config.System.NodeId))
-	defaultConfig.AOFFilePath = filepath.Join(config.System.DataDir, defaultConfig.AOFFilePath, "aof", fmt.Sprintf("%s.aof", config.System.NodeId))
+	defaultConfig := cache.Config{
+		NodeID: config.System.NodeId,
+		Host:   config.Network.BindIP,
+	}
+
+	if defaultConfig.RDBFilePath == "" {
+		defaultConfig.RDBFilePath = fmt.Sprintf("%s.rdb", config.System.NodeId)
+	}
+	if defaultConfig.AOFFilePath == "" {
+		defaultConfig.AOFFilePath = fmt.Sprintf("%s.aof", config.System.NodeId)
+	}
+
+	defaultConfig.RDBFilePath = filepath.Join(config.System.DataDir, "cache", defaultConfig.RDBFilePath)
+	defaultConfig.AOFFilePath = filepath.Join(config.System.DataDir, "cache", defaultConfig.AOFFilePath)
 	return &defaultConfig
 }
 
@@ -98,9 +108,12 @@ func (s *Server) Init(config *config.BaseConfig, body []byte) error {
 	defaultConfig := s.genConfig(config)
 	s.config = defaultConfig
 
-	if err := json.Unmarshal(body, &defaultConfig); err != nil {
+	cacheConfig := defaultConfig.CacheConfig
+
+	if err := json.Unmarshal(body, &cacheConfig); err != nil {
 		return err
 	}
+	defaultConfig.CacheConfig = cacheConfig
 
 	s.status = consts.StatusInitialized
 

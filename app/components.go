@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	configInternal "github.com/xsxdot/aio/pkg/config"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	configInternal "github.com/xsxdot/aio/pkg/config"
 
 	"go.uber.org/zap"
 
@@ -100,28 +101,19 @@ type ComponentManager struct {
 	ctx          context.Context
 	app          *App
 	logger       *zap.Logger
-	reinitConfig map[string][]byte
 	enables      map[string]bool
 }
 
 // NewComponentRegistry 创建一个新的组件注册表
 func NewComponentRegistry(app *App) *ComponentManager {
 	return &ComponentManager{
-		components:   make(map[string]*ComponentEntity),
-		order:        make([]*ComponentEntity, 0),
-		ctx:          context.Background(),
-		app:          app,
-		logger:       common.GetLogger().GetZapLogger("ComponentManager"),
-		reinitConfig: make(map[string][]byte),
-		enables:      make(map[string]bool),
+		components: make(map[string]*ComponentEntity),
+		order:      make([]*ComponentEntity, 0),
+		ctx:        context.Background(),
+		app:        app,
+		logger:     common.GetLogger().GetZapLogger("ComponentManager"),
+		enables:    make(map[string]bool),
 	}
-}
-
-func (r *ComponentManager) WithReinitConfig(cfg map[string][]byte, enables map[string]bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.reinitConfig = cfg
-	r.enables = enables
 }
 
 // Register 注册组件
@@ -246,10 +238,6 @@ func (r *ComponentManager) Stop(ctx context.Context, name string) error {
 }
 
 func (r *ComponentManager) GetConfigData(component *ComponentEntity) []byte {
-	if cfg, ok := r.reinitConfig[component.Name()]; ok {
-		_ = r.loadInitConfig(component, cfg)
-	}
-
 	var bytes []byte
 	var err error
 	switch component.cfg.ReadType {
@@ -315,7 +303,7 @@ func (r *ComponentManager) Start(ctx context.Context, name string) error {
 			}
 		}
 
-		if component.Status() == consts.StatusInitialized {
+		if component.Status() == consts.StatusInitialized || component.Status() == consts.StatusStopped {
 			err := component.Start(ctx)
 			if err != nil {
 				r.logger.Error("组件启动失败,退出", zap.Error(err))
@@ -333,18 +321,13 @@ func (r *ComponentManager) Restart(ctx context.Context, name string) error {
 	component := r.components[name]
 	if component != nil {
 		if component.Status() == consts.StatusRunning {
-			err := component.Restart(ctx)
+			err := component.Stop(ctx)
 			if err != nil {
 				return err
 			}
-		} else if component.Status() == consts.StatusInitialized || component.Status() == consts.StatusStopped {
-			err := component.Start(ctx)
-			if err != nil {
-				return err
-			}
-		} else {
-			return errors.New("组件状态不正确")
 		}
+
+		return r.Start(ctx, name)
 
 	}
 	return nil
@@ -359,36 +342,6 @@ func (r *ComponentManager) GetDefaultConfig(name string) (interface{}, error) {
 		return nil, errors.New("组件不存在")
 	}
 	return component.DefaultConfig(r.app.BaseConfig), nil
-}
-
-// GetAllDefaultConfigs 获取所有组件的默认配置
-func (r *ComponentManager) GetAllDefaultConfigs() map[string]*ConfigInfo {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	configs := make(map[string]*ConfigInfo)
-	for name, component := range r.components {
-		if component != nil {
-			configs[name] = &ConfigInfo{
-				Name:   component.Name(),
-				Data:   component.DefaultConfig(r.app.BaseConfig),
-				Enable: component.Enable,
-				Type:   component.Type,
-			}
-		}
-	}
-	return configs
-}
-
-func (r *ComponentManager) loadDefaultConfig(entity *ComponentEntity) error {
-	if entity.Type == TypeNormal {
-		entity.Enable = false
-	}
-
-	defaultConfig := entity.DefaultConfig(r.app.BaseConfig)
-	bytes, err := json.Marshal(defaultConfig)
-	entity.cfg.Body = bytes
-	return err
 }
 
 func (r *ComponentManager) loadInitConfig(component *ComponentEntity, cfg []byte) error {
@@ -464,6 +417,7 @@ func (r *ComponentManager) RegisterClientConfig() {
 					Type:  configInternal.ValueTypeBool,
 				}
 
+				// 添加证书路径相关配置 (保留兼容性)
 				if clientConfig.Value.Cert != "" {
 					configValue["cert"] = &configInternal.ConfigValue{
 						Value: clientConfig.Value.Cert,
@@ -481,6 +435,28 @@ func (r *ComponentManager) RegisterClientConfig() {
 				if clientConfig.Value.TrustedCAFile != "" {
 					configValue["trusted_ca_file"] = &configInternal.ConfigValue{
 						Value: clientConfig.Value.TrustedCAFile,
+						Type:  configInternal.ValueTypeString,
+					}
+				}
+
+				// 添加证书内容相关配置
+				if clientConfig.Value.CertContent != "" {
+					configValue["cert_content"] = &configInternal.ConfigValue{
+						Value: clientConfig.Value.CertContent,
+						Type:  configInternal.ValueTypeString,
+					}
+				}
+
+				if clientConfig.Value.KeyContent != "" {
+					configValue["key_content"] = &configInternal.ConfigValue{
+						Value: clientConfig.Value.KeyContent,
+						Type:  configInternal.ValueTypeString,
+					}
+				}
+
+				if clientConfig.Value.CATrustedContent != "" {
+					configValue["ca_trusted_content"] = &configInternal.ConfigValue{
+						Value: clientConfig.Value.CATrustedContent,
 						Type:  configInternal.ValueTypeString,
 					}
 				}

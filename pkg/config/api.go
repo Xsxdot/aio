@@ -3,8 +3,9 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/xsxdot/aio/pkg/utils"
 	"strconv"
+
+	"github.com/xsxdot/aio/pkg/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
@@ -27,38 +28,42 @@ func NewAPI(service *Service, logger *zap.Logger) *API {
 	}
 }
 
-// SetupRoutes 设置所有API路由
-func (api *API) SetupRoutes(app *fiber.App) {
+// RegisterRoutes 注册所有API路由
+func (api *API) RegisterRoutes(router fiber.Router, authHandler func(*fiber.Ctx) error, adminRoleHandler func(*fiber.Ctx) error) {
 	// 创建API组
-	configGroup := app.Group("/api/config")
+	configGroup := router.Group("/config")
 
 	// 配置项基本操作
-	configGroup.Get("/", api.listConfigs)
-	configGroup.Get("/:key", api.getConfig)
-	configGroup.Post("/", api.createConfig)
-	configGroup.Put("/:key", api.updateConfig)
-	configGroup.Delete("/:key", api.deleteConfig)
+	configGroup.Get("/", authHandler, api.listConfigs)
+	configGroup.Get("/:key", authHandler, api.getConfig)
+	configGroup.Post("/", authHandler, adminRoleHandler, api.createConfig)
+	configGroup.Put("/:key", authHandler, adminRoleHandler, api.updateConfig)
+	configGroup.Delete("/:key", authHandler, adminRoleHandler, api.deleteConfig)
 
 	// 配置历史相关
-	configGroup.Get("/:key/history", api.getConfigHistory)
-	configGroup.Get("/:key/revision/:revision", api.getConfigByRevision)
+	configGroup.Get("/:key/history", authHandler, api.getConfigHistory)
+	configGroup.Get("/:key/revision/:revision", authHandler, api.getConfigByRevision)
 
 	// 环境相关
-	configGroup.Get("/:key/environments", api.listEnvironmentConfigs)
-	configGroup.Get("/:key/env/:env", api.getConfigForEnvironment)
-	configGroup.Post("/:key/env/:env", api.setConfigForEnvironment)
+	configGroup.Get("/:key/environments", authHandler, api.listEnvironmentConfigs)
+	configGroup.Get("/:key/env/:env", authHandler, api.getConfigForEnvironment)
+	configGroup.Post("/:key/env/:env", authHandler, adminRoleHandler, api.setConfigForEnvironment)
 
 	// 组合配置相关
-	configGroup.Get("/:key/composite", api.getCompositeConfig)
-	configGroup.Get("/:key/composite/env/:env", api.getCompositeConfigForEnvironment)
-	configGroup.Post("/merge", api.mergeCompositeConfigs)
-	configGroup.Post("/merge/env/:env", api.mergeCompositeConfigsForEnvironment)
+	configGroup.Get("/:key/composite", authHandler, api.getCompositeConfig)
+	configGroup.Get("/:key/composite/env/:env", authHandler, api.getCompositeConfigForEnvironment)
+	configGroup.Post("/merge", authHandler, adminRoleHandler, api.mergeCompositeConfigs)
+	configGroup.Post("/merge/env/:env", authHandler, adminRoleHandler, api.mergeCompositeConfigsForEnvironment)
 
 	// 导出配置
-	configGroup.Get("/:key/export", api.exportConfigAsJSON)
-	configGroup.Get("/:key/export/env/:env", api.exportConfigAsJSONForEnvironment)
+	configGroup.Get("/:key/export", authHandler, api.exportConfigAsJSON)
+	configGroup.Get("/:key/export/env/:env", authHandler, api.exportConfigAsJSONForEnvironment)
 
-	api.logger.Info("配置中心API路由已设置")
+	// 导出导入所有配置
+	configGroup.Post("/export", authHandler, adminRoleHandler, api.exportAllConfigs)
+	configGroup.Post("/import", authHandler, adminRoleHandler, api.importAllConfigs)
+
+	api.logger.Info("配置中心API路由已注册")
 }
 
 // listConfigs 列出所有配置项
@@ -472,4 +477,87 @@ func (api *API) exportConfigAsJSONForEnvironment(c *fiber.Ctx) error {
 	// 直接返回JSON字符串
 	c.Set("Content-Type", "application/json")
 	return c.SendString(jsonStr)
+}
+
+// exportAllConfigs 导出所有配置
+func (api *API) exportAllConfigs(c *fiber.Ctx) error {
+	var request struct {
+		Password string `json:"password"`
+	}
+
+	if err := c.BodyParser(&request); err != nil {
+		return utils.FailResponse(c, utils.StatusBadRequest, fmt.Sprintf("解析请求失败: %v", err))
+	}
+
+	if request.Password == "" {
+		return utils.FailResponse(c, utils.StatusBadRequest, "加密密码不能为空")
+	}
+
+	// 导出所有配置并以Base64格式返回
+	base64Data, err := api.service.ExportAllConfigsBase64(c.Context(), request.Password)
+	if err != nil {
+		api.logger.Error("导出所有配置失败", zap.Error(err))
+		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("导出配置失败: %v", err))
+	}
+
+	// 返回统一的JSON响应格式
+	return utils.SuccessResponse(c, base64Data)
+}
+
+// importAllConfigs 导入所有配置
+func (api *API) importAllConfigs(c *fiber.Ctx) error {
+	var request struct {
+		Data         string `json:"data"`
+		Password     string `json:"password"`
+		SkipExisting bool   `json:"skipExisting"`
+	}
+
+	if err := c.BodyParser(&request); err != nil {
+		return utils.FailResponse(c, utils.StatusBadRequest, fmt.Sprintf("解析请求失败: %v", err))
+	}
+
+	if request.Data == "" {
+		return utils.FailResponse(c, utils.StatusBadRequest, "导入数据不能为空")
+	}
+
+	if request.Password == "" {
+		return utils.FailResponse(c, utils.StatusBadRequest, "解密密码不能为空")
+	}
+
+	// 默认跳过已存在的配置
+	skipExisting := true
+	if c.Body() != nil && !request.SkipExisting {
+		skipExisting = false
+	}
+
+	api.logger.Info("导入配置",
+		zap.Bool("skipExisting", skipExisting))
+
+	// 从Base64字符串导入所有配置
+	skippedConfigs, err := api.service.ImportAllConfigsBase64(c.Context(), request.Data, request.Password, skipExisting)
+	if err != nil {
+		api.logger.Error("导入所有配置失败", zap.Error(err))
+		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("导入配置失败: %v", err))
+	}
+
+	api.logger.Info("导入配置完成",
+		zap.Int("skipped_count", len(skippedConfigs)),
+		zap.Strings("skipped_configs", skippedConfigs))
+
+	// 确保返回空数组而不是null
+	if skippedConfigs == nil {
+		skippedConfigs = []string{}
+	}
+
+	// 返回导入结果，包括跳过的配置列表
+	result := map[string]interface{}{
+		"message": "配置导入成功",
+		"skipped": skippedConfigs,
+	}
+
+	// 由于返回数据可能比较大，添加详细的日志
+	resultJSON, _ := json.Marshal(result)
+	api.logger.Info("返回导入结果", zap.String("result", string(resultJSON)))
+
+	return utils.SuccessResponse(c, result)
 }

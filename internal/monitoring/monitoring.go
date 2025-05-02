@@ -3,7 +3,6 @@ package monitoring
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/xsxdot/aio/internal/mq"
 	"path/filepath"
@@ -28,20 +27,13 @@ type Config struct {
 	// DataDir 指定数据存储的目录
 	DataDir string `json:"data_dir" yaml:"data_dir"`
 
-	// CollectInterval 指定服务器指标采集的间隔时间（秒）
-	CollectInterval int `json:"collect_interval" yaml:"collect_interval"`
-
-	// RetentionDays 指定数据保留的天数，默认为15天
-	RetentionDays int `json:"retention_days" yaml:"retention_days"`
+	config.MonitorConfig
 
 	// NatsSubject 指定用于接收外部指标的NATS主题
 	NatsSubject string `json:"nats_subject" yaml:"nats_subject"`
 
 	// NatsServiceSubject 指定用于接收服务监控数据的NATS主题
 	NatsServiceSubject string `json:"nats_service_subject" yaml:"nats_service_subject"`
-
-	// NatsURL 指定NATS服务器的连接URL todo统一管理
-	NatsURL string `json:"nats_url" yaml:"nats_url"`
 
 	// EtcdAlertPrefix 指定存储告警规则的etcd前缀
 	EtcdAlertPrefix string `json:"etcd_alert_prefix" yaml:"etcd_alert_prefix"`
@@ -56,12 +48,13 @@ type Config struct {
 // DefaultConfig 返回默认配置
 func DefaultConfig(baseConfig *config.BaseConfig) Config {
 	return Config{
-		DataDir:            filepath.Join(baseConfig.System.DataDir, "monitoring"),
-		CollectInterval:    30,
-		RetentionDays:      15,
+		DataDir: filepath.Join(baseConfig.System.DataDir, "monitoring"),
+		MonitorConfig: config.MonitorConfig{
+			CollectInterval: 30,
+			RetentionDays:   15,
+		},
 		NatsSubject:        "metrics",
 		NatsServiceSubject: "service.metrics",
-		NatsURL:            "nats://localhost:4222",
 		EtcdAlertPrefix:    "/monitoring/alerts/",
 		EtcdNotifierPrefix: "/monitoring/notifiers/",
 	}
@@ -88,7 +81,6 @@ func (m *Monitor) RegisterMetadata() (bool, int, map[string]string) {
 	return true, 0, map[string]string{
 		"natsSubject":        m.config.NatsSubject,
 		"natsServiceSubject": m.config.NatsServiceSubject,
-		"natsURL":            m.config.NatsURL,
 	}
 }
 
@@ -102,15 +94,14 @@ func (m *Monitor) Status() consts.ComponentStatus {
 
 // DefaultConfig 返回组件的默认配置
 func (m *Monitor) DefaultConfig(baseConfig *config.BaseConfig) interface{} {
-	return DefaultConfig(baseConfig)
+	defaultConfig := DefaultConfig(baseConfig).MonitorConfig
+
+	return &defaultConfig
 }
 
 func (m *Monitor) Init(config *config.BaseConfig, body []byte) error {
 	cfg := DefaultConfig(config)
-	err := json.Unmarshal(body, &cfg)
-	if err != nil {
-		return err
-	}
+	cfg.MonitorConfig = *config.Monitor
 	cfg.Logger = common.GetLogger().ZapLogger().Named("monitoring")
 	m.config = cfg
 	m.status = consts.StatusInitialized

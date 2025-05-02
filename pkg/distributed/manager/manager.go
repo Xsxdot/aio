@@ -2,11 +2,12 @@ package manager
 
 import (
 	"context"
+
+	"github.com/xsxdot/aio/internal/etcd"
 	"github.com/xsxdot/aio/pkg/distributed/idgen"
 	"github.com/xsxdot/aio/pkg/distributed/lock"
 	"github.com/xsxdot/aio/pkg/distributed/state"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )
 
@@ -46,7 +47,7 @@ type DistributedManager interface {
 
 // Manager 分布式管理器实现
 type Manager struct {
-	etcdClient *clientv3.Client
+	etcdClient *etcd.EtcdClient
 	logger     *zap.Logger
 	status     ManagerStatus
 
@@ -67,7 +68,7 @@ func WithLogger(logger *zap.Logger) ManagerOption {
 }
 
 // NewManager 创建新的分布式管理器实例
-func NewManager(etcdClient *clientv3.Client, options ...ManagerOption) DistributedManager {
+func NewManager(etcdClient *etcd.EtcdClient, options ...ManagerOption) DistributedManager {
 	manager := &Manager{
 		etcdClient: etcdClient,
 		logger:     zap.NewNop(),

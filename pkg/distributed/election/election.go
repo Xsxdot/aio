@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/xsxdot/aio/internal/etcd"
 	"sync"
 	"time"
 
@@ -157,7 +158,7 @@ func (s *electionServiceImpl) RegisterMetadata() (bool, int, map[string]string) 
 
 // 选举服务实现
 type electionServiceImpl struct {
-	etcdClient            *clientv3.Client
+	etcdClient            *etcd.EtcdClient
 	logger                *zap.Logger
 	elections             map[string]Election
 	mutex                 sync.RWMutex
@@ -198,16 +199,11 @@ func (s *electionServiceImpl) genConfig(baseConfig *config.BaseConfig) ElectionC
 		IP:            baseConfig.Network.BindIP,
 		NodeId:        baseConfig.System.NodeId,
 		ProtocolPort:  baseConfig.Protocol.Port,
-		CachePort:     6379,
 	}
 }
 
 func (s *electionServiceImpl) Init(config *config.BaseConfig, body []byte) error {
 	defaultElectionConfig := s.genConfig(config)
-	if err := json.Unmarshal(body, &defaultElectionConfig); err != nil {
-		return err
-	}
-
 	s.defaultElectionConfig = defaultElectionConfig
 	s.status = consts.StatusInitialized
 
@@ -257,7 +253,7 @@ type electionImpl struct {
 	ip            string
 	protocolPort  int
 	cachePort     int
-	etcdClient    *clientv3.Client
+	etcdClient    *etcd.EtcdClient
 	logger        *zap.Logger
 	session       *concurrency.Session
 	election      *concurrency.Election
@@ -272,7 +268,7 @@ type electionImpl struct {
 }
 
 // NewElectionService 创建选举服务
-func NewElectionService(etcdClient *clientv3.Client, logger *zap.Logger) (ElectionService, error) {
+func NewElectionService(etcdClient *etcd.EtcdClient, logger *zap.Logger) (ElectionService, error) {
 	return &electionServiceImpl{
 		etcdClient: etcdClient,
 		logger:     logger,
@@ -474,7 +470,7 @@ func (s *electionServiceImpl) Delete(name string) error {
 
 	// 从etcd删除选举配置
 	key := fmt.Sprintf("/distributed/components/elections/%s/config", name)
-	_, err := s.etcdClient.Delete(context.Background(), key)
+	err := s.etcdClient.Delete(context.Background(), key)
 	if err != nil {
 		s.logger.Error("Failed to delete election config from etcd", zap.Error(err))
 		return err
@@ -504,14 +500,14 @@ func (s *electionServiceImpl) saveElectionConfig(ctx context.Context, name strin
 	}
 
 	key := fmt.Sprintf("/distributed/components/elections/%s/config", name)
-	_, err = s.etcdClient.Put(ctx, key, string(data))
+	err = s.etcdClient.Put(ctx, key, string(data))
 	return err
 }
 
 // Campaign 参与选举
 func (e *electionImpl) Campaign(ctx context.Context, handler ElectionEventHandler) error {
 	// 创建etcd会话
-	session, err := concurrency.NewSession(e.etcdClient, concurrency.WithTTL(e.ttl))
+	session, err := concurrency.NewSession(e.etcdClient.Client, concurrency.WithTTL(e.ttl))
 	if err != nil {
 		e.logger.Error("Failed to create session", zap.Error(err))
 		return err
@@ -615,7 +611,7 @@ func (e *electionImpl) campaignLoop(ctx context.Context, handler ElectionEventHa
 			})
 
 			// 重新创建会话
-			session, err := concurrency.NewSession(e.etcdClient, concurrency.WithTTL(e.ttl))
+			session, err := concurrency.NewSession(e.etcdClient.Client, concurrency.WithTTL(e.ttl))
 			if err != nil {
 				e.logger.Error("Failed to recreate session", zap.Error(err))
 				time.Sleep(time.Second)
@@ -806,7 +802,7 @@ func (e *electionImpl) stopInternal() {
 		e.logger.Info("清理选举数据", zap.String("key", electionKey))
 
 		// 尝试删除选举键
-		if _, err := e.etcdClient.Delete(ctx, electionKey, clientv3.WithPrefix()); err != nil {
+		if _, err := e.etcdClient.Client.Delete(ctx, electionKey, clientv3.WithPrefix()); err != nil {
 			e.logger.Warn("清理选举数据失败", zap.Error(err))
 		} else {
 			e.logger.Info("成功清理选举数据")

@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/xsxdot/aio/pkg/distributed/common"
 	"sync"
 	"time"
+
+	"github.com/xsxdot/aio/internal/etcd"
+	"github.com/xsxdot/aio/pkg/distributed/common"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
@@ -76,7 +78,7 @@ type LockService interface {
 
 // 锁服务实现
 type lockServiceImpl struct {
-	etcdClient *clientv3.Client
+	etcdClient *etcd.EtcdClient
 	logger     *zap.Logger
 	locks      map[string]Lock
 	mutex      sync.RWMutex
@@ -88,7 +90,7 @@ type lockImpl struct {
 	key          string
 	ttl          int
 	maxRetries   int
-	etcdClient   *clientv3.Client
+	etcdClient   *etcd.EtcdClient
 	logger       *zap.Logger
 	session      *concurrency.Session
 	mutex        *concurrency.Mutex
@@ -99,7 +101,7 @@ type lockImpl struct {
 }
 
 // NewLockService 创建锁服务
-func NewLockService(etcdClient *clientv3.Client, logger *zap.Logger) (LockService, error) {
+func NewLockService(etcdClient *etcd.EtcdClient, logger *zap.Logger) (LockService, error) {
 	return &lockServiceImpl{
 		etcdClient: etcdClient,
 		logger:     logger,
@@ -242,7 +244,7 @@ func (s *lockServiceImpl) Delete(key string) error {
 
 	// 从etcd删除锁配置
 	configKey := fmt.Sprintf("/distributed/components/locks/%s/config", key)
-	_, err := s.etcdClient.Delete(context.Background(), configKey)
+	err := s.etcdClient.Delete(context.Background(), configKey)
 	if err != nil {
 		s.logger.Error("Failed to delete lock config from etcd", zap.Error(err))
 		return err
@@ -269,14 +271,14 @@ func (s *lockServiceImpl) saveLockConfig(ctx context.Context, key string, lock *
 	}
 
 	configKey := fmt.Sprintf("/distributed/components/locks/%s/config", key)
-	_, err = s.etcdClient.Put(ctx, configKey, string(data))
+	err = s.etcdClient.Put(ctx, configKey, string(data))
 	return err
 }
 
 // 修改恢复锁的方法，避免锁嵌套
 func (s *lockServiceImpl) restoreLocksFromEtcd(ctx context.Context) error {
 	prefix := "/distributed/components/locks/"
-	resp, err := s.etcdClient.Get(ctx, prefix, clientv3.WithPrefix())
+	resp, err := s.etcdClient.Client.Get(ctx, prefix, clientv3.WithPrefix())
 	if err != nil {
 		return err
 	}
@@ -440,7 +442,7 @@ func (l *lockImpl) acquireLock(ctx context.Context) error {
 
 	// 创建etcd会话
 	var err error
-	l.session, err = concurrency.NewSession(l.etcdClient, concurrency.WithTTL(l.ttl))
+	l.session, err = concurrency.NewSession(l.etcdClient.Client, concurrency.WithTTL(l.ttl))
 	if err != nil {
 		return err
 	}

@@ -4,15 +4,16 @@ package api
 import (
 	"crypto/rand"
 	"fmt"
+	"io"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/xsxdot/aio/internal/monitoring/alerting"
 	models2 "github.com/xsxdot/aio/internal/monitoring/models"
 	"github.com/xsxdot/aio/internal/monitoring/notifier"
 	"github.com/xsxdot/aio/internal/monitoring/storage"
 	"github.com/xsxdot/aio/pkg/utils"
-	"io"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
@@ -48,93 +49,93 @@ func NewAPI(storage *storage.Storage, alertMgr *alerting.Manager, notifierMgr *n
 	return api
 }
 
-// SetupRoutes 设置所有API路由
-func (api *API) SetupRoutes(app *fiber.App) {
+// RegisterRoutes 注册所有API路由
+func (api *API) RegisterRoutes(router fiber.Router, authHandler func(*fiber.Ctx) error, adminRoleHandler func(*fiber.Ctx) error) {
 	// 创建API组
-	monitoringGroup := app.Group("/api/monitoring")
+	monitoringGroup := router.Group("/monitoring")
 
 	// 健康检查
 	monitoringGroup.Get("/health", api.handleHealthCheck)
 
 	// 系统概览
-	monitoringGroup.Get("/system/overview", api.getSystemOverview)
+	monitoringGroup.Get("/system/overview", authHandler, api.getSystemOverview)
 
 	// 获取所有可用指标名称
-	monitoringGroup.Get("/metrics/names", api.getAllMetricNames)
+	monitoringGroup.Get("/metrics/names", authHandler, api.getAllMetricNames)
 
 	// 通用指标路径，支持直接查询指标
-	monitoringGroup.Get("/metrics/:name", api.getMetricsByName)
+	monitoringGroup.Get("/metrics/:name", authHandler, api.getMetricsByName)
 
 	// 服务器指标相关API
-	monitoringGroup.Get("/server/metrics", api.getServerMetrics)
-	monitoringGroup.Get("/server/metrics/:name", api.getServerMetricByName)
+	monitoringGroup.Get("/server/metrics", authHandler, api.getServerMetrics)
+	monitoringGroup.Get("/server/metrics/:name", authHandler, api.getServerMetricByName)
 
 	// 应用指标相关API
-	monitoringGroup.Get("/app/metrics", api.getAppMetrics)
-	monitoringGroup.Get("/app/metrics/:name", api.getAppMetricByName)
+	monitoringGroup.Get("/app/metrics", authHandler, api.getAppMetrics)
+	monitoringGroup.Get("/app/metrics/:name", authHandler, api.getAppMetricByName)
 
 	// API调用相关
-	monitoringGroup.Get("/api/calls", api.getAPICalls)
-	monitoringGroup.Get("/api/calls/:endpoint", api.getAPICallsByEndpoint)
+	monitoringGroup.Get("/api/calls", authHandler, api.getAPICalls)
+	monitoringGroup.Get("/api/calls/:endpoint", authHandler, api.getAPICallsByEndpoint)
 
 	// 通用指标查询API
-	monitoringGroup.Get("/metrics/query", api.handleMetricsQuery)
+	monitoringGroup.Get("/metrics/query", authHandler, api.handleMetricsQuery)
 
 	// API指标查询和聚合API
-	api.setupAPIMetricsRoutes(monitoringGroup)
+	api.setupAPIMetricsRoutes(monitoringGroup, authHandler, adminRoleHandler)
 
 	// 告警规则CRUD
 	alertGroup := monitoringGroup.Group("/alerts")
-	alertGroup.Get("/rules", api.getAlertRules)
-	alertGroup.Get("/rules/:id", api.getAlertRule)
-	alertGroup.Post("/rules", api.createAlertRule)
-	alertGroup.Put("/rules/:id", api.updateAlertRule)
-	alertGroup.Delete("/rules/:id", api.deleteAlertRule)
-	alertGroup.Get("/active", api.getActiveAlerts)
-	alertGroup.Patch("/rules/:id/toggle", api.toggleAlertRule)
+	alertGroup.Get("/rules", authHandler, api.getAlertRules)
+	alertGroup.Get("/rules/:id", authHandler, api.getAlertRule)
+	alertGroup.Post("/rules", authHandler, adminRoleHandler, api.createAlertRule)
+	alertGroup.Put("/rules/:id", authHandler, adminRoleHandler, api.updateAlertRule)
+	alertGroup.Delete("/rules/:id", authHandler, adminRoleHandler, api.deleteAlertRule)
+	alertGroup.Get("/active", authHandler, api.getActiveAlerts)
+	alertGroup.Patch("/rules/:id/toggle", authHandler, adminRoleHandler, api.toggleAlertRule)
 
 	// 添加与前端兼容的告警规则路径
-	monitoringGroup.Get("/rules", api.getAlertRules)
-	monitoringGroup.Post("/rules", api.createAlertRule)
-	monitoringGroup.Put("/rules/:id", api.updateAlertRule)
-	monitoringGroup.Delete("/rules/:id", api.deleteAlertRule)
-	monitoringGroup.Put("/rules/:id/toggle", api.toggleAlertRule)
+	monitoringGroup.Get("/rules", authHandler, api.getAlertRules)
+	monitoringGroup.Post("/rules", authHandler, adminRoleHandler, api.createAlertRule)
+	monitoringGroup.Put("/rules/:id", authHandler, adminRoleHandler, api.updateAlertRule)
+	monitoringGroup.Delete("/rules/:id", authHandler, adminRoleHandler, api.deleteAlertRule)
+	monitoringGroup.Put("/rules/:id/toggle", authHandler, adminRoleHandler, api.toggleAlertRule)
 
 	// 通知器CRUD
 	notifierGroup := monitoringGroup.Group("/notifiers")
-	notifierGroup.Get("/", api.getNotifiers)
-	notifierGroup.Get("/:id", api.getNotifier)
-	notifierGroup.Post("/", api.createNotifier)
-	notifierGroup.Put("/:id", api.updateNotifier)
-	notifierGroup.Delete("/:id", api.deleteNotifier)
-	notifierGroup.Post("/:id/test", api.testNotifier)
+	notifierGroup.Get("/", authHandler, api.getNotifiers)
+	notifierGroup.Get("/:id", authHandler, api.getNotifier)
+	notifierGroup.Post("/", authHandler, adminRoleHandler, api.createNotifier)
+	notifierGroup.Put("/:id", authHandler, adminRoleHandler, api.updateNotifier)
+	notifierGroup.Delete("/:id", authHandler, adminRoleHandler, api.deleteNotifier)
+	notifierGroup.Post("/:id/test", authHandler, adminRoleHandler, api.testNotifier)
 
 	// 注册服务监控相关路由
 	if api.serviceAPI != nil {
-		api.serviceAPI.RegisterRoutes(monitoringGroup)
+		api.serviceAPI.RegisterRoutes(monitoringGroup, authHandler, adminRoleHandler)
 	}
 
 	// 应用服务相关路由
-	monitoringGroup.Get("/apps", api.handleGetAllServices)
-	monitoringGroup.Get("/apps/:serviceName", api.handleGetService)
+	monitoringGroup.Get("/apps", authHandler, api.handleGetAllServices)
+	monitoringGroup.Get("/apps/:serviceName", authHandler, api.handleGetService)
 
 	// 服务实例相关路由
-	monitoringGroup.Get("/apps/:serviceName/instances", api.handleGetServiceInstances)
-	monitoringGroup.Get("/apps/:serviceName/instances/:instanceId", api.handleGetServiceInstance)
-	monitoringGroup.Get("/apps/:serviceName/instances/:instanceId/metrics", api.handleGetServiceInstanceMetrics)
+	monitoringGroup.Get("/apps/:serviceName/instances", authHandler, api.handleGetServiceInstances)
+	monitoringGroup.Get("/apps/:serviceName/instances/:instanceId", authHandler, api.handleGetServiceInstance)
+	monitoringGroup.Get("/apps/:serviceName/instances/:instanceId/metrics", authHandler, api.handleGetServiceInstanceMetrics)
 
 	// 服务接口相关路由
-	monitoringGroup.Get("/apps/:serviceName/endpoints", api.handleGetServiceEndpoints)
-	monitoringGroup.Get("/apps/:serviceName/endpoints/:endpoint", api.handleGetServiceEndpoint)
-	monitoringGroup.Get("/apps/:serviceName/endpoints/:endpoint/metrics", api.handleGetServiceEndpointMetrics)
+	monitoringGroup.Get("/apps/:serviceName/endpoints", authHandler, api.handleGetServiceEndpoints)
+	monitoringGroup.Get("/apps/:serviceName/endpoints/:endpoint", authHandler, api.handleGetServiceEndpoint)
+	monitoringGroup.Get("/apps/:serviceName/endpoints/:endpoint/metrics", authHandler, api.handleGetServiceEndpointMetrics)
 
 	// 服务汇总指标相关路由
-	monitoringGroup.Get("/apps/:serviceName/metrics/summary", api.handleGetServiceMetricsSummary)
-	monitoringGroup.Get("/apps/:serviceName/metrics/qps", api.handleGetServiceQPSMetrics)
-	monitoringGroup.Get("/apps/:serviceName/metrics/error-rate", api.handleGetServiceErrorRateMetrics)
-	monitoringGroup.Get("/apps/:serviceName/metrics/response-time", api.handleGetServiceResponseTimeMetrics)
+	monitoringGroup.Get("/apps/:serviceName/metrics/summary", authHandler, api.handleGetServiceMetricsSummary)
+	monitoringGroup.Get("/apps/:serviceName/metrics/qps", authHandler, api.handleGetServiceQPSMetrics)
+	monitoringGroup.Get("/apps/:serviceName/metrics/error-rate", authHandler, api.handleGetServiceErrorRateMetrics)
+	monitoringGroup.Get("/apps/:serviceName/metrics/response-time", authHandler, api.handleGetServiceResponseTimeMetrics)
 
-	api.logger.Info("监控系统API路由已设置")
+	api.logger.Info("监控系统API路由已注册")
 }
 
 // handleHealthCheck 处理健康检查请求

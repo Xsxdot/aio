@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/xsxdot/aio/internal/etcd"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -87,7 +88,7 @@ type DiscoveryService interface {
 
 // 服务发现实现
 type discoveryServiceImpl struct {
-	etcdClient  *clientv3.Client
+	etcdClient  *etcd.EtcdClient
 	logger      *zap.Logger
 	services    map[string]ServiceInfo
 	watchers    map[string]map[string]context.CancelFunc
@@ -154,7 +155,7 @@ func WithServiceRoot(root string) DiscoveryOption {
 }
 
 // NewDiscoveryService 创建服务发现实例
-func NewDiscoveryService(etcdClient *clientv3.Client, logger *zap.Logger, options ...DiscoveryOption) (DiscoveryService, error) {
+func NewDiscoveryService(etcdClient *etcd.EtcdClient, logger *zap.Logger, options ...DiscoveryOption) (DiscoveryService, error) {
 	discovery := &discoveryServiceImpl{
 		etcdClient:  etcdClient,
 		logger:      logger,
@@ -273,7 +274,7 @@ func (d *discoveryServiceImpl) Register(ctx context.Context, service ServiceInfo
 
 	// 保存到etcd
 	key := d.getServiceKey(service.Name, service.ID)
-	_, err = d.etcdClient.Put(ctx, key, string(data))
+	err = d.etcdClient.Put(ctx, key, string(data))
 	if err != nil {
 		return fmt.Errorf("failed to register service: %w", err)
 	}
@@ -309,7 +310,7 @@ func (d *discoveryServiceImpl) Deregister(ctx context.Context, serviceID string)
 
 	// 从etcd删除服务
 	key := d.getServiceKey(service.Name, serviceID)
-	_, err := d.etcdClient.Delete(ctx, key)
+	err := d.etcdClient.Delete(ctx, key)
 	if err != nil {
 		return fmt.Errorf("failed to deregister service: %w", err)
 	}
@@ -334,7 +335,7 @@ func (d *discoveryServiceImpl) Discover(ctx context.Context, serviceName string)
 
 	// 从etcd获取服务列表
 	prefix := d.getServicePrefix(serviceName)
-	resp, err := d.etcdClient.Get(ctx, prefix, clientv3.WithPrefix())
+	resp, err := d.etcdClient.Client.Get(ctx, prefix, clientv3.WithPrefix())
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover services: %w", err)
 	}
@@ -390,7 +391,7 @@ func (d *discoveryServiceImpl) AddWatcher(ctx context.Context, serviceName strin
 	d.mutex.Unlock()
 
 	// 启动监听
-	watchCh := d.etcdClient.Watch(watchCtx, prefix, clientv3.WithPrefix())
+	watchCh := d.etcdClient.Client.Watch(watchCtx, prefix, clientv3.WithPrefix())
 
 	// 获取现有服务并触发初始事件
 	go func() {
@@ -556,7 +557,7 @@ func (d *discoveryServiceImpl) RemoveWatcher(serviceName, watcherID string) erro
 // GetAllServices 获取所有服务
 func (d *discoveryServiceImpl) GetAllServices(ctx context.Context) (map[string][]ServiceInfo, error) {
 	// 获取所有服务
-	resp, err := d.etcdClient.Get(ctx, d.serviceRoot, clientv3.WithPrefix())
+	resp, err := d.etcdClient.Client.Get(ctx, d.serviceRoot, clientv3.WithPrefix())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get services: %w", err)
 	}

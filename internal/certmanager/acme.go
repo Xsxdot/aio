@@ -3,182 +3,256 @@ package certmanager
 import (
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/go-acme/lego/v4/certificate"
+	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
-	"github.com/go-acme/lego/v4/challenge/http01"
 	"github.com/go-acme/lego/v4/lego"
-	"github.com/go-acme/lego/v4/providers/dns/alidns"
 	"github.com/go-acme/lego/v4/registration"
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
 
-// LegoClient 是一个使用lego库实现的ACME客户端
-type LegoClient struct {
-	email        string
-	privateKey   crypto.PrivateKey
-	registration *registration.Resource
-	config       *lego.Config
-	client       *lego.Client
-	logger       *logrus.Logger
-	dnsConfig    *Config // 包含DNS配置的完整配置
+// 全局ACME客户端
+var (
+	acmeClient *lego.Client
+	acmeUser   *ACMEUser
+	logger     *zap.Logger
+)
+
+// ACMEUser 实现acme.User接口
+type ACMEUser struct {
+	Email        string
+	Registration *registration.Resource
+	Key          crypto.PrivateKey
 }
 
-// 用户需要实现的接口
-type userImpl struct {
-	email        string
-	key          crypto.PrivateKey
-	registration *registration.Resource
+// GetEmail 实现acme.User接口
+func (u *ACMEUser) GetEmail() string {
+	return u.Email
 }
 
-func (u *userImpl) GetEmail() string {
-	return u.email
+// GetRegistration 实现acme.User接口
+func (u *ACMEUser) GetRegistration() *registration.Resource {
+	return u.Registration
 }
 
-func (u *userImpl) GetRegistration() *registration.Resource {
-	return u.registration
+// GetPrivateKey 实现acme.User接口
+func (u *ACMEUser) GetPrivateKey() crypto.PrivateKey {
+	return u.Key
 }
 
-func (u *userImpl) GetPrivateKey() crypto.PrivateKey {
-	return u.key
+// SetLogger 设置日志记录器
+func SetLogger(l *zap.Logger) {
+	logger = l
 }
 
-// NewLegoClient 创建一个新的ACME客户端
-func NewLegoClient(logger *logrus.Logger, config *Config) *LegoClient {
-	if logger == nil {
-		logger = logrus.New()
-	}
-
-	return &LegoClient{
-		logger:    logger,
-		dnsConfig: config,
-	}
-}
-
-// Init 初始化ACME客户端
-func (c *LegoClient) Init(ctx context.Context, email string, staging bool) error {
-	c.email = email
-
-	// 生成私钥
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+// initACMEClient 初始化ACME客户端
+func initACMEClient(email string, useStaging bool) error {
+	// 生成用户私钥
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return fmt.Errorf("无法生成私钥: %w", err)
+		return fmt.Errorf("生成私钥失败: %v", err)
 	}
-	c.privateKey = privateKey
 
 	// 创建用户
-	user := &userImpl{
-		email: email,
-		key:   privateKey,
+	acmeUser = &ACMEUser{
+		Email: email,
+		Key:   privateKey,
 	}
 
-	// 创建配置
-	config := lego.NewConfig(user)
-	if staging {
+	// 创建客户端配置
+	config := lego.NewConfig(acmeUser)
+
+	// 设置使用的ACME目录URL（正式或测试环境）
+	if useStaging {
 		config.CADirURL = lego.LEDirectoryStaging
 	} else {
 		config.CADirURL = lego.LEDirectoryProduction
 	}
-	c.config = config
 
 	// 创建客户端
 	client, err := lego.NewClient(config)
 	if err != nil {
-		return fmt.Errorf("无法创建ACME客户端: %w", err)
-	}
-	c.client = client
-
-	// 设置验证方式
-	if c.dnsConfig.VerifyMethod == VerifyDNS {
-		// 使用DNS-01验证
-		if err := c.setupDNSProvider(); err != nil {
-			return fmt.Errorf("无法设置DNS验证提供程序: %w", err)
-		}
-
-		c.logger.Info("使用DNS-01验证方式")
-	} else {
-		// 默认使用HTTP-01验证
-		err = client.Challenge.SetHTTP01Provider(http01.NewProviderServer("", "80"))
-		if err != nil {
-			return fmt.Errorf("无法设置HTTP验证提供程序: %w", err)
-		}
-
-		c.logger.Info("使用HTTP-01验证方式")
+		return fmt.Errorf("创建ACME客户端失败: %v", err)
 	}
 
-	// 注册账号
+	// 注册
 	reg, err := client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
 	if err != nil {
-		return fmt.Errorf("无法注册Let's Encrypt账号: %w", err)
+		return fmt.Errorf("注册ACME账户失败: %v", err)
 	}
-	user.registration = reg
-	c.registration = reg
 
-	c.logger.Infof("成功初始化ACME客户端，账号: %s", email)
+	acmeUser.Registration = reg
+	acmeClient = client
+
 	return nil
 }
 
-// setupDNSProvider 设置DNS提供商
-func (c *LegoClient) setupDNSProvider() error {
-	var provider dns01.Provider
-	var err error
+// SimpleDNSProvider 简单DNS提供商接口
+type SimpleDNSProvider interface {
+	// Present 添加DNS TXT记录
+	Present(domain, token, keyAuth string) error
+	// CleanUp 清理DNS TXT记录
+	CleanUp(domain, token, keyAuth string) error
+}
 
-	switch c.dnsConfig.DNSProvider {
-	case DNSProviderAliyun:
-		// 阿里云DNS配置
-		config := alidns.Config{
-			APIKey:             c.dnsConfig.DNSConfig.AliyunAccessKeyID,
-			SecretKey:          c.dnsConfig.DNSConfig.AliyunAccessKeySecret,
-			PropagationTimeout: c.dnsConfig.DNSPropagationTimeout,
-			PollingInterval:    time.Second * 15, // 每15秒检查一次DNS传播
-			TTL:                600,              // 默认TTL为600秒
-			HTTPTimeout:        time.Second * 30, // HTTP请求超时
+// CustomDNSProviderFactory 自定义DNS提供商工厂
+// 由外部实现不同DNS提供商的工厂函数
+var CustomDNSProviderFactory func(providerName string, credentials map[string]string) (SimpleDNSProvider, error)
+
+// InitWithEmail 使用指定电子邮件初始化ACME客户端
+func InitWithEmail(email string, useStaging bool) error {
+	return initACMEClient(email, useStaging)
+}
+
+// GetCertificate 申请或续期证书
+func GetCertificate(ctx context.Context, domain string, certDir string, dnsProvider string, dnsCredentials map[string]string) (certPath, keyPath string, issuedAt, expiresAt time.Time, err error) {
+	return obtainCertificate(ctx, domain, certDir, dnsProvider, dnsCredentials)
+}
+
+// obtainCertificate 申请证书（仅使用DNS验证）
+func obtainCertificate(ctx context.Context, domain string, certDir string, dnsProvider string, dnsCredentials map[string]string) (certPath, keyPath string, issuedAt, expiresAt time.Time, err error) {
+	if acmeClient == nil {
+		return "", "", time.Time{}, time.Time{}, fmt.Errorf("ACME客户端未初始化")
+	}
+
+	// 验证参数
+	if dnsProvider == "" {
+		return "", "", time.Time{}, time.Time{}, fmt.Errorf("DNS提供商不能为空")
+	}
+
+	if len(dnsCredentials) == 0 {
+		return "", "", time.Time{}, time.Time{}, fmt.Errorf("DNS提供商的凭证不能为空")
+	}
+
+	if logger != nil {
+		logger.Info("开始申请证书（使用DNS验证）",
+			zap.String("domain", domain),
+			zap.String("dns_provider", dnsProvider))
+	}
+
+	// 设置环境变量
+	for key, value := range dnsCredentials {
+		os.Setenv(key, value)
+	}
+	defer func() {
+		// 清理环境变量
+		for key := range dnsCredentials {
+			os.Unsetenv(key)
 		}
+	}()
 
-		if c.dnsConfig.DNSConfig.AliyunRegionID != "" {
-			config.RegionID = c.dnsConfig.DNSConfig.AliyunRegionID
-		}
+	// 设置DNS提供商
+	var provider challenge.Provider
 
-		provider, err = alidns.NewDNSProviderConfig(&config)
+	// 使用自定义DNS提供商工厂
+	if CustomDNSProviderFactory != nil {
+		simpleProvider, err := CustomDNSProviderFactory(dnsProvider, dnsCredentials)
 		if err != nil {
-			return fmt.Errorf("配置阿里云DNS提供商失败: %w", err)
+			return "", "", time.Time{}, time.Time{}, fmt.Errorf("创建DNS提供商失败: %v", err)
 		}
 
-		c.logger.Info("成功配置阿里云DNS提供商")
-	default:
-		return fmt.Errorf("不支持的DNS提供商: %s", c.dnsConfig.DNSProvider)
+		provider = simpleProvider
+		if logger != nil {
+			logger.Info("使用自定义DNS提供商", zap.String("provider", dnsProvider))
+		}
+	} else {
+		// 无法使用外部DNS提供商，报错
+		return "", "", time.Time{}, time.Time{}, fmt.Errorf("未设置DNS提供商工厂函数，无法创建DNS提供商")
 	}
 
-	// 设置DNS验证提供商
-	if err := c.client.Challenge.SetDNS01Provider(provider); err != nil {
-		return err
+	// 设置DNS提供商到ACME客户端
+	// 添加公共DNS解析器，确保DNS记录传播验证正常工作
+	dnsOptions := []dns01.ChallengeOption{
+		// 添加全球常用的公共DNS解析器
+		dns01.AddRecursiveNameservers([]string{
+			"8.8.8.8:53",         // Google DNS
+			"8.8.4.4:53",         // Google DNS 备用
+			"1.1.1.1:53",         // Cloudflare DNS
+			"1.0.0.1:53",         // Cloudflare DNS 备用
+			"223.5.5.5:53",       // 阿里DNS
+			"223.6.6.6:53",       // 阿里DNS 备用
+			"114.114.114.114:53", // 114DNS
+			"114.114.115.115:53", // 114DNS 备用
+			"9.9.9.9:53",         // Quad9
+			"149.112.112.112:53", // Quad9 备用
+		}),
+		// 设置DNS验证超时时间较长，以适应慢速DNS提供商
+		dns01.AddDNSTimeout(30 * time.Second),
 	}
 
-	return nil
-}
-
-// ObtainCertificate 获取证书
-func (c *LegoClient) ObtainCertificate(domain string) (certPEM, keyPEM []byte, err error) {
-	if c.client == nil {
-		return nil, nil, fmt.Errorf("ACME客户端未初始化")
+	err = acmeClient.Challenge.SetDNS01Provider(provider, dnsOptions...)
+	if err != nil {
+		return "", "", time.Time{}, time.Time{}, fmt.Errorf("设置DNS验证提供商失败: %v", err)
 	}
-
-	c.logger.Infof("正在为域名 %s 申请证书", domain)
 
 	// 申请证书
 	request := certificate.ObtainRequest{
 		Domains: []string{domain},
 		Bundle:  true,
 	}
-	certificates, err := c.client.Certificate.Obtain(request)
+
+	certificates, err := acmeClient.Certificate.Obtain(request)
 	if err != nil {
-		return nil, nil, fmt.Errorf("无法获取证书: %w", err)
+		return "", "", time.Time{}, time.Time{}, fmt.Errorf("申请证书失败: %v", err)
 	}
 
-	c.logger.Infof("成功获取域名 %s 的证书", domain)
-	return certificates.Certificate, certificates.PrivateKey, nil
+	// 解析证书获取有效期
+	certPEM, _ := pem.Decode(certificates.Certificate)
+	if certPEM == nil {
+		return "", "", time.Time{}, time.Time{}, fmt.Errorf("解析证书PEM失败")
+	}
+
+	cert, err := x509.ParseCertificate(certPEM.Bytes)
+	if err != nil {
+		return "", "", time.Time{}, time.Time{}, fmt.Errorf("解析证书失败: %v", err)
+	}
+
+	issuedAt = cert.NotBefore
+	expiresAt = cert.NotAfter
+
+	// 确保域名目录存在
+	domainDir := filepath.Join(certDir, domain)
+	if err := os.MkdirAll(domainDir, 0755); err != nil {
+		return "", "", time.Time{}, time.Time{}, fmt.Errorf("创建域名目录失败: %v", err)
+	}
+
+	// 保存证书和私钥
+	timestamp := time.Now().Format("20060102150405")
+	certFilename := fmt.Sprintf("%s-%s.crt", domain, timestamp)
+	keyFilename := fmt.Sprintf("%s-%s.key", domain, timestamp)
+
+	certPath = filepath.Join(domainDir, certFilename)
+	keyPath = filepath.Join(domainDir, keyFilename)
+
+	// 写入证书文件
+	if err := os.WriteFile(certPath, certificates.Certificate, 0644); err != nil {
+		return "", "", time.Time{}, time.Time{}, fmt.Errorf("保存证书文件失败: %v", err)
+	}
+
+	// 写入密钥文件
+	if err := os.WriteFile(keyPath, certificates.PrivateKey, 0600); err != nil {
+		return "", "", time.Time{}, time.Time{}, fmt.Errorf("保存私钥文件失败: %v", err)
+	}
+
+	if logger != nil {
+		logger.Info("证书申请成功",
+			zap.String("domain", domain),
+			zap.Time("issued_at", issuedAt),
+			zap.Time("expires_at", expiresAt),
+			zap.String("cert_path", certPath),
+			zap.String("key_path", keyPath),
+			zap.Int("valid_days", int(expiresAt.Sub(time.Now()).Hours()/24)))
+	}
+
+	return certPath, keyPath, issuedAt, expiresAt, nil
 }

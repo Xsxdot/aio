@@ -3,7 +3,10 @@ package etcd
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
+
+	"github.com/xsxdot/aio/app/config"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
@@ -11,18 +14,8 @@ import (
 
 // EtcdClient 代表一个etcd客户端
 type EtcdClient struct {
-	client *clientv3.Client
+	*clientv3.Client
 	logger *zap.Logger
-}
-
-// JWTConfig 表示JWT配置
-type JWTConfig struct {
-	AccessTokenExpiry time.Duration `yaml:"access_token_expiry" json:"access_token_expiry"`
-	Issuer            string        `yaml:"issuer" json:"issuer"`
-	Audience          string        `yaml:"audience" json:"audience"`
-	PublicKey         string        `yaml:"public_key" json:"public_key"`   // JWT公钥内容路径
-	PrivateKey        string        `yaml:"private_key" json:"private_key"` // JWT私钥内容路径
-	SignMethod        string        `yaml:"sign_method" json:"sign_method"` // JWT签名方法，如RS256
 }
 
 // ClientConfig 代表etcd客户端配置
@@ -38,16 +31,7 @@ type ClientConfig struct {
 	// 自动同步端点
 	AutoSyncEndpoints bool
 	// 安全连接配置
-	TLS *TLSConfig
-}
-
-// TLSConfig 表示TLS配置
-type TLSConfig struct {
-	TLSEnabled bool   `yaml:"tls_enabled" json:"tls_enabled,omitempty"`
-	AutoTls    bool   `yaml:"auto_tls" json:"auto_tls,omitempty"`
-	Cert       string `yaml:"cert_file" json:"cert,omitempty"`
-	Key        string `yaml:"key_file" json:"key,omitempty"`
-	TrustedCA  string `yaml:"trusted_ca_file" json:"trusted_ca,omitempty"`
+	TLS *config.TLSConfig
 }
 
 type UserAuthConfig struct {
@@ -92,6 +76,10 @@ func NewEtcdClient(config *ClientConfig, logger *zap.Logger) (*EtcdClient, error
 			return nil, fmt.Errorf("加载TLS配置失败: %v", err)
 		}
 		clientConfig.TLS = tlsConfig
+		logger.Info("正在连接etcd服务器...",
+			zap.Strings("endpoints", clientConfig.Endpoints),
+			zap.String("证书路径", config.TLS.Cert),
+			zap.String("CA证书路径", config.TLS.TrustedCA))
 	}
 
 	client, err := clientv3.New(clientConfig)
@@ -111,27 +99,67 @@ func NewEtcdClient(config *ClientConfig, logger *zap.Logger) (*EtcdClient, error
 
 	logger.Info("etcd客户端已连接", zap.Strings("endpoints", config.Endpoints))
 	return &EtcdClient{
-		client: client,
+		Client: client,
 		logger: logger,
 	}, nil
 }
 
+// setupRootUser 设置etcd根用户
+func (c *EtcdClient) setupRootUser(username, password string) error {
+
+	// 创建一个上下文，用于API调用
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// 检查认证是否已启用
+	authStatus, err := c.AuthStatus(ctx)
+	if err != nil {
+		return fmt.Errorf("获取认证状态失败: %v", err)
+	}
+
+	if authStatus.Enabled {
+		c.logger.Info("认证已经启用，跳过设置")
+		return nil
+	}
+
+	// 添加根用户
+	_, err = c.UserAdd(ctx, username, password)
+	if err != nil {
+		// 如果用户已存在，忽略错误
+		if strings.Contains(err.Error(), "user name already exists") {
+			c.logger.Info("用户已存在", zap.String("username", username))
+		} else {
+			return fmt.Errorf("添加用户失败: %v", err)
+		}
+	}
+
+	// 为根用户授予root角色
+	_, err = c.UserGrantRole(ctx, username, "root")
+	if err != nil {
+		return fmt.Errorf("授予root角色失败: %v", err)
+	}
+
+	// 启用认证
+	_, err = c.AuthEnable(ctx)
+	if err != nil {
+		return fmt.Errorf("启用认证失败: %v", err)
+	}
+
+	c.logger.Info("成功启用认证并设置根用户", zap.String("username", username))
+	return nil
+}
+
 // Close 关闭etcd客户端
 func (c *EtcdClient) Close() {
-	if c.client != nil {
-		c.client.Close()
+	if c != nil {
+		c.Client.Close()
 		c.logger.Info("etcd客户端已关闭")
 	}
 }
 
-// GetClient 获取原始的etcd客户端
-func (c *EtcdClient) GetClient() *clientv3.Client {
-	return c.client
-}
-
 // Put 放置键值对
 func (c *EtcdClient) Put(ctx context.Context, key, value string) error {
-	_, err := c.client.Put(ctx, key, value)
+	_, err := c.Client.Put(ctx, key, value)
 	if err != nil {
 		c.logger.Error("放置键值对失败", zap.String("key", key), zap.Error(err))
 		return err
@@ -141,7 +169,7 @@ func (c *EtcdClient) Put(ctx context.Context, key, value string) error {
 
 // Get 获取键对应的值
 func (c *EtcdClient) Get(ctx context.Context, key string) (string, error) {
-	resp, err := c.client.Get(ctx, key)
+	resp, err := c.Client.Get(ctx, key)
 	if err != nil {
 		c.logger.Error("获取键值对失败", zap.String("key", key), zap.Error(err))
 		return "", err
@@ -156,7 +184,7 @@ func (c *EtcdClient) Get(ctx context.Context, key string) (string, error) {
 
 // GetWithPrefix 获取具有相同前缀的所有键值对
 func (c *EtcdClient) GetWithPrefix(ctx context.Context, prefix string) (map[string]string, error) {
-	resp, err := c.client.Get(ctx, prefix, clientv3.WithPrefix())
+	resp, err := c.Client.Get(ctx, prefix, clientv3.WithPrefix())
 	if err != nil {
 		c.logger.Error("获取前缀键值对失败", zap.String("prefix", prefix), zap.Error(err))
 		return nil, err
@@ -171,7 +199,7 @@ func (c *EtcdClient) GetWithPrefix(ctx context.Context, prefix string) (map[stri
 
 // Delete 删除键
 func (c *EtcdClient) Delete(ctx context.Context, key string) error {
-	_, err := c.client.Delete(ctx, key)
+	_, err := c.Client.Delete(ctx, key)
 	if err != nil {
 		c.logger.Error("删除键失败", zap.String("key", key), zap.Error(err))
 		return err
@@ -181,7 +209,7 @@ func (c *EtcdClient) Delete(ctx context.Context, key string) error {
 
 // DeleteWithPrefix 删除具有相同前缀的所有键
 func (c *EtcdClient) DeleteWithPrefix(ctx context.Context, prefix string) error {
-	_, err := c.client.Delete(ctx, prefix, clientv3.WithPrefix())
+	_, err := c.Client.Delete(ctx, prefix, clientv3.WithPrefix())
 	if err != nil {
 		c.logger.Error("删除前缀键失败", zap.String("prefix", prefix), zap.Error(err))
 		return err
@@ -191,12 +219,12 @@ func (c *EtcdClient) DeleteWithPrefix(ctx context.Context, prefix string) error 
 
 // Watch 监视键的变化
 func (c *EtcdClient) Watch(ctx context.Context, key string) clientv3.WatchChan {
-	return c.client.Watch(ctx, key)
+	return c.Watch(ctx, key)
 }
 
 // WatchWithPrefix 监视具有相同前缀的所有键的变化
 func (c *EtcdClient) WatchWithPrefix(ctx context.Context, prefix string) clientv3.WatchChan {
 	withPrefix := clientv3.WithPrefix()
-	client := c.client
-	return client.Watch(ctx, prefix, withPrefix)
+	client := c
+	return client.Client.Watch(ctx, prefix, withPrefix)
 }

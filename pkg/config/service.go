@@ -22,6 +22,11 @@ import (
 	"go.uber.org/zap"
 )
 
+// 增加一个加密前缀常量，用于标识已加密的值
+const (
+	EncryptedPrefix = "ENC:"
+)
+
 type Config struct {
 	Salt   string `json:"salt"`
 	Prefix string `json:"prefix"`
@@ -156,6 +161,11 @@ func paddedKey(key []byte, size int) []byte {
 
 // encryptValue 使用salt加密字符串值
 func (s *Service) encryptValue(value string) (string, error) {
+	// 如果值已经有加密前缀，直接返回
+	if strings.HasPrefix(value, EncryptedPrefix) {
+		return value, nil
+	}
+
 	if len(s.salt) == 0 {
 		return "", fmt.Errorf("加密失败: salt未设置")
 	}
@@ -186,11 +196,17 @@ func (s *Service) encryptValue(value string) (string, error) {
 
 	// 将nonce和密文合并并base64编码
 	encrypted := append(nonce, ciphertext...)
-	return base64.StdEncoding.EncodeToString(encrypted), nil
+	// 添加加密前缀
+	return EncryptedPrefix + base64.StdEncoding.EncodeToString(encrypted), nil
 }
 
 // decryptValue 使用salt解密字符串值
 func (s *Service) decryptValue(encryptedValue string) (string, error) {
+	// 检查并移除加密前缀
+	if strings.HasPrefix(encryptedValue, EncryptedPrefix) {
+		encryptedValue = encryptedValue[len(EncryptedPrefix):]
+	}
+
 	if len(s.salt) == 0 {
 		return "", fmt.Errorf("加密失败: salt未设置")
 	}
@@ -292,7 +308,7 @@ func (s *Service) GetHistory(ctx context.Context, key string, limit int64) ([]*H
 	}
 
 	// 获取etcd原始客户端
-	cli := s.client.GetClient()
+	cli := s.client.Client
 
 	// 获取当前修订版本
 	resp, err := cli.Get(ctx, s.prefix+key,
@@ -362,7 +378,7 @@ func (s *Service) GetHistory(ctx context.Context, key string, limit int64) ([]*H
 // GetByRevision 获取指定版本的配置项
 func (s *Service) GetByRevision(ctx context.Context, key string, revision int64) (*HistoryItem, error) {
 	// 获取etcd原始客户端
-	cli := s.client.GetClient()
+	cli := s.client.Client
 
 	// 获取指定版本的配置项
 	resp, err := cli.Get(ctx, s.prefix+key, clientv3.WithRev(revision))
@@ -1047,4 +1063,275 @@ func (s *Service) ListEnvironmentConfigs(ctx context.Context, key string) (map[s
 // GetClientConfig 实现Component接口，返回客户端配置
 func (s *Service) GetClientConfig() (bool, *config.ClientConfig) {
 	return false, nil
+}
+
+// ExportAllConfigs 导出所有配置
+func (s *Service) ExportAllConfigs(ctx context.Context, password string) ([]byte, error) {
+	// 获取所有配置项
+	configItems, err := s.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("获取配置列表失败: %v", err)
+	}
+
+	// 遍历所有配置项，解密其中的加密类型数据
+	exportData := make([]ExportConfigItem, 0, len(configItems))
+	for _, item := range configItems {
+		exportItem := ExportConfigItem{
+			Key:       item.Key,
+			Version:   item.Version,
+			UpdatedAt: item.UpdatedAt,
+			Metadata:  item.Metadata,
+		}
+
+		// 复制并解密值
+		exportItem.Value = make(map[string]*ConfigValue)
+		for k, v := range item.Value {
+			exportValue := &ConfigValue{
+				Type:  v.Type,
+				Value: v.Value,
+			}
+
+			// 对于加密类型的值，进行解密
+			if v.Type == ValueTypeEncrypted {
+				decrypted, err := s.decryptValue(v.Value)
+				if err != nil {
+					s.logger.Warn("解密配置值失败",
+						zap.String("key", item.Key),
+						zap.String("field", k),
+						zap.Error(err))
+					// 解密失败时保留原始加密值
+					exportValue.Value = v.Value
+				} else {
+					// 解密成功，以明文形式导出，但保留类型为encrypted
+					exportValue.Value = decrypted
+				}
+			}
+
+			exportItem.Value[k] = exportValue
+		}
+
+		exportData = append(exportData, exportItem)
+	}
+
+	// 将导出数据序列化为JSON
+	jsonData, err := json.MarshalIndent(exportData, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("序列化配置数据失败: %v", err)
+	}
+
+	// 使用提供的密码加密整个JSON
+	encrypted, err := s.encryptExportData(jsonData, password)
+	if err != nil {
+		return nil, fmt.Errorf("加密导出数据失败: %v", err)
+	}
+
+	return encrypted, nil
+}
+
+// ExportAllConfigsBase64 导出所有配置并以Base64格式返回
+func (s *Service) ExportAllConfigsBase64(ctx context.Context, password string) (string, error) {
+	data, err := s.ExportAllConfigs(ctx, password)
+	if err != nil {
+		return "", err
+	}
+
+	// 将二进制数据转换为Base64编码
+	return base64.StdEncoding.EncodeToString(data), nil
+}
+
+// ImportAllConfigs 导入所有配置
+func (s *Service) ImportAllConfigs(ctx context.Context, encryptedData []byte, password string, skipExisting bool) ([]string, error) {
+	// 使用提供的密码解密数据
+	s.logger.Info("开始导入配置",
+		zap.Bool("skipExisting", skipExisting),
+		zap.Int("数据长度", len(encryptedData)))
+
+	decrypted, err := s.decryptExportData(encryptedData, password)
+	if err != nil {
+		s.logger.Error("解密导入数据失败", zap.Error(err))
+		return nil, fmt.Errorf("解密导入数据失败: %v", err)
+	}
+
+	s.logger.Info("数据解密成功", zap.Int("解密后数据长度", len(decrypted)))
+
+	// 解析JSON数据
+	var importData []ExportConfigItem
+	if err := json.Unmarshal(decrypted, &importData); err != nil {
+		s.logger.Error("解析导入数据失败", zap.Error(err))
+		return nil, fmt.Errorf("解析导入数据失败: %v", err)
+	}
+
+	s.logger.Info("解析JSON数据成功", zap.Int("配置项数量", len(importData)))
+
+	// 记录跳过的配置
+	skippedConfigs := []string{}
+
+	// 遍历并导入每个配置项
+	for _, item := range importData {
+		// 检查配置是否已存在
+		_, err := s.Get(ctx, item.Key)
+		if err == nil && skipExisting {
+			// 配置已存在且应该跳过
+			s.logger.Info("配置已存在，跳过导入",
+				zap.String("key", item.Key))
+			skippedConfigs = append(skippedConfigs, item.Key)
+			continue
+		}
+
+		// 创建配置项对象
+		configItem := &ConfigItem{
+			Key:       item.Key,
+			Value:     make(map[string]*ConfigValue),
+			Version:   time.Now().UnixNano(), // 使用当前时间作为新版本
+			UpdatedAt: time.Now(),
+			Metadata:  item.Metadata,
+		}
+
+		// 处理每个配置值
+		for k, v := range item.Value {
+			configValue := &ConfigValue{
+				Type:  v.Type,
+				Value: v.Value,
+			}
+
+			// 对于加密类型的值，重新加密
+			if v.Type == ValueTypeEncrypted {
+				encrypted, err := s.encryptValue(v.Value)
+				if err != nil {
+					s.logger.Warn("加密配置值失败",
+						zap.String("key", item.Key),
+						zap.String("field", k),
+						zap.Error(err))
+					// 加密失败时保留原始值
+					configValue.Value = v.Value
+				} else {
+					// 重新加密成功
+					configValue.Value = encrypted
+				}
+			}
+
+			configItem.Value[k] = configValue
+		}
+
+		// 保存配置项
+		data, err := json.Marshal(configItem)
+		if err != nil {
+			s.logger.Error("序列化配置项失败",
+				zap.String("key", item.Key),
+				zap.Error(err))
+			continue
+		}
+
+		if err := s.client.Put(ctx, s.prefix+item.Key, string(data)); err != nil {
+			s.logger.Error("保存导入的配置项失败",
+				zap.String("key", item.Key),
+				zap.Error(err))
+		} else {
+			s.logger.Info("配置项导入成功", zap.String("key", item.Key))
+		}
+	}
+
+	s.logger.Info("配置导入完成",
+		zap.Int("总配置数", len(importData)),
+		zap.Int("跳过配置数", len(skippedConfigs)),
+		zap.Strings("跳过配置列表", skippedConfigs))
+
+	return skippedConfigs, nil
+}
+
+// ImportAllConfigsBase64 从Base64编码的字符串导入配置
+func (s *Service) ImportAllConfigsBase64(ctx context.Context, base64Data string, password string, skipExisting bool) ([]string, error) {
+	// 解码Base64数据
+	data, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return nil, fmt.Errorf("解码Base64数据失败: %v", err)
+	}
+
+	// 调用原有导入方法
+	return s.ImportAllConfigs(ctx, data, password, skipExisting)
+}
+
+// ExportConfigItem 导出配置项的结构
+type ExportConfigItem struct {
+	Key       string                  `json:"key"`
+	Value     map[string]*ConfigValue `json:"value"`
+	Version   int64                   `json:"version"`
+	UpdatedAt time.Time               `json:"updated_at"`
+	Metadata  map[string]string       `json:"metadata,omitempty"`
+}
+
+// encryptExportData 使用密码加密导出数据
+func (s *Service) encryptExportData(data []byte, password string) ([]byte, error) {
+	// 从密码生成密钥
+	key := s.deriveKeyFromPassword(password)
+
+	// 使用AES-GCM加密
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("创建加密器失败: %v", err)
+	}
+
+	// 生成随机nonce
+	nonce := make([]byte, 12)
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("生成nonce失败: %v", err)
+	}
+
+	// 使用GCM模式
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("初始化GCM失败: %v", err)
+	}
+
+	// 加密数据
+	ciphertext := aesgcm.Seal(nil, nonce, data, nil)
+
+	// 将nonce和密文合并
+	result := append(nonce, ciphertext...)
+	return result, nil
+}
+
+// decryptExportData 使用密码解密导入数据
+func (s *Service) decryptExportData(data []byte, password string) ([]byte, error) {
+	// 确保数据长度足够
+	if len(data) < 13 { // 12字节nonce + 至少1字节密文
+		return nil, fmt.Errorf("加密数据格式不正确")
+	}
+
+	// 从密码生成密钥
+	key := s.deriveKeyFromPassword(password)
+
+	// 分离nonce和密文
+	nonce := data[:12]
+	ciphertext := data[12:]
+
+	// 创建加密器
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("创建加密器失败: %v", err)
+	}
+
+	// 使用GCM模式
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("初始化GCM失败: %v", err)
+	}
+
+	// 解密数据
+	plaintext, err := aesgcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("解密失败: %v", err)
+	}
+
+	return plaintext, nil
+}
+
+// deriveKeyFromPassword 从密码派生密钥
+func (s *Service) deriveKeyFromPassword(password string) []byte {
+	// 简单实现，使用密码和salt组合
+	// 在生产环境中，应使用更安全的密钥派生函数，如PBKDF2、bcrypt或Argon2
+	combined := password + string(s.salt)
+
+	// 使用与系统相同的密钥生成逻辑
+	return s.getAESKey(combined)
 }

@@ -51,3 +51,10 @@ build.sh
 # 其他文件
 .env 
 cmd/aio/aio
+scripts/
+install.bat
+install.sh
+install_macos.sh
+uninstall.bat
+uninstall.sh
+web/

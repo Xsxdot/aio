@@ -3,10 +3,11 @@ package api
 
 import (
 	"fmt"
+	"time"
+
 	models2 "github.com/xsxdot/aio/internal/monitoring/models"
 	"github.com/xsxdot/aio/internal/monitoring/storage"
 	"github.com/xsxdot/aio/pkg/utils"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -31,26 +32,26 @@ func NewServiceAPI(storage *storage.Storage) *ServiceAPI {
 }
 
 // RegisterRoutes 注册服务监控API路由
-func (api *ServiceAPI) RegisterRoutes(router fiber.Router) {
+func (api *ServiceAPI) RegisterRoutes(router fiber.Router, authHandler func(*fiber.Ctx) error, adminRoleHandler func(*fiber.Ctx) error) {
 	// 应用服务相关路由
-	router.Get("/apps", api.GetAllServices)
-	router.Get("/apps/:serviceName", api.GetService)
+	router.Get("/apps", authHandler, api.GetAllServices)
+	router.Get("/apps/:serviceName", authHandler, api.GetService)
 
 	// 服务实例相关路由
-	router.Get("/apps/:serviceName/instances", api.GetServiceInstances)
-	router.Get("/apps/:serviceName/instances/:instanceId", api.GetServiceInstance)
-	router.Get("/apps/:serviceName/instances/:instanceId/metrics", api.GetServiceInstanceMetrics)
+	router.Get("/apps/:serviceName/instances", authHandler, api.GetServiceInstances)
+	router.Get("/apps/:serviceName/instances/:instanceId", authHandler, api.GetServiceInstance)
+	router.Get("/apps/:serviceName/instances/:instanceId/metrics", authHandler, api.GetServiceInstanceMetrics)
 
 	// 服务接口相关路由
-	router.Get("/apps/:serviceName/endpoints", api.GetServiceEndpoints)
-	router.Get("/apps/:serviceName/endpoints/:endpoint", api.GetServiceEndpoint)
-	router.Get("/apps/:serviceName/endpoints/:endpoint/metrics", api.GetServiceEndpointMetrics)
+	router.Get("/apps/:serviceName/endpoints", authHandler, api.GetServiceEndpoints)
+	router.Get("/apps/:serviceName/endpoints/:endpoint", authHandler, api.GetServiceEndpoint)
+	router.Get("/apps/:serviceName/endpoints/:endpoint/metrics", authHandler, api.GetServiceEndpointMetrics)
 
 	// 服务汇总指标相关路由
-	router.Get("/apps/:serviceName/metrics/summary", api.GetServiceMetricsSummary)
-	router.Get("/apps/:serviceName/metrics/qps", api.GetServiceQPSMetrics)
-	router.Get("/apps/:serviceName/metrics/error-rate", api.GetServiceErrorRateMetrics)
-	router.Get("/apps/:serviceName/metrics/response-time", api.GetServiceResponseTimeMetrics)
+	router.Get("/apps/:serviceName/metrics/summary", authHandler, api.GetServiceMetricsSummary)
+	router.Get("/apps/:serviceName/metrics/qps", authHandler, api.GetServiceQPSMetrics)
+	router.Get("/apps/:serviceName/metrics/error-rate", authHandler, api.GetServiceErrorRateMetrics)
+	router.Get("/apps/:serviceName/metrics/response-time", authHandler, api.GetServiceResponseTimeMetrics)
 }
 
 // GetAllServices 获取所有应用服务列表

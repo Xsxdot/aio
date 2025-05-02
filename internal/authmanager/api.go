@@ -2,8 +2,9 @@ package authmanager
 
 import (
 	"fmt"
-	"github.com/xsxdot/aio/pkg/utils"
 	"time"
+
+	"github.com/xsxdot/aio/pkg/utils"
 
 	"github.com/xsxdot/aio/pkg/auth"
 
@@ -24,17 +25,19 @@ func NewAPI(manager *AuthManager) *API {
 }
 
 // RegisterRoutes 注册API路由
-func (a *API) RegisterRoutes(app *fiber.App) {
+func (a *API) RegisterRoutes(app fiber.Router, baseAuth func(c *fiber.Ctx) error, adminAuth func(c *fiber.Ctx) error) {
 	// 创建一个auth组路由
-	auth := app.Group("/api/auth")
+	auth := app.Group("/auth")
 
 	// 公共API端点
 	auth.Post("/login", a.Login)
+	auth.Post("/logout", a.LoginOut)
 	auth.Post("/client", a.ClientAuth)
 	auth.Get("/verify", a.VerifyToken)
+	app.Post("/user/info", baseAuth, a.GetUserBySelf)
 
 	// 用户管理API端点（需要认证）
-	users := auth.Group("/users", a.AuthMiddleware, a.AdminRoleMiddleware)
+	users := auth.Group("/users", baseAuth, adminAuth)
 	users.Get("/", a.ListUsers)
 	users.Post("/", a.CreateUser)
 	users.Get("/:id", a.GetUser)
@@ -43,7 +46,7 @@ func (a *API) RegisterRoutes(app *fiber.App) {
 	users.Put("/:id/password", a.UpdateUserPassword)
 
 	// 角色管理API端点（需要认证）
-	roles := auth.Group("/roles", a.AuthMiddleware, a.AdminRoleMiddleware)
+	roles := auth.Group("/roles", baseAuth, adminAuth)
 	roles.Get("/", a.ListRoles)
 	roles.Post("/", a.CreateRole)
 	roles.Get("/:id", a.GetRole)
@@ -51,7 +54,7 @@ func (a *API) RegisterRoutes(app *fiber.App) {
 	roles.Delete("/:id", a.DeleteRole)
 
 	// 客户端凭证管理API端点（需要认证）
-	clients := auth.Group("/clients", a.AuthMiddleware, a.AdminRoleMiddleware)
+	clients := auth.Group("/clients", baseAuth, adminAuth)
 	clients.Get("/", a.ListClients)
 	clients.Post("/", a.CreateClient)
 	clients.Post("/service", a.CreateServiceClient)
@@ -580,4 +583,22 @@ func (a *API) DeleteClient(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, fiber.Map{
 		"message": "客户端已删除",
 	})
+}
+
+func (a *API) LoginOut(ctx *fiber.Ctx) error {
+	return utils.SuccessResponse(ctx, fiber.Map{
+		"message": "退出成功",
+	})
+}
+
+func (a *API) GetUserBySelf(ctx *fiber.Ctx) error {
+	authInfo, ok := ctx.Locals("authInfo").(*auth.AuthInfo)
+	if !ok {
+		return utils.FailResponse(ctx, utils.StatusInternalError, "获取用户信息失败")
+	}
+	user, err := a.manager.GetUser(authInfo.SubjectID)
+	if err != nil {
+		return utils.FailResponse(ctx, utils.StatusNotFound, "用户不存在")
+	}
+	return utils.SuccessResponse(ctx, user)
 }

@@ -3,6 +3,11 @@ package client
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"time"
+
 	"github.com/xsxdot/aio/app/config"
 	consts "github.com/xsxdot/aio/app/const"
 	"github.com/xsxdot/aio/internal/etcd"
@@ -13,7 +18,6 @@ import (
 	"github.com/xsxdot/aio/pkg/distributed/state"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
-	"time"
 )
 
 type EtcdService struct {
@@ -54,7 +58,7 @@ func (e *EtcdService) Connect(ctx context.Context) error {
 	e.etcdClient = etcdClient
 
 	// 初始化分布式服务管理器
-	rawClient := etcdClient.GetClient()
+	rawClient := etcdClient
 	if rawClient != nil {
 		e.distributedManager = manager.NewManager(rawClient, manager.WithLogger(e.log))
 
@@ -82,7 +86,7 @@ func (e *EtcdService) GetRawClient() *clientv3.Client {
 	if e.etcdClient == nil {
 		return nil
 	}
-	return e.etcdClient.GetClient()
+	return e.etcdClient.Client
 }
 
 // Close 关闭 ETCD 客户端
@@ -111,8 +115,8 @@ func (e *EtcdService) GetClientConfigFromCenter(ctx context.Context) (*etcd.Clie
 
 	// 使用 GetConfigWithStruct 方法直接获取并反序列化为结构体
 	// 该方法会自动处理加密字段的解密
-	var config config.ClientConfigFixedValue
-	err := e.client.Config.GetConfigJSONParse(ctx, configKey, &config)
+	var baseCfg config.ClientConfigFixedValue
+	err := e.client.Config.GetConfigJSONParse(ctx, configKey, &baseCfg)
 	if err != nil {
 		return nil, fmt.Errorf("从配置中心获取ETCD客户端配置失败: %w", err)
 	}
@@ -154,19 +158,68 @@ func (e *EtcdService) GetClientConfigFromCenter(ctx context.Context) (*etcd.Clie
 	cfg := &etcd.ClientConfig{
 		Endpoints:         endpoints,
 		DialTimeout:       e.ConnectTimeout,
-		Username:          config.Username,
-		Password:          config.Password,
+		Username:          baseCfg.Username,
+		Password:          baseCfg.Password,
 		AutoSyncEndpoints: true,
 	}
 
-	if config.EnableTls {
-		cfg.TLS = &etcd.TLSConfig{
-			TLSEnabled: config.EnableTls,
+	if baseCfg.EnableTls {
+		tlsConfig := &config.TLSConfig{
+			TLSEnabled: baseCfg.EnableTls,
 			AutoTls:    false,
-			Cert:       config.Cert,
-			Key:        config.Key,
-			TrustedCA:  config.TrustedCAFile,
 		}
+
+		// 使用证书内容创建临时文件
+		if baseCfg.CertContent != "" && baseCfg.KeyContent != "" && baseCfg.CATrustedContent != "" {
+			// 创建临时文件夹
+			tmpDir, err := os.MkdirTemp("", "etcd-certs-")
+			if err != nil {
+				e.log.Warn("创建临时证书目录失败", zap.Error(err))
+			} else {
+				// 创建证书文件
+				certFile := filepath.Join(tmpDir, "cert.pem")
+				keyFile := filepath.Join(tmpDir, "key.pem")
+				caFile := filepath.Join(tmpDir, "ca.pem")
+
+				// 写入证书内容
+				if err := os.WriteFile(certFile, []byte(baseCfg.CertContent), 0600); err == nil {
+					tlsConfig.Cert = certFile
+				} else {
+					e.log.Warn("写入证书文件失败", zap.Error(err))
+				}
+
+				// 写入密钥内容
+				if err := os.WriteFile(keyFile, []byte(baseCfg.KeyContent), 0600); err == nil {
+					tlsConfig.Key = keyFile
+				} else {
+					e.log.Warn("写入密钥文件失败", zap.Error(err))
+				}
+
+				// 写入CA证书内容
+				if err := os.WriteFile(caFile, []byte(baseCfg.CATrustedContent), 0600); err == nil {
+					tlsConfig.TrustedCA = caFile
+				} else {
+					e.log.Warn("写入CA证书文件失败", zap.Error(err))
+				}
+
+				// 设置清理函数，在程序退出时删除临时文件
+				finalizer := func() {
+					os.RemoveAll(tmpDir)
+				}
+
+				// 注册清理函数
+				runtime.SetFinalizer(tlsConfig, func(_ *config.TLSConfig) {
+					finalizer()
+				})
+			}
+		} else if baseCfg.Cert != "" && baseCfg.Key != "" && baseCfg.TrustedCAFile != "" {
+			// 如果没有证书内容但有证书路径，使用路径
+			tlsConfig.Cert = baseCfg.Cert
+			tlsConfig.Key = baseCfg.Key
+			tlsConfig.TrustedCA = baseCfg.TrustedCAFile
+		}
+
+		cfg.TLS = tlsConfig
 	}
 
 	return cfg, nil
@@ -204,13 +257,21 @@ func (e *EtcdService) GetStateManagerService() (state.StateManagerService, error
 	return e.distributedManager.StateManager(), nil
 }
 
-// CreateLock 创建一个命名的分布式锁
-func (e *EtcdService) CreateLock(ctx context.Context, name string, options ...lock.LockOption) (lock.Lock, error) {
-	lockService, err := e.GetLockService()
-	if err != nil {
-		return nil, err
+// CreateLock 创建锁实例，实现scheduler.LockProvider接口
+func (e *EtcdService) CreateLock(ctx context.Context, key string, options ...lock.LockOption) (lock.Lock, error) {
+	// 确保分布式服务已初始化
+	if e.distributedManager == nil {
+		return nil, fmt.Errorf("分布式服务未初始化")
 	}
-	return lockService.Create(name, options...)
+
+	// 获取锁服务
+	lockService := e.distributedManager.Lock()
+	if lockService == nil {
+		return nil, fmt.Errorf("锁服务未初始化")
+	}
+
+	// 创建锁
+	return lockService.Create(key, options...)
 }
 
 // CreateElection 创建一个命名的分布式选举
