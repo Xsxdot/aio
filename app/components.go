@@ -244,9 +244,11 @@ func (r *ComponentManager) GetConfigData(component *ComponentEntity) []byte {
 	case config.ReadTypeFile:
 		bytes, err = os.ReadFile(filepath.Join(r.app.configDirPath, component.cfg.Name))
 	case config.ReadTypeCenter:
-		json, err := r.app.ConfigService.ExportConfigAsJSON(context.Background(), component.Name())
-		if err == nil {
+		json, err2 := r.app.ConfigService.ExportConfigAsJSON(context.Background(), component.Name())
+		if err2 == nil {
 			bytes = []byte(json)
+		} else {
+			err = err2
 		}
 	default:
 		bytes = []byte("")
