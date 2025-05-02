@@ -98,10 +98,19 @@ func NewEtcdClient(config *ClientConfig, logger *zap.Logger) (*EtcdClient, error
 	}
 
 	logger.Info("etcd客户端已连接", zap.Strings("endpoints", config.Endpoints))
-	return &EtcdClient{
+	e := &EtcdClient{
 		Client: client,
 		logger: logger,
-	}, nil
+	}
+
+	if config.Username != "" && config.Password != "" {
+		err = e.setupRootUser(config.Username, config.Password)
+		if err != nil {
+			return nil, fmt.Errorf("设置根用户失败: %v", err)
+		}
+	}
+
+	return e, nil
 }
 
 // setupRootUser 设置etcd根用户

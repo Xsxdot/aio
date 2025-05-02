@@ -58,3 +58,4 @@ install_macos.sh
 uninstall.bat
 uninstall.sh
 web/
+verify_package.sh
