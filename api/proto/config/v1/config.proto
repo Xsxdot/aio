@@ -1,0 +1,224 @@
+syntax = "proto3";
+
+package config.v1;
+option go_package = "github.com/xsxdot/aio/api/proto/config/v1;configv1";
+
+// ConfigService 配置中心服务
+service ConfigService {
+  // GetConfig 获取配置
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+  
+  // SetConfig 设置配置
+  rpc SetConfig(SetConfigRequest) returns (SetConfigResponse);
+  
+  // DeleteConfig 删除配置
+  rpc DeleteConfig(DeleteConfigRequest) returns (DeleteConfigResponse);
+  
+  // ListConfigs 列出所有配置
+  rpc ListConfigs(ListConfigsRequest) returns (ListConfigsResponse);
+  
+  // GetConfigJSON 获取JSON格式配置
+  rpc GetConfigJSON(GetConfigJSONRequest) returns (GetConfigJSONResponse);
+  
+  // GetEnvConfig 获取环境配置
+  rpc GetEnvConfig(GetEnvConfigRequest) returns (GetEnvConfigResponse);
+  
+  // SetEnvConfig 设置环境配置
+  rpc SetEnvConfig(SetEnvConfigRequest) returns (SetEnvConfigResponse);
+  
+  // ListEnvConfig 列出环境配置
+  rpc ListEnvConfig(ListEnvConfigRequest) returns (ListEnvConfigResponse);
+  
+  // GetEnvConfigJSON 获取环境JSON格式配置
+  rpc GetEnvConfigJSON(GetEnvConfigJSONRequest) returns (GetEnvConfigJSONResponse);
+  
+  // GetHistory 获取配置历史
+  rpc GetHistory(GetHistoryRequest) returns (GetHistoryResponse);
+  
+  // GetRevision 获取特定版本配置
+  rpc GetRevision(GetRevisionRequest) returns (GetRevisionResponse);
+  
+  // GetComposite 获取组合配置
+  rpc GetComposite(GetCompositeRequest) returns (GetCompositeResponse);
+  
+  // MergeComposite 合并组合配置
+  rpc MergeComposite(MergeCompositeRequest) returns (MergeCompositeResponse);
+}
+
+// 配置值
+message ConfigValue {
+  string string_value = 1;   // 字符串值
+  int64 int_value = 2;       // 整数值
+  double float_value = 3;    // 浮点数值
+  bool bool_value = 4;       // 布尔值
+  bytes bytes_value = 5;     // 字节值
+  string type = 6;           // 值类型
+}
+
+// 配置信息
+message Config {
+  string key = 1;                              // 配置键
+  map<string, ConfigValue> value = 2;          // 配置值
+  map<string, string> metadata = 3;            // 元数据
+  int64 revision = 4;                          // 修订版本
+  int64 create_time = 5;                       // 创建时间
+  int64 update_time = 6;                       // 更新时间
+}
+
+// 历史记录
+message ConfigHistory {
+  string key = 1;                              // 配置键
+  map<string, ConfigValue> value = 2;          // 配置值
+  map<string, string> metadata = 3;            // 元数据
+  int64 revision = 4;                          // 修订版本
+  int64 timestamp = 5;                         // 时间戳
+  string operation = 6;                        // 操作类型 (create, update, delete)
+}
+
+// 获取配置请求
+message GetConfigRequest {
+  string key = 1;
+}
+
+// 获取配置响应
+message GetConfigResponse {
+  Config config = 1;
+}
+
+// 获取JSON格式配置请求
+message GetConfigJSONRequest {
+  string key = 1;
+}
+
+// 获取JSON格式配置响应
+message GetConfigJSONResponse {
+  string json_data = 1;
+}
+
+// 设置配置请求
+message SetConfigRequest {
+  string key = 1;
+  map<string, ConfigValue> value = 2;
+  map<string, string> metadata = 3;
+}
+
+// 设置配置响应
+message SetConfigResponse {
+  Config config = 1;
+}
+
+// 删除配置请求
+message DeleteConfigRequest {
+  string key = 1;
+}
+
+// 删除配置响应
+message DeleteConfigResponse {
+  bool success = 1;
+}
+
+// 列出配置请求
+message ListConfigsRequest {
+  // 可以添加分页和过滤参数
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+// 列出配置响应
+message ListConfigsResponse {
+  repeated Config configs = 1;
+  string next_page_token = 2;
+}
+
+// 获取环境配置请求
+message GetEnvConfigRequest {
+  string key = 1;
+  string env = 2;
+  repeated string fallbacks = 3;
+}
+
+// 获取环境配置响应
+message GetEnvConfigResponse {
+  Config config = 1;
+}
+
+// 设置环境配置请求
+message SetEnvConfigRequest {
+  string key = 1;
+  string env = 2;
+  map<string, ConfigValue> value = 3;
+  map<string, string> metadata = 4;
+}
+
+// 设置环境配置响应
+message SetEnvConfigResponse {
+  Config config = 1;
+}
+
+// 列出环境配置请求
+message ListEnvConfigRequest {
+  string key = 1;
+}
+
+// 列出环境配置响应
+message ListEnvConfigResponse {
+  repeated string environments = 1;
+}
+
+// 获取环境JSON格式配置请求
+message GetEnvConfigJSONRequest {
+  string key = 1;
+  string env = 2;
+  repeated string fallbacks = 3;
+}
+
+// 获取环境JSON格式配置响应
+message GetEnvConfigJSONResponse {
+  string json_data = 1;
+}
+
+// 获取历史请求
+message GetHistoryRequest {
+  string key = 1;
+  int64 limit = 2;
+}
+
+// 获取历史响应
+message GetHistoryResponse {
+  repeated ConfigHistory history = 1;
+}
+
+// 获取特定版本请求
+message GetRevisionRequest {
+  string key = 1;
+  int64 revision = 2;
+}
+
+// 获取特定版本响应
+message GetRevisionResponse {
+  Config config = 1;
+}
+
+// 获取组合配置请求
+message GetCompositeRequest {
+  string key = 1;
+  string env = 2;
+  repeated string fallbacks = 3;
+}
+
+// 获取组合配置响应
+message GetCompositeResponse {
+  map<string, string> composite = 1;
+}
+
+// 合并组合配置请求
+message MergeCompositeRequest {
+  repeated string keys = 1;
+  string env = 2;
+  repeated string fallbacks = 3;
+}
+
+// 合并组合配置响应
+message MergeCompositeResponse {
+  map<string, string> composite = 1;
+} 

@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package auth.v1;
+option go_package = "github.com/xsxdot/aio/api/proto/auth/v1;authv1";
+
+// AuthService 认证服务
+service AuthService {
+  // ClientAuth 客户端认证
+  rpc ClientAuth(ClientAuthRequest) returns (ClientAuthResponse);
+}
+
+// 客户端认证请求
+message ClientAuthRequest {
+  string client_id = 1;     // 客户端ID
+  string client_secret = 2; // 客户端密钥
+}
+
+// 客户端认证响应
+message ClientAuthResponse {
+  string access_token = 1;  // 访问令牌
+  int64 expires_in = 2;     // 过期时间（秒）
+  string token_type = 3;    // 令牌类型
+} 

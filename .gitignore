@@ -1,0 +1,57 @@
+# Go项目相关忽略
+# 二进制文件
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# 编译生成的文件
+*.o
+*.a
+
+# Go特有
+_obj
+_test
+vendor/
+go.work
+
+# 编译输出
+/bin/
+/release/
+
+# IDE相关文件
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+.cursorrules
+
+# 项目特定文件夹
+/certs/
+/data/
+/docs/
+/init/
+/logs/
+
+# 临时文件
+*.tmp
+*.log
+*.bak
+build.bat
+build.sh
+
+# 配置文件中可能含有敏感信息的文件
+# 根据需要取消注释
+# /conf/*.yaml
+# /conf/*.json
+
+# 其他文件
+.env 
+cmd/server/aio
+scripts/
+verify_package.sh
+conf/aio.yaml

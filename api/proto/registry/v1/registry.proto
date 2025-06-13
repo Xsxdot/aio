@@ -1,0 +1,221 @@
+syntax = "proto3";
+
+package registry.v1;
+option go_package = "github.com/xsxdot/aio/api/proto/registry/v1;registryv1";
+
+// RegistryService 服务注册中心服务
+service RegistryService {
+  // Register 注册服务实例
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  
+  // Unregister 注销服务实例
+  rpc Unregister(UnregisterRequest) returns (UnregisterResponse);
+  
+  // Renew 续约服务实例
+  rpc Renew(RenewRequest) returns (RenewResponse);
+  
+  // GetService 获取单个服务实例
+  rpc GetService(GetServiceRequest) returns (GetServiceResponse);
+  
+  // ListServices 列出所有服务名称
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
+  
+  // Discover 发现服务实例列表
+  rpc Discover(DiscoverRequest) returns (DiscoverResponse);
+  
+  // CheckHealth 检查服务健康状态
+  rpc CheckHealth(CheckHealthRequest) returns (CheckHealthResponse);
+  
+  // GetStats 获取注册中心统计信息
+  rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
+  
+  // GetServiceStats 获取指定服务的统计信息
+  rpc GetServiceStats(GetServiceStatsRequest) returns (GetServiceStatsResponse);
+  
+  // Admin APIs - 管理员功能
+  
+  // GetAllServices 管理员获取所有服务详细信息
+  rpc GetAllServices(GetAllServicesRequest) returns (GetAllServicesResponse);
+  
+  // RemoveAllServiceInstances 管理员删除指定服务的所有实例
+  rpc RemoveAllServiceInstances(RemoveAllServiceInstancesRequest) returns (RemoveAllServiceInstancesResponse);
+}
+
+// ServiceInstance 服务实例信息
+message ServiceInstance {
+  string id = 1;                       // 服务实例唯一ID
+  string name = 2;                     // 服务名称  
+  string address = 3;                  // 服务地址
+  string protocol = 4;                 // 协议类型
+  string env = 5;                      // 环境标识：all(所有环境)、dev(开发)、test(测试)、prod(生产)
+  int64 register_time = 6;             // 注册时间戳
+  int64 start_time = 7;                // 启动时间戳
+  map<string, string> metadata = 8;    // 服务元数据
+  int32 weight = 9;                    // 负载均衡权重
+  string status = 10;                  // 服务状态
+}
+
+// Register API
+
+// 注册服务实例请求
+message RegisterRequest {
+  string name = 1;                      // 服务名称
+  string address = 2;                   // 服务地址
+  string protocol = 3;                  // 协议类型
+  string env = 4;                       // 环境标识：all(所有环境)、dev(开发)、test(测试)、prod(生产)
+  map<string, string> metadata = 5;    // 服务元数据
+  int32 weight = 6;                     // 负载均衡权重
+  string status = 7;                    // 服务状态
+}
+
+// 注册服务实例响应
+message RegisterResponse {
+  ServiceInstance instance = 1;        // 注册的服务实例信息
+}
+
+// Unregister API
+
+// 注销服务实例请求
+message UnregisterRequest {
+  string service_id = 1;               // 服务实例ID
+}
+
+// 注销服务实例响应
+message UnregisterResponse {
+  string message = 1;                  // 操作结果消息
+}
+
+// Renew API
+
+// 续约服务实例请求
+message RenewRequest {
+  string service_id = 1;               // 服务实例ID
+}
+
+// 续约服务实例响应
+message RenewResponse {
+  string message = 1;                  // 操作结果消息
+}
+
+// GetService API
+
+// 获取单个服务实例请求
+message GetServiceRequest {
+  string service_id = 1;               // 服务实例ID
+}
+
+// 获取单个服务实例响应
+message GetServiceResponse {
+  ServiceInstance instance = 1;        // 服务实例信息
+}
+
+// ListServices API
+
+// 列出所有服务名称请求
+message ListServicesRequest {
+  // 无需参数
+}
+
+// 列出所有服务名称响应
+message ListServicesResponse {
+  repeated string services = 1;        // 服务名称列表
+}
+
+// Discover API
+
+// 发现服务实例列表请求
+message DiscoverRequest {
+  string service_name = 1;              // 服务名称
+  string env = 2;                       // 环境标识：all(所有环境)、dev(开发)、test(测试)、prod(生产)，空值返回所有
+  string status = 3;                   // 过滤状态（可选）
+  string protocol = 4;                 // 过滤协议（可选）
+}
+
+// 发现服务实例列表响应
+message DiscoverResponse {
+  repeated ServiceInstance instances = 1;  // 服务实例列表
+}
+
+// CheckHealth API
+
+// 检查服务健康状态请求
+message CheckHealthRequest {
+  string service_id = 1;               // 服务实例ID
+}
+
+// 检查服务健康状态响应
+message CheckHealthResponse {
+  string service_id = 1;               // 服务实例ID
+  string service_name = 2;             // 服务名称
+  string status = 3;                   // 服务状态
+  bool healthy = 4;                    // 是否健康
+  string uptime = 5;                   // 运行时长
+  string register_duration = 6;        // 注册时长
+  int64 last_check = 7;  // 最后检查时间（Unix时间戳）
+}
+
+// GetStats API
+
+// 获取注册中心统计信息请求
+message GetStatsRequest {
+  // 无需参数
+}
+
+// 获取注册中心统计信息响应
+message GetStatsResponse {
+  int32 total_services = 1;            // 总服务数
+  int32 total_instances = 2;           // 总实例数
+  int32 healthy_instances = 3;         // 健康实例数
+  int32 unhealthy_instances = 4;       // 不健康实例数
+  map<string, int32> service_stats = 5; // 各服务实例统计
+  int64 timestamp = 6; // 统计时间（Unix时间戳）
+}
+
+// GetServiceStats API
+
+// 获取指定服务的统计信息请求
+message GetServiceStatsRequest {
+  string service_name = 1;             // 服务名称
+}
+
+// 获取指定服务的统计信息响应
+message GetServiceStatsResponse {
+  string service_name = 1;             // 服务名称
+  int32 total_instances = 2;           // 总实例数
+  int32 healthy_instances = 3;         // 健康实例数
+  int32 unhealthy_instances = 4;       // 不健康实例数
+  map<string, int32> protocols = 5;    // 协议分布
+  map<string, int32> statuses = 6;     // 状态分布
+  repeated ServiceInstance instances = 7; // 所有实例列表
+  int64 timestamp = 8; // 统计时间（Unix时间戳）
+}
+
+// Admin APIs
+
+// 管理员获取所有服务详细信息请求
+message GetAllServicesRequest {
+  // 无需参数
+}
+
+// 管理员获取所有服务详细信息响应
+message GetAllServicesResponse {
+  map<string, ServiceInstanceList> services = 1; // 服务名称到实例列表的映射
+}
+
+// 服务实例列表
+message ServiceInstanceList {
+  repeated ServiceInstance instances = 1;  // 实例列表
+}
+
+// 管理员删除指定服务的所有实例请求
+message RemoveAllServiceInstancesRequest {
+  string service_name = 1;             // 服务名称
+}
+
+// 管理员删除指定服务的所有实例响应
+message RemoveAllServiceInstancesResponse {
+  string service_name = 1;             // 服务名称
+  int32 total_instances = 2;           // 总实例数
+  int32 removed_count = 3;             // 删除成功数量
+  repeated string errors = 4;          // 错误列表
+} 
