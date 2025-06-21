@@ -20,14 +20,21 @@ type MonitorClient struct {
 	storageClient *MonitoringStorageClient
 
 	// 收集器实例
-	appCollector *collector.AppCollector
-	apiCollector *collector.APICollector
+	appCollector      *collector.AppCollector
+	apiCollector      *collector.APICollector
+	databaseCollector *collector.DatabaseCollector
 
 	// API指标缓存队列
 	apiMetricsQueue []*collector.APICallMetrics
 	queueMutex      sync.RWMutex
-	logger          *zap.Logger
-	flushTask       scheduler.Task // 定时刷新任务
+
+	// 数据库指标缓存队列
+	databaseMetricsQueue []*collector.DatabaseOperationMetrics
+	dbQueueMutex         sync.RWMutex
+
+	logger      *zap.Logger
+	flushTask   scheduler.Task // 定时刷新任务
+	dbFlushTask scheduler.Task // 数据库指标定时刷新任务
 
 	// 批量发送配置
 	maxBatchSize  int           // 最大批量大小，默认100
@@ -39,20 +46,22 @@ func NewMonitorClient(serviceInfo *registry.ServiceInstance, manager *GRPCClient
 	storageClient := NewMonitoringStorageClientFromManager(manager, serviceInfo.Name, logger)
 
 	client := &MonitorClient{
-		instance:        serviceInfo,
-		manager:         manager,
-		scheduler:       scheduler,
-		storageClient:   storageClient,
-		apiMetricsQueue: make([]*collector.APICallMetrics, 0, 100),
-		logger:          logger,
-		maxBatchSize:    100,
-		flushInterval:   15 * time.Second,
+		instance:             serviceInfo,
+		manager:              manager,
+		scheduler:            scheduler,
+		storageClient:        storageClient,
+		apiMetricsQueue:      make([]*collector.APICallMetrics, 0, 100),
+		databaseMetricsQueue: make([]*collector.DatabaseOperationMetrics, 0, 100),
+		logger:               logger,
+		maxBatchSize:         100,
+		flushInterval:        15 * time.Second,
 	}
 
 	// 创建应用收集器
 	appConfig := collector.AppCollectorConfig{
 		ServiceName:     serviceInfo.Name,
 		InstanceID:      serviceInfo.ID,
+		Env:             string(serviceInfo.Env),
 		CollectInterval: 30, // 30秒采集一次应用指标
 		Logger:          logger,
 		Storage:         storageClient,
@@ -64,13 +73,25 @@ func NewMonitorClient(serviceInfo *registry.ServiceInstance, manager *GRPCClient
 	apiConfig := collector.APICollectorConfig{
 		ServiceName: serviceInfo.Name,
 		InstanceID:  serviceInfo.ID,
+		Env:         string(serviceInfo.Env),
 		Logger:      logger,
 		Storage:     storageClient,
 	}
 	client.apiCollector = collector.NewAPICollector(apiConfig)
 
+	// 创建数据库收集器
+	databaseConfig := collector.DatabaseCollectorConfig{
+		ServiceName: serviceInfo.Name,
+		InstanceID:  serviceInfo.ID,
+		Env:         string(serviceInfo.Env),
+		Logger:      logger,
+		Storage:     storageClient,
+	}
+	client.databaseCollector = collector.NewDatabaseCollector(databaseConfig)
+
 	// 创建定时刷新任务
 	client.createFlushTask()
+	client.createDBFlushTask()
 
 	return client
 }
@@ -89,9 +110,29 @@ func (m *MonitorClient) createFlushTask() {
 	)
 }
 
+// createDBFlushTask 创建数据库指标定时刷新任务
+func (m *MonitorClient) createDBFlushTask() {
+	taskName := fmt.Sprintf("database-metrics-flush-%s-%s", m.instance.Name, m.instance.ID)
+
+	m.dbFlushTask = scheduler.NewIntervalTask(
+		taskName,
+		time.Now(),
+		m.flushInterval,
+		scheduler.TaskExecuteModeLocal, // 本地任务
+		30*time.Second,                 // 任务超时时间
+		m.flushDatabaseMetricsTask,
+	)
+}
+
 // flushAPIMetricsTask 定时刷新任务函数
 func (m *MonitorClient) flushAPIMetricsTask(ctx context.Context) error {
 	m.flushAPIMetrics()
+	return nil
+}
+
+// flushDatabaseMetricsTask 数据库指标定时刷新任务函数
+func (m *MonitorClient) flushDatabaseMetricsTask(ctx context.Context) error {
+	m.flushDatabaseMetrics()
 	return nil
 }
 
@@ -113,10 +154,24 @@ func (m *MonitorClient) Start() error {
 		return err
 	}
 
+	// 启动数据库收集器
+	if err := m.databaseCollector.Start(); err != nil {
+		m.logger.Error("启动数据库收集器失败", zap.Error(err))
+		return err
+	}
+
 	// 启动定时刷新任务
 	if m.scheduler != nil && m.flushTask != nil {
 		if err := m.scheduler.AddTask(m.flushTask); err != nil {
 			m.logger.Error("启动定时刷新任务失败", zap.Error(err))
+			return err
+		}
+	}
+
+	// 启动数据库指标定时刷新任务
+	if m.scheduler != nil && m.dbFlushTask != nil {
+		if err := m.scheduler.AddTask(m.dbFlushTask); err != nil {
+			m.logger.Error("启动数据库指标定时刷新任务失败", zap.Error(err))
 			return err
 		}
 	}
@@ -132,9 +187,13 @@ func (m *MonitorClient) Stop() error {
 	if m.scheduler != nil && m.flushTask != nil {
 		m.scheduler.RemoveTask(m.flushTask.GetID())
 	}
+	if m.scheduler != nil && m.dbFlushTask != nil {
+		m.scheduler.RemoveTask(m.dbFlushTask.GetID())
+	}
 
 	// 发送剩余的指标数据
 	m.flushAPIMetrics()
+	m.flushDatabaseMetrics()
 
 	// 停止收集器
 	if m.appCollector != nil {
@@ -142,6 +201,9 @@ func (m *MonitorClient) Stop() error {
 	}
 	if m.apiCollector != nil {
 		m.apiCollector.Stop()
+	}
+	if m.databaseCollector != nil {
+		m.databaseCollector.Stop()
 	}
 
 	return nil
@@ -159,6 +221,9 @@ func (m *MonitorClient) RecordAPICall(apiMetrics *collector.APICallMetrics) {
 	}
 	if apiMetrics.InstanceID == "" {
 		apiMetrics.InstanceID = m.instance.ID
+	}
+	if apiMetrics.Env == "" {
+		apiMetrics.Env = string(m.instance.Env)
 	}
 	if apiMetrics.Timestamp.IsZero() {
 		apiMetrics.Timestamp = time.Now()
@@ -201,6 +266,9 @@ func (m *MonitorClient) RecordAPICallBatch(apiMetricsList []*collector.APICallMe
 		}
 		if apiMetrics.Timestamp.IsZero() {
 			apiMetrics.Timestamp = now
+		}
+		if apiMetrics.Env == "" {
+			apiMetrics.Env = string(m.instance.Env)
 		}
 
 		m.apiMetricsQueue = append(m.apiMetricsQueue, apiMetrics)
@@ -300,4 +368,103 @@ func (m *MonitorClient) UpdateServiceInstance(serviceInfo *registry.ServiceInsta
 	m.logger.Info("更新服务实例信息",
 		zap.String("service_name", serviceInfo.Name),
 		zap.String("instance_id", serviceInfo.ID))
+}
+
+// RecordDatabaseOperation 记录数据库操作指标（对外接口）
+func (m *MonitorClient) RecordDatabaseOperation(dbMetrics *collector.DatabaseOperationMetrics) {
+	if dbMetrics == nil {
+		return
+	}
+
+	// 补充服务信息
+	if dbMetrics.ServiceName == "" {
+		dbMetrics.ServiceName = m.instance.Name
+	}
+	if dbMetrics.InstanceID == "" {
+		dbMetrics.InstanceID = m.instance.ID
+	}
+	if dbMetrics.Env == "" {
+		dbMetrics.Env = string(m.instance.Env)
+	}
+	if dbMetrics.Timestamp.IsZero() {
+		dbMetrics.Timestamp = time.Now()
+	}
+
+	m.dbQueueMutex.Lock()
+	defer m.dbQueueMutex.Unlock()
+
+	// 添加到队列
+	m.databaseMetricsQueue = append(m.databaseMetricsQueue, dbMetrics)
+
+	// 检查是否达到批量大小
+	if len(m.databaseMetricsQueue) >= m.maxBatchSize {
+		go m.flushDatabaseMetrics()
+	}
+}
+
+// RecordDatabaseOperationBatch 批量记录数据库操作指标（对外接口）
+func (m *MonitorClient) RecordDatabaseOperationBatch(dbMetricsList []*collector.DatabaseOperationMetrics) {
+	if len(dbMetricsList) == 0 {
+		return
+	}
+
+	now := time.Now()
+
+	m.dbQueueMutex.Lock()
+	defer m.dbQueueMutex.Unlock()
+
+	// 补充服务信息并添加到队列
+	for _, dbMetrics := range dbMetricsList {
+		if dbMetrics == nil {
+			continue
+		}
+
+		if dbMetrics.ServiceName == "" {
+			dbMetrics.ServiceName = m.instance.Name
+		}
+		if dbMetrics.InstanceID == "" {
+			dbMetrics.InstanceID = m.instance.ID
+		}
+		if dbMetrics.Timestamp.IsZero() {
+			dbMetrics.Timestamp = now
+		}
+		if dbMetrics.Env == "" {
+			dbMetrics.Env = string(m.instance.Env)
+		}
+
+		m.databaseMetricsQueue = append(m.databaseMetricsQueue, dbMetrics)
+	}
+
+	// 检查是否达到批量大小
+	if len(m.databaseMetricsQueue) >= m.maxBatchSize {
+		go m.flushDatabaseMetrics()
+	}
+}
+
+// flushDatabaseMetrics 刷新数据库指标数据
+func (m *MonitorClient) flushDatabaseMetrics() {
+	m.dbQueueMutex.Lock()
+	if len(m.databaseMetricsQueue) == 0 {
+		m.dbQueueMutex.Unlock()
+		return
+	}
+
+	// 复制队列数据并清空队列
+	metricsToSend := make([]*collector.DatabaseOperationMetrics, len(m.databaseMetricsQueue))
+	copy(metricsToSend, m.databaseMetricsQueue)
+	m.databaseMetricsQueue = m.databaseMetricsQueue[:0] // 清空队列但保持容量
+	m.dbQueueMutex.Unlock()
+
+	// 批量发送
+	if err := m.databaseCollector.RecordBatch(metricsToSend); err != nil {
+		m.logger.Error("批量发送数据库指标失败",
+			zap.Int("count", len(metricsToSend)),
+			zap.Error(err))
+
+		// 发送失败时，可以考虑重新加入队列或记录到文件
+		// 这里简单记录错误日志
+	} else {
+		m.logger.Debug("批量发送数据库指标成功",
+			zap.Int("count", len(metricsToSend)))
+	}
 }

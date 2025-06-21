@@ -20,6 +20,7 @@ import (
 type AppCollectorConfig struct {
 	ServiceName     string                       // 服务名称
 	InstanceID      string                       // 实例ID
+	Env             string                       // 环境标识（如：dev, test, prod）
 	CollectInterval int                          // 采集间隔（秒）
 	Logger          *zap.Logger                  // 日志记录器
 	Storage         storage.UnifiedMetricStorage // 存储层
@@ -80,6 +81,7 @@ func (c *AppCollector) Start() error {
 	c.logger.Info("启动应用指标采集器",
 		zap.String("service_name", c.config.ServiceName),
 		zap.String("instance_id", c.config.InstanceID),
+		zap.String("env", c.config.Env),
 		zap.Int("interval_seconds", c.config.CollectInterval))
 
 	// 将任务添加到调度器
@@ -119,7 +121,8 @@ func (c *AppCollector) collectAndStore(ctx context.Context) error {
 
 	c.logger.Debug("应用指标采集存储成功",
 		zap.String("service_name", c.config.ServiceName),
-		zap.String("instance_id", c.config.InstanceID))
+		zap.String("instance_id", c.config.InstanceID),
+		zap.String("env", c.config.Env))
 
 	return nil
 }
@@ -131,6 +134,7 @@ func (c *AppCollector) collectAppMetrics() (*AppMetrics, error) {
 	appMetrics := &AppMetrics{
 		Source:    c.config.ServiceName,
 		Instance:  c.config.InstanceID,
+		Env:       c.config.Env,
 		Timestamp: now,
 	}
 
@@ -221,6 +225,7 @@ func (c *AppCollector) getLoadedPackagesCount() int {
 type AppMetrics struct {
 	Source    string    `json:"source"`
 	Instance  string    `json:"instance"`
+	Env       string    `json:"env"` // 环境标识
 	Timestamp time.Time `json:"timestamp"`
 	Metrics   struct {
 		Memory struct {
@@ -277,6 +282,7 @@ func (a *AppMetrics) ToMetricPoints() []models.MetricPoint {
 	labels := map[string]string{
 		"source":   a.Source,
 		"instance": a.Instance,
+		"env":      a.Env,
 	}
 
 	points = append(points,

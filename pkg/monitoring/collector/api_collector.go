@@ -3,10 +3,11 @@ package collector
 
 import (
 	"fmt"
-	"github.com/xsxdot/aio/pkg/monitoring/models"
-	"github.com/xsxdot/aio/pkg/monitoring/storage"
 	"sync"
 	"time"
+
+	"github.com/xsxdot/aio/pkg/monitoring/models"
+	"github.com/xsxdot/aio/pkg/monitoring/storage"
 
 	"go.uber.org/zap"
 )
@@ -15,6 +16,7 @@ import (
 type APICollectorConfig struct {
 	ServiceName string                       // 服务名称
 	InstanceID  string                       // 实例ID
+	Env         string                       // 环境标识（如：dev, test, prod）
 	Logger      *zap.Logger                  // 日志记录器
 	Storage     storage.UnifiedMetricStorage // 存储层
 }
@@ -54,6 +56,9 @@ func (c *APICollector) RecordAPICall(callMetrics *APICallMetrics) error {
 	if callMetrics.InstanceID == "" {
 		callMetrics.InstanceID = c.config.InstanceID
 	}
+	if callMetrics.Env == "" {
+		callMetrics.Env = c.config.Env
+	}
 	if callMetrics.Timestamp.IsZero() {
 		callMetrics.Timestamp = time.Now()
 	}
@@ -63,6 +68,7 @@ func (c *APICollector) RecordAPICall(callMetrics *APICallMetrics) error {
 		c.logger.Error("存储API指标失败",
 			zap.String("path", callMetrics.Path),
 			zap.String("method", string(callMetrics.Method)),
+			zap.String("env", callMetrics.Env),
 			zap.Error(err))
 		return err
 	}
@@ -70,6 +76,7 @@ func (c *APICollector) RecordAPICall(callMetrics *APICallMetrics) error {
 	c.logger.Debug("API指标记录成功",
 		zap.String("service_name", callMetrics.ServiceName),
 		zap.String("instance_id", callMetrics.InstanceID),
+		zap.String("env", callMetrics.Env),
 		zap.String("path", callMetrics.Path),
 		zap.String("method", string(callMetrics.Method)),
 		zap.Int("status_code", callMetrics.StatusCode),
@@ -97,6 +104,9 @@ func (c *APICollector) RecordBatch(callMetrics []*APICallMetrics) error {
 		}
 		if apiCall.InstanceID == "" {
 			apiCall.InstanceID = c.config.InstanceID
+		}
+		if apiCall.Env == "" {
+			apiCall.Env = c.config.Env
 		}
 		if apiCall.Timestamp.IsZero() {
 			apiCall.Timestamp = time.Now()
@@ -127,7 +137,8 @@ func (c *APICollector) GetSupportedMetrics() []string {
 func (c *APICollector) Start() error {
 	c.logger.Info("API指标收集器已准备就绪",
 		zap.String("service_name", c.config.ServiceName),
-		zap.String("instance_id", c.config.InstanceID))
+		zap.String("instance_id", c.config.InstanceID),
+		zap.String("env", c.config.Env))
 	return nil
 }
 
@@ -181,6 +192,7 @@ type APICallMetrics struct {
 	Timestamp   time.Time `json:"timestamp"`            // 请求时间戳
 	ServiceName string    `json:"service_name"`         // 服务名称
 	InstanceID  string    `json:"instance_id"`          // 服务实例ID
+	Env         string    `json:"env"`                  // 环境标识（如：dev, test, prod）
 	RequestID   string    `json:"request_id,omitempty"` // 请求ID（用于链路追踪）
 	TraceID     string    `json:"trace_id,omitempty"`   // 链路追踪ID
 	SpanID      string    `json:"span_id,omitempty"`    // Span ID
@@ -231,6 +243,7 @@ func (a *APICallMetrics) ToMetricPoints() []models.MetricPoint {
 	baseLabels := map[string]string{
 		"service_name": a.ServiceName,
 		"instance_id":  a.InstanceID,
+		"env":          a.Env,
 		"method":       string(a.Method),
 		"path":         a.Path,
 		"status_code":  fmt.Sprintf("%d", a.StatusCode),

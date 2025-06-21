@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/xsxdot/aio/pkg/monitoring/models"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/xsxdot/aio/pkg/monitoring/models"
 
 	"github.com/dgraph-io/badger/v3"
 	"go.uber.org/zap"
@@ -70,6 +71,7 @@ type MetricQuery struct {
 	Categories    []models.MetricCategory
 	Sources       []string
 	Instances     []string
+	Envs          []string // 新增：环境过滤
 	LabelMatchers map[string]string
 	Aggregation   string // sum, avg, count, max, min
 	Interval      string // 聚合间隔，如 "1m", "5m", "1h"
@@ -308,6 +310,23 @@ func (s *Storage) matchesQuery(point *models.MetricPoint, query MetricQuery) boo
 			if point.Instance == instance {
 				found = true
 				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
+	// 检查环境
+	if len(query.Envs) > 0 {
+		found := false
+		envValue, exists := point.Labels["env"]
+		if exists {
+			for _, env := range query.Envs {
+				if envValue == env {
+					found = true
+					break
+				}
 			}
 		}
 		if !found {
