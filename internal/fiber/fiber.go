@@ -3,7 +3,10 @@ package fiber
 import (
 	"context"
 	"fmt"
+
 	config2 "github.com/xsxdot/aio/pkg/config"
+	"github.com/xsxdot/aio/pkg/monitoring"
+	monitorapi "github.com/xsxdot/aio/pkg/monitoring/api"
 	"github.com/xsxdot/aio/pkg/registry"
 
 	"github.com/gofiber/fiber/v2"
@@ -12,8 +15,6 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/xsxdot/aio/internal/authmanager"
 	"github.com/xsxdot/aio/internal/certmanager"
-	"github.com/xsxdot/aio/internal/monitoring"
-	monitorapi "github.com/xsxdot/aio/internal/monitoring/api"
 	"github.com/xsxdot/aio/pkg/common"
 	"go.uber.org/zap"
 )
@@ -181,13 +182,13 @@ func (s *Server) RegisterDistributedAPI(manager registry.Registry) {
 }
 
 // RegisterMonitorAPI 注册监控API路由
-func (s *Server) RegisterMonitorAPI(monitorService *monitoring.Monitor) {
+func (s *Server) RegisterMonitorAPI(port int, monitorService *monitoring.Monitor) {
 	if monitorService == nil {
 		s.logger.Warn("监控服务为空，跳过API注册")
 		return
 	}
 
-	api := monitorapi.NewAPI(monitorService.GetStorage(), monitorService.GetAlertManager(), monitorService.GetNotifierManager(), s.logger)
+	api := monitorapi.NewAPI(port, monitorService.GetStorage(), monitorService.GetGrpcStorage(), monitorService.GetAlertManager(), monitorService.GetNotifierManager(), s.logger)
 	api.RegisterRoutes(s.router, s.baseAuthHandler, s.adminRoleHandler)
 	s.logger.Info("已注册监控API路由")
 }

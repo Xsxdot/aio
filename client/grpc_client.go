@@ -8,6 +8,7 @@ import (
 
 	authv1 "github.com/xsxdot/aio/api/proto/auth/v1"
 	configv1 "github.com/xsxdot/aio/api/proto/config/v1"
+	monitoringv1 "github.com/xsxdot/aio/api/proto/monitoring/v1"
 	registryv1 "github.com/xsxdot/aio/api/proto/registry/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -30,9 +31,10 @@ type GRPCClientManager struct {
 	credentials *AIOCredentials
 
 	// 服务客户端
-	authClient     authv1.AuthServiceClient
-	configClient   configv1.ConfigServiceClient
-	registryClient registryv1.RegistryServiceClient
+	authClient       authv1.AuthServiceClient
+	configClient     configv1.ConfigServiceClient
+	registryClient   registryv1.RegistryServiceClient
+	monitoringClient monitoringv1.MetricStorageServiceClient
 
 	// 配置
 	maxRetries int
@@ -151,6 +153,7 @@ func (m *GRPCClientManager) initClients(conn *grpc.ClientConn) {
 	m.authClient = authv1.NewAuthServiceClient(conn)
 	m.configClient = configv1.NewConfigServiceClient(conn)
 	m.registryClient = registryv1.NewRegistryServiceClient(conn)
+	m.monitoringClient = monitoringv1.NewMetricStorageServiceClient(conn)
 }
 
 // startServiceDiscovery 启动后台服务发现任务
@@ -284,6 +287,13 @@ func (m *GRPCClientManager) GetRegistryClient() registryv1.RegistryServiceClient
 	return m.registryClient
 }
 
+// GetMonitoringClient 获取监控存储服务客户端
+func (m *GRPCClientManager) GetMonitoringClient() monitoringv1.MetricStorageServiceClient {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.monitoringClient
+}
+
 // ExecuteWithRetry 暴露给外部使用的重试执行方法
 func (m *GRPCClientManager) ExecuteWithRetry(ctx context.Context, operation func(context.Context) error) error {
 	return m.executeWithRetry(ctx, operation)
@@ -325,4 +335,11 @@ func (m *GRPCClientManager) IsTokenValid() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.credentials != nil && m.credentials.IsTokenValid()
+}
+
+// GetCredentials 获取认证凭据
+func (m *GRPCClientManager) GetCredentials() *AIOCredentials {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.credentials
 }

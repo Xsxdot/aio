@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	RegistryService_Register_FullMethodName                  = "/registry.v1.RegistryService/Register"
 	RegistryService_Unregister_FullMethodName                = "/registry.v1.RegistryService/Unregister"
+	RegistryService_Offline_FullMethodName                   = "/registry.v1.RegistryService/Offline"
 	RegistryService_Renew_FullMethodName                     = "/registry.v1.RegistryService/Renew"
 	RegistryService_GetService_FullMethodName                = "/registry.v1.RegistryService/GetService"
 	RegistryService_ListServices_FullMethodName              = "/registry.v1.RegistryService/ListServices"
@@ -28,6 +29,7 @@ const (
 	RegistryService_CheckHealth_FullMethodName               = "/registry.v1.RegistryService/CheckHealth"
 	RegistryService_GetStats_FullMethodName                  = "/registry.v1.RegistryService/GetStats"
 	RegistryService_GetServiceStats_FullMethodName           = "/registry.v1.RegistryService/GetServiceStats"
+	RegistryService_Watch_FullMethodName                     = "/registry.v1.RegistryService/Watch"
 	RegistryService_GetAllServices_FullMethodName            = "/registry.v1.RegistryService/GetAllServices"
 	RegistryService_RemoveAllServiceInstances_FullMethodName = "/registry.v1.RegistryService/RemoveAllServiceInstances"
 )
@@ -40,8 +42,10 @@ const (
 type RegistryServiceClient interface {
 	// Register 注册服务实例
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
-	// Unregister 注销服务实例
+	// Unregister 注销服务实例（物理删除）
 	Unregister(ctx context.Context, in *UnregisterRequest, opts ...grpc.CallOption) (*UnregisterResponse, error)
+	// Offline 下线服务实例（逻辑删除，保留记录）
+	Offline(ctx context.Context, in *OfflineRequest, opts ...grpc.CallOption) (*OfflineResponse, error)
 	// Renew 续约服务实例
 	Renew(ctx context.Context, in *RenewRequest, opts ...grpc.CallOption) (*RenewResponse, error)
 	// GetService 获取单个服务实例
@@ -56,6 +60,8 @@ type RegistryServiceClient interface {
 	GetStats(ctx context.Context, in *GetStatsRequest, opts ...grpc.CallOption) (*GetStatsResponse, error)
 	// GetServiceStats 获取指定服务的统计信息
 	GetServiceStats(ctx context.Context, in *GetServiceStatsRequest, opts ...grpc.CallOption) (*GetServiceStatsResponse, error)
+	// Watch 监听服务变化
+	Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WatchResponse], error)
 	// GetAllServices 管理员获取所有服务详细信息
 	GetAllServices(ctx context.Context, in *GetAllServicesRequest, opts ...grpc.CallOption) (*GetAllServicesResponse, error)
 	// RemoveAllServiceInstances 管理员删除指定服务的所有实例
@@ -84,6 +90,16 @@ func (c *registryServiceClient) Unregister(ctx context.Context, in *UnregisterRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(UnregisterResponse)
 	err := c.cc.Invoke(ctx, RegistryService_Unregister_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *registryServiceClient) Offline(ctx context.Context, in *OfflineRequest, opts ...grpc.CallOption) (*OfflineResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OfflineResponse)
+	err := c.cc.Invoke(ctx, RegistryService_Offline_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -160,6 +176,25 @@ func (c *registryServiceClient) GetServiceStats(ctx context.Context, in *GetServ
 	return out, nil
 }
 
+func (c *registryServiceClient) Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WatchResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &RegistryService_ServiceDesc.Streams[0], RegistryService_Watch_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[WatchRequest, WatchResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type RegistryService_WatchClient = grpc.ServerStreamingClient[WatchResponse]
+
 func (c *registryServiceClient) GetAllServices(ctx context.Context, in *GetAllServicesRequest, opts ...grpc.CallOption) (*GetAllServicesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetAllServicesResponse)
@@ -188,8 +223,10 @@ func (c *registryServiceClient) RemoveAllServiceInstances(ctx context.Context, i
 type RegistryServiceServer interface {
 	// Register 注册服务实例
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
-	// Unregister 注销服务实例
+	// Unregister 注销服务实例（物理删除）
 	Unregister(context.Context, *UnregisterRequest) (*UnregisterResponse, error)
+	// Offline 下线服务实例（逻辑删除，保留记录）
+	Offline(context.Context, *OfflineRequest) (*OfflineResponse, error)
 	// Renew 续约服务实例
 	Renew(context.Context, *RenewRequest) (*RenewResponse, error)
 	// GetService 获取单个服务实例
@@ -204,6 +241,8 @@ type RegistryServiceServer interface {
 	GetStats(context.Context, *GetStatsRequest) (*GetStatsResponse, error)
 	// GetServiceStats 获取指定服务的统计信息
 	GetServiceStats(context.Context, *GetServiceStatsRequest) (*GetServiceStatsResponse, error)
+	// Watch 监听服务变化
+	Watch(*WatchRequest, grpc.ServerStreamingServer[WatchResponse]) error
 	// GetAllServices 管理员获取所有服务详细信息
 	GetAllServices(context.Context, *GetAllServicesRequest) (*GetAllServicesResponse, error)
 	// RemoveAllServiceInstances 管理员删除指定服务的所有实例
@@ -223,6 +262,9 @@ func (UnimplementedRegistryServiceServer) Register(context.Context, *RegisterReq
 }
 func (UnimplementedRegistryServiceServer) Unregister(context.Context, *UnregisterRequest) (*UnregisterResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Unregister not implemented")
+}
+func (UnimplementedRegistryServiceServer) Offline(context.Context, *OfflineRequest) (*OfflineResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Offline not implemented")
 }
 func (UnimplementedRegistryServiceServer) Renew(context.Context, *RenewRequest) (*RenewResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Renew not implemented")
@@ -244,6 +286,9 @@ func (UnimplementedRegistryServiceServer) GetStats(context.Context, *GetStatsReq
 }
 func (UnimplementedRegistryServiceServer) GetServiceStats(context.Context, *GetServiceStatsRequest) (*GetServiceStatsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetServiceStats not implemented")
+}
+func (UnimplementedRegistryServiceServer) Watch(*WatchRequest, grpc.ServerStreamingServer[WatchResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method Watch not implemented")
 }
 func (UnimplementedRegistryServiceServer) GetAllServices(context.Context, *GetAllServicesRequest) (*GetAllServicesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAllServices not implemented")
@@ -304,6 +349,24 @@ func _RegistryService_Unregister_Handler(srv interface{}, ctx context.Context, d
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RegistryServiceServer).Unregister(ctx, req.(*UnregisterRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RegistryService_Offline_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OfflineRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegistryServiceServer).Offline(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RegistryService_Offline_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegistryServiceServer).Offline(ctx, req.(*OfflineRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -434,6 +497,17 @@ func _RegistryService_GetServiceStats_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RegistryService_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(WatchRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(RegistryServiceServer).Watch(m, &grpc.GenericServerStream[WatchRequest, WatchResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type RegistryService_WatchServer = grpc.ServerStreamingServer[WatchResponse]
+
 func _RegistryService_GetAllServices_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetAllServicesRequest)
 	if err := dec(in); err != nil {
@@ -486,6 +560,10 @@ var RegistryService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RegistryService_Unregister_Handler,
 		},
 		{
+			MethodName: "Offline",
+			Handler:    _RegistryService_Offline_Handler,
+		},
+		{
 			MethodName: "Renew",
 			Handler:    _RegistryService_Renew_Handler,
 		},
@@ -522,6 +600,12 @@ var RegistryService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RegistryService_RemoveAllServiceInstances_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Watch",
+			Handler:       _RegistryService_Watch_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "registry/v1/registry.proto",
 }

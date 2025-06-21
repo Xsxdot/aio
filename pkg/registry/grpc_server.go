@@ -70,7 +70,7 @@ func (s *GRPCService) Register(ctx context.Context, req *registryv1.RegisterRequ
 		instance.Weight = 100
 	}
 	if instance.Status == "" {
-		instance.Status = "active"
+		instance.Status = StatusUp
 	}
 	// env的默认值将在注册中心的Register方法中处理
 
@@ -102,6 +102,26 @@ func (s *GRPCService) Unregister(ctx context.Context, req *registryv1.Unregister
 
 	return &registryv1.UnregisterResponse{
 		Message: "服务注销成功",
+	}, nil
+}
+
+// Offline 下线服务实例
+func (s *GRPCService) Offline(ctx context.Context, req *registryv1.OfflineRequest) (*registryv1.OfflineResponse, error) {
+	if req.ServiceId == "" {
+		return nil, status.Error(codes.InvalidArgument, "服务实例ID不能为空")
+	}
+
+	instance, err := s.registry.Offline(ctx, req.ServiceId)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil, status.Error(codes.NotFound, "服务实例不存在")
+		}
+		return nil, status.Errorf(codes.Internal, "下线服务失败: %v", err)
+	}
+
+	return &registryv1.OfflineResponse{
+		Message:  "服务下线成功",
+		Instance: s.serviceInstanceToProto(instance),
 	}, nil
 }
 
@@ -235,7 +255,7 @@ func (s *GRPCService) GetStats(ctx context.Context, req *registryv1.GetStatsRequ
 
 	// 遍历每个服务，统计实例数量
 	for _, serviceName := range serviceNames {
-		instances, err := s.registry.Discover(ctx, serviceName)
+		instances, err := s.registry.DiscoverAll(ctx, serviceName)
 		if err != nil {
 			continue
 		}
@@ -269,7 +289,7 @@ func (s *GRPCService) GetServiceStats(ctx context.Context, req *registryv1.GetSe
 		return nil, status.Error(codes.InvalidArgument, "服务名称不能为空")
 	}
 
-	instances, err := s.registry.Discover(ctx, req.ServiceName)
+	instances, err := s.registry.DiscoverAll(ctx, req.ServiceName)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "获取服务实例失败: %v", err)
 	}
@@ -324,7 +344,7 @@ func (s *GRPCService) GetAllServices(ctx context.Context, req *registryv1.GetAll
 
 	// 获取每个服务的实例列表
 	for _, serviceName := range serviceNames {
-		instances, err := s.registry.Discover(ctx, serviceName)
+		instances, err := s.registry.DiscoverAll(ctx, serviceName)
 		if err != nil {
 			continue
 		}
@@ -352,7 +372,7 @@ func (s *GRPCService) RemoveAllServiceInstances(ctx context.Context, req *regist
 	}
 
 	// 获取服务的所有实例
-	instances, err := s.registry.Discover(ctx, req.ServiceName)
+	instances, err := s.registry.DiscoverAll(ctx, req.ServiceName)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "获取服务实例失败: %v", err)
 	}
@@ -379,8 +399,199 @@ func (s *GRPCService) RemoveAllServiceInstances(ctx context.Context, req *regist
 	}, nil
 }
 
+// Watch 监听服务变化
+func (s *GRPCService) Watch(req *registryv1.WatchRequest, stream registryv1.RegistryService_WatchServer) error {
+	ctx := stream.Context()
+
+	// 参数验证
+	serviceName := req.ServiceName
+	env := req.Env
+
+	// 如果指定了服务名称，只监听特定服务
+	if serviceName != "" {
+		return s.watchService(ctx, serviceName, env, stream)
+	}
+
+	// 如果没有指定服务名称，监听所有服务（目前不支持，返回错误）
+	return status.Error(codes.InvalidArgument, "当前版本暂不支持监听所有服务，请指定服务名称")
+}
+
+// watchService 监听特定服务的变化
+func (s *GRPCService) watchService(ctx context.Context, serviceName, env string, stream registryv1.RegistryService_WatchServer) error {
+	// 创建服务监听器
+	watcher, err := s.registry.Watch(ctx, serviceName)
+	if err != nil {
+		return status.Errorf(codes.Internal, "创建服务监听器失败: %v", err)
+	}
+	defer watcher.Stop()
+
+	// 记录上一次的服务实例状态，用于检测变化
+	var lastInstances map[string]*ServiceInstance
+
+	// 初始化：获取当前所有实例并发送ADDED事件
+	if err := s.sendInitialInstances(ctx, serviceName, env, stream, &lastInstances); err != nil {
+		return err
+	}
+
+	// 持续监听变化
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+			// 获取下一个变化事件
+			currentInstances, err := watcher.Next()
+			if err != nil {
+				return status.Errorf(codes.Internal, "监听服务变化失败: %v", err)
+			}
+
+			// 处理变化并发送事件
+			if err := s.processInstanceChanges(ctx, serviceName, env, currentInstances, &lastInstances, stream); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// sendInitialInstances 发送初始实例列表
+func (s *GRPCService) sendInitialInstances(ctx context.Context, serviceName, env string, stream registryv1.RegistryService_WatchServer, lastInstances *map[string]*ServiceInstance) error {
+	var instances []*ServiceInstance
+	var err error
+
+	// 根据环境获取实例
+	if env != "" && env != "all" {
+		instances, err = s.registry.DiscoverByEnv(ctx, serviceName, ParseEnvironment(env))
+	} else {
+		instances, err = s.registry.Discover(ctx, serviceName)
+	}
+
+	if err != nil {
+		return status.Errorf(codes.Internal, "获取初始服务实例失败: %v", err)
+	}
+
+	// 初始化lastInstances map
+	*lastInstances = make(map[string]*ServiceInstance)
+
+	// 发送所有当前实例的ADDED事件
+	for _, instance := range instances {
+		// 检查环境过滤
+		if env != "" && env != "all" && instance.Env.String() != env {
+			continue
+		}
+
+		// 发送ADDED事件
+		watchResp := &registryv1.WatchResponse{
+			EventType: registryv1.WatchResponse_ADDED,
+			Instance:  s.serviceInstanceToProto(instance),
+			Timestamp: time.Now().Unix(),
+		}
+
+		if err := stream.Send(watchResp); err != nil {
+			return status.Errorf(codes.Internal, "发送Watch响应失败: %v", err)
+		}
+
+		// 记录当前状态
+		(*lastInstances)[instance.ID] = instance
+	}
+
+	return nil
+}
+
+// processInstanceChanges 处理实例变化
+func (s *GRPCService) processInstanceChanges(ctx context.Context, serviceName, env string, currentInstances []*ServiceInstance, lastInstances *map[string]*ServiceInstance, stream registryv1.RegistryService_WatchServer) error {
+	// 构建当前实例的map
+	currentMap := make(map[string]*ServiceInstance)
+	for _, instance := range currentInstances {
+		// 检查环境过滤
+		if env != "" && env != "all" && instance.Env.String() != env {
+			continue
+		}
+		currentMap[instance.ID] = instance
+	}
+
+	// 检测新增和修改的实例
+	for instanceID, currentInstance := range currentMap {
+		lastInstance, existed := (*lastInstances)[instanceID]
+
+		if !existed {
+			// 新增实例
+			watchResp := &registryv1.WatchResponse{
+				EventType: registryv1.WatchResponse_ADDED,
+				Instance:  s.serviceInstanceToProto(currentInstance),
+				Timestamp: time.Now().Unix(),
+			}
+
+			if err := stream.Send(watchResp); err != nil {
+				return status.Errorf(codes.Internal, "发送Watch响应失败: %v", err)
+			}
+		} else if s.instanceChanged(lastInstance, currentInstance) {
+			// 修改实例
+			watchResp := &registryv1.WatchResponse{
+				EventType: registryv1.WatchResponse_MODIFIED,
+				Instance:  s.serviceInstanceToProto(currentInstance),
+				Timestamp: time.Now().Unix(),
+			}
+
+			if err := stream.Send(watchResp); err != nil {
+				return status.Errorf(codes.Internal, "发送Watch响应失败: %v", err)
+			}
+		}
+	}
+
+	// 检测删除的实例
+	for instanceID, lastInstance := range *lastInstances {
+		if _, exists := currentMap[instanceID]; !exists {
+			// 删除实例
+			watchResp := &registryv1.WatchResponse{
+				EventType: registryv1.WatchResponse_DELETED,
+				Instance:  s.serviceInstanceToProto(lastInstance),
+				Timestamp: time.Now().Unix(),
+			}
+
+			if err := stream.Send(watchResp); err != nil {
+				return status.Errorf(codes.Internal, "发送Watch响应失败: %v", err)
+			}
+		}
+	}
+
+	// 更新lastInstances
+	*lastInstances = currentMap
+
+	return nil
+}
+
+// instanceChanged 检查实例是否发生变化
+func (s *GRPCService) instanceChanged(old, new *ServiceInstance) bool {
+	// 检查关键字段是否发生变化
+	return old.Address != new.Address ||
+		old.Status != new.Status ||
+		old.Weight != new.Weight ||
+		old.Protocol != new.Protocol ||
+		!s.metadataEqual(old.Metadata, new.Metadata)
+}
+
+// metadataEqual 检查元数据是否相等
+func (s *GRPCService) metadataEqual(old, new map[string]string) bool {
+	if len(old) != len(new) {
+		return false
+	}
+
+	for k, v := range old {
+		if newV, exists := new[k]; !exists || newV != v {
+			return false
+		}
+	}
+
+	return true
+}
+
 // serviceInstanceToProto 将 ServiceInstance 转换为 proto 格式
 func (s *GRPCService) serviceInstanceToProto(instance *ServiceInstance) *registryv1.ServiceInstance {
+	var offlineTime int64
+	if !instance.OfflineTime.IsZero() {
+		offlineTime = instance.OfflineTime.Unix()
+	}
+
 	return &registryv1.ServiceInstance{
 		Id:           instance.ID,
 		Name:         instance.Name,
@@ -392,6 +603,7 @@ func (s *GRPCService) serviceInstanceToProto(instance *ServiceInstance) *registr
 		Metadata:     instance.Metadata,
 		Weight:       int32(instance.Weight),
 		Status:       instance.Status,
+		OfflineTime:  offlineTime,
 	}
 }
 

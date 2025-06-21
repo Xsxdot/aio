@@ -21,27 +21,18 @@ type DistributedLock interface {
 	// Unlock 释放锁
 	Unlock(ctx context.Context) error
 
-	// Renew 续期锁
-	Renew(ctx context.Context) error
-
 	// IsLocked 检查锁是否被当前实例持有
 	IsLocked() bool
 
 	// GetLockKey 获取锁的键
 	GetLockKey() string
+
+	// Done 返回一个channel，当锁被释放或丢失时会被关闭
+	Done() <-chan struct{}
 }
 
 // LockOptions 锁配置选项
 type LockOptions struct {
-	// TTL 锁的生存时间
-	TTL time.Duration
-
-	// AutoRenew 是否自动续期
-	AutoRenew bool
-
-	// RenewInterval 续期间隔
-	RenewInterval time.Duration
-
 	// RetryInterval 重试间隔
 	RetryInterval time.Duration
 
@@ -52,11 +43,21 @@ type LockOptions struct {
 // DefaultLockOptions 默认锁配置
 func DefaultLockOptions() *LockOptions {
 	return &LockOptions{
-		TTL:           30 * time.Second,
-		AutoRenew:     true,
-		RenewInterval: 10 * time.Second,
 		RetryInterval: 100 * time.Millisecond,
 		MaxRetries:    0,
+	}
+}
+
+// LockManagerOptions 锁管理器配置
+type LockManagerOptions struct {
+	// TTL 锁的生存时间
+	TTL time.Duration
+}
+
+// DefaultLockManagerOptions 默认管理器配置
+func DefaultLockManagerOptions() *LockManagerOptions {
+	return &LockManagerOptions{
+		TTL: 30 * time.Second,
 	}
 }
 
@@ -65,7 +66,6 @@ type LockInfo struct {
 	Key        string    `json:"key"`
 	Owner      string    `json:"owner"`
 	CreateTime time.Time `json:"create_time"`
-	ExpireTime time.Time `json:"expire_time"`
 	Version    int64     `json:"version"`
 }
 
@@ -99,6 +99,11 @@ func (e *LockError) Error() string {
 		return fmt.Sprintf("锁错误 [%s]: %s, 原因: %v", e.Code, e.Message, e.Cause)
 	}
 	return fmt.Sprintf("锁错误 [%s]: %s", e.Code, e.Message)
+}
+
+// Unwrap 支持Go 1.13+的错误包装
+func (e *LockError) Unwrap() error {
+	return e.Cause
 }
 
 // 预定义错误代码

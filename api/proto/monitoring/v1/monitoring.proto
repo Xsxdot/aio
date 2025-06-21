@@ -1,0 +1,155 @@
+syntax = "proto3";
+
+package monitoring.v1;
+
+option go_package = "github.com/xsxdot/aio/api/proto/monitoring/v1;monitoringv1";
+
+// MetricStorageService 定义指标存储服务
+service MetricStorageService {
+  // StoreMetricPoints 存储指标数据点
+  rpc StoreMetricPoints(StoreMetricPointsRequest) returns (StoreMetricPointsResponse);
+  
+  // StoreMetricProvider 存储实现了MetricProvider接口的数据
+  rpc StoreMetricProvider(StoreMetricProviderRequest) returns (StoreMetricProviderResponse);
+  
+  // QueryMetricPoints 查询指标数据点
+  rpc QueryMetricPoints(QueryMetricPointsRequest) returns (QueryMetricPointsResponse);
+  
+  // QueryTimeSeries 查询时间序列数据
+  rpc QueryTimeSeries(QueryTimeSeriesRequest) returns (QueryTimeSeriesResponse);
+  
+  // GetStorageNode 获取服务的存储节点分配
+  rpc GetStorageNode(GetStorageNodeRequest) returns (GetStorageNodeResponse);
+}
+
+// MetricPoint 表示一个统一的指标数据点
+message MetricPoint {
+  int64 timestamp = 1;                            // 时间戳（Unix纳秒）
+  string metric_name = 2;                         // 指标名称
+  MetricType metric_type = 3;                     // 指标类型
+  double value = 4;                               // 指标值
+  string source = 5;                              // 数据来源
+  string instance = 6;                            // 实例标识
+  MetricCategory category = 7;                    // 指标分类
+  map<string, string> labels = 8;                // 额外标签
+  string unit = 9;                                // 单位
+  string description = 10;                        // 描述
+}
+
+// MetricType 指标类型枚举
+enum MetricType {
+  METRIC_TYPE_UNSPECIFIED = 0;
+  METRIC_TYPE_GAUGE = 1;        // 仪表盘类型指标
+  METRIC_TYPE_COUNTER = 2;      // 计数器类型指标
+}
+
+// MetricCategory 指标分类枚举
+enum MetricCategory {
+  METRIC_CATEGORY_UNSPECIFIED = 0;
+  METRIC_CATEGORY_SERVER = 1;     // 服务器指标
+  METRIC_CATEGORY_APP = 2;        // 应用指标
+  METRIC_CATEGORY_API = 3;        // API指标
+  METRIC_CATEGORY_CUSTOM = 4;     // 自定义指标
+}
+
+// StorageNodeStatus 存储节点状态枚举
+enum StorageNodeStatus {
+  STORAGE_NODE_STATUS_UNSPECIFIED = 0;
+  STORAGE_NODE_STATUS_ONLINE = 1;      // 节点在线
+  STORAGE_NODE_STATUS_OFFLINE = 2;     // 节点离线
+  STORAGE_NODE_STATUS_REASSIGN = 3;    // 需要重新分配
+}
+
+// StorageNode 存储节点信息
+message StorageNode {
+  string node_id = 1;           // 节点ID
+  string address = 2;           // 节点地址
+  StorageNodeStatus status = 3; // 节点状态
+  int32 service_count = 4;      // 分配的服务数量
+}
+
+// StoreMetricPointsRequest 存储指标数据点请求
+message StoreMetricPointsRequest {
+  repeated MetricPoint points = 1;
+}
+
+// StoreMetricPointsResponse 存储指标数据点响应
+message StoreMetricPointsResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// StoreMetricProviderRequest 存储MetricProvider数据请求
+message StoreMetricProviderRequest {
+  repeated MetricPoint points = 1;  // 通过ToMetricPoints()方法转换的数据点
+}
+
+// StoreMetricProviderResponse 存储MetricProvider数据响应
+message StoreMetricProviderResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// QueryMetricPointsRequest 查询指标数据点请求
+message QueryMetricPointsRequest {
+  int64 start_time = 1;                          // 开始时间（Unix纳秒）
+  int64 end_time = 2;                            // 结束时间（Unix纳秒）
+  repeated string metric_names = 3;              // 指标名称列表
+  repeated MetricCategory categories = 4;        // 指标分类列表
+  repeated string sources = 5;                   // 数据来源列表
+  repeated string instances = 6;                 // 实例列表
+  map<string, string> label_matchers = 7;       // 标签匹配器
+  string aggregation = 8;                        // 聚合方式
+  string interval = 9;                           // 聚合间隔
+  int32 limit = 10;                              // 限制数量
+}
+
+// QueryMetricPointsResponse 查询指标数据点响应
+message QueryMetricPointsResponse {
+  repeated MetricPoint points = 1;
+}
+
+// QueryTimeSeriesRequest 查询时间序列数据请求
+message QueryTimeSeriesRequest {
+  int64 start_time = 1;                          // 开始时间（Unix纳秒）
+  int64 end_time = 2;                            // 结束时间（Unix纳秒）
+  repeated string metric_names = 3;              // 指标名称列表
+  repeated MetricCategory categories = 4;        // 指标分类列表
+  repeated string sources = 5;                   // 数据来源列表
+  repeated string instances = 6;                 // 实例列表
+  map<string, string> label_matchers = 7;       // 标签匹配器
+  string aggregation = 8;                        // 聚合方式
+  string interval = 9;                           // 聚合间隔
+  int32 limit = 10;                              // 限制数量
+}
+
+// TimeSeriesPoint 时间序列中的一个点
+message TimeSeriesPoint {
+  int64 timestamp = 1;           // 时间戳（Unix纳秒）
+  double value = 2;
+}
+
+// TimeSeries 指标的时间序列数据
+message TimeSeries {
+  string name = 1;                      // 指标名称
+  map<string, string> labels = 2;      // 标签
+  repeated TimeSeriesPoint points = 3; // 数据点
+}
+
+// QueryTimeSeriesResponse 查询时间序列数据响应
+message QueryTimeSeriesResponse {
+  repeated TimeSeries series = 1;
+}
+
+// GetStorageNodeRequest 获取存储节点请求
+message GetStorageNodeRequest {
+  string service_name = 1;      // 服务名称
+  bool force_reassign = 2;      // 是否强制重新分配节点
+}
+
+// GetStorageNodeResponse 获取存储节点响应
+message GetStorageNodeResponse {
+  StorageNode node = 1;         // 分配的存储节点
+  bool success = 2;             // 操作是否成功
+  string message = 3;           // 操作消息
+} 

@@ -6,30 +6,33 @@
 
 - 🔍 **服务注册与发现**: 支持服务实例的注册、注销和发现
 - ⏱️ **服务运行时间跟踪**: 自动记录服务启动时间和注册时间，提供运行时长查询
-- 🔄 **客户端主动续约**: 客户端通过定期调用Renew方法主动续约租约
+- 🔄 **状态管理**: 服务状态管理机制，支持在线/离线状态切换
 - 👁️ **实时监听**: 支持服务变更的实时监听和通知
 - ⚖️ **负载均衡**: 支持服务权重配置，便于负载均衡实现
-- 📊 **健康检查**: 基于ETCD租约机制的服务健康状态管理
+- 📊 **健康检查**: 基于心跳续约的服务健康状态管理
+- 🕐 **自动离线**: 通过调度器定时检查，将长时间未续约的服务自动标记为离线状态
 - 🏷️ **元数据支持**: 支持自定义服务元数据
 - 🔒 **并发安全**: 线程安全的操作，支持并发访问
 - 🔄 **故障恢复**: 支持服务异常时的自动重新注册
 
 ## 核心概念
 
-### 租约机制
+### 状态管理机制
 
-本组件使用ETCD的租约(Lease)机制来管理服务的生命周期：
+本组件使用状态管理机制来管理服务的生命周期：
 
-- **租约TTL**: 服务注册时创建租约，设置生存时间
-- **客户端续约**: 客户端需要定期调用`Renew`方法主动续约
-- **自动清理**: 租约到期后，ETCD自动删除相关的服务记录
+- **状态跟踪**: 服务注册时直接保存在ETCD中，不使用租约
+- **心跳续约**: 客户端需要定期调用`Renew`方法更新服务状态和续约时间
+- **调度监控**: 通过调度器创建定时任务，定期检查服务续约状态
+- **自动离线**: 长时间未续约的服务会被调度器自动标记为离线状态，但不会删除
+- **物理删除**: 只有主动调用`Unregister`方法才会物理删除服务记录
 
 ### 服务实例
 
 每个服务实例包含以下信息：
 
 - **基本信息**: ID、名称、地址、协议
-- **时间信息**: 注册时间、启动时间
+- **时间信息**: 注册时间、启动时间、最后续约时间、下线时间
 - **状态信息**: 服务状态、负载权重
 - **元数据**: 自定义的键值对信息
 
@@ -47,6 +50,8 @@ import (
     "github.com/xsxdot/aio/app/config"
     "github.com/xsxdot/aio/internal/etcd"
     "github.com/xsxdot/aio/pkg/registry"
+    "github.com/xsxdot/aio/pkg/scheduler"
+    "github.com/xsxdot/aio/pkg/lock"
 )
 
 func main() {
@@ -60,9 +65,19 @@ func main() {
     }
     defer etcdClient.Close()
 
+    // 创建分布式锁管理器
+    lockManager := lock.NewEtcdLockManager(etcdClient)
+
+    // 创建调度器（如果需要监控过期服务）
+    schedulerInstance := scheduler.NewScheduler(lockManager, scheduler.DefaultSchedulerConfig())
+    if err := schedulerInstance.Start(); err != nil {
+        panic(err)
+    }
+    defer schedulerInstance.Stop()
+
     // 创建注册中心
-    reg, err := registry.NewRegistry(etcdClient,
-        registry.WithLeaseTTL(30),                    // 30秒租约
+    reg, err := registry.NewRegistry(etcdClient, schedulerInstance,
+        registry.WithLeaseTTL(30),                    // 30秒超时阈值
         registry.WithRenewInterval(10*time.Second),   // 每10秒续约
         registry.WithPrefix("/my-app/services"),      // 自定义前缀
     )
@@ -111,7 +126,12 @@ go func() {
         case <-ticker.C:
             if err := reg.Renew(ctx, instance.ID); err != nil {
                 log.Printf("续约失败: %v", err)
-                // 可以选择重新注册
+                // 如果服务不存在，需要重新注册
+                if err.Error() == "service not found" {
+                    if err := reg.Register(ctx, instance); err != nil {
+                        log.Printf("重新注册失败: %v", err)
+                    }
+                }
             }
         }
     }
@@ -170,8 +190,11 @@ type Registry interface {
     // 注册服务实例
     Register(ctx context.Context, instance *ServiceInstance) error
     
-    // 注销服务实例
+    // 注销服务实例（物理删除）
     Unregister(ctx context.Context, serviceID string) error
+    
+    // 下线服务实例（逻辑删除，保留记录）
+    Offline(ctx context.Context, serviceID string) (*ServiceInstance, error)
     
     // 续约服务实例
     Renew(ctx context.Context, serviceID string) error

@@ -1,280 +1,386 @@
-# AIO 分布式锁包
+# 分布式锁实现
 
-这个包提供了基于ETCD的分布式锁实现，支持可重入锁、锁超时机制和锁续期功能。
+本模块提供了基于 ETCD 的高性能、高可靠性分布式锁实现。
 
-## 特性
+## 核心特性
 
-- ✅ **可重入锁**: 同一个拥有者可以多次获取同一把锁
-- ✅ **锁超时机制**: 支持设置锁的TTL，防止死锁
-- ✅ **自动续期**: 支持自动续期功能，防止锁意外过期
-- ✅ **非阻塞获取**: 支持TryLock非阻塞获取锁
-- ✅ **锁管理**: 支持查看锁信息、列出所有锁、强制释放锁
-- ✅ **高可用**: 基于ETCD集群，保证高可用性
+### ✨ 全新重构的特性
+
+- **🚀 高性能共享会话模型**: 单个管理器使用一个共享的 ETCD 会话，大幅提升性能，减少 ETCD 负载
+- **🔔 锁丢失事件通知**: 通过 `Done()` channel 主动通知锁丢失事件，确保关键任务的安全性
+- **🛡️ 防僵尸锁机制**: 自动监控会话健康状况，彻底解决"僵尸锁"问题
+- **🏭 工厂模式**: 确保同一锁资源返回单例实例，保证可重入逻辑的正确性
+- **🔧 正确的强制解锁**: 通过租约吊销实现可靠的管理员强制解锁功能
+
+### 🎯 继承的核心功能
+
+- **可重入锁**: 同一实例可多次获取同一锁
+- **超时控制**: 支持带超时的锁获取
+- **非阻塞获取**: `TryLock` 方法立即返回结果
+- **锁信息查询**: 查看锁的详细信息（持有者、创建时间等）
+- **锁列表**: 列出所有当前持有的锁
 
 ## 快速开始
 
-### 1. 创建ETCD客户端和锁管理器
+### 1. 创建锁管理器
 
 ```go
-package main
-
 import (
-    "context"
-    "time"
-    
-    "github.com/xsxdot/aio/app/config"
-    "github.com/xsxdot/aio/internal/etcd"
     "github.com/xsxdot/aio/pkg/lock"
+    "github.com/xsxdot/aio/internal/etcd"
 )
 
-func main() {
-    // 创建ETCD配置
-    etcdConfig := &config.EtcdConfig{
-        Endpoints:   []string{"localhost:2379"},
-        DialTimeout: 5 * time.Second,
-    }
-
-    // 创建ETCD客户端
-    client, err := etcd.NewClient(etcdConfig)
-    if err != nil {
-        panic(err)
-    }
-    defer client.Close()
-
-    // 创建锁管理器
-    lockManager, err := lock.NewEtcdLockManager(client, "/aio")
-    if err != nil {
-        panic(err)
-    }
-    defer lockManager.Close()
+// 创建 ETCD 客户端
+client, err := etcd.NewClient(etcdConfig)
+if err != nil {
+    log.Fatal(err)
 }
+defer client.Close()
+
+// 创建锁管理器
+opts := &lock.LockManagerOptions{
+    TTL: 30 * time.Second, // 锁的生存时间
+}
+manager, err := lock.NewEtcdLockManager(client, "/myapp/locks", opts)
+if err != nil {
+    log.Fatal(err)
+}
+defer manager.Close()
 ```
 
-### 2. 基本锁操作
+### 2. 使用分布式锁
 
 ```go
-// 创建锁
-distributedLock := lockManager.NewLock("my-resource", lock.DefaultLockOptions())
+// 创建锁实例
+lock := manager.NewLock("my-resource", nil)
 
 ctx := context.Background()
 
 // 获取锁
-err := distributedLock.Lock(ctx)
+err := lock.Lock(ctx)
 if err != nil {
-    panic(err)
+    log.Fatal(err)
 }
+defer lock.Unlock(context.Background())
 
-// 执行临界区代码
-// ... your business logic here ...
-
-// 释放锁
-err = distributedLock.Unlock(ctx)
-if err != nil {
-    panic(err)
-}
+// 执行关键代码
+fmt.Println("执行受保护的代码...")
 ```
 
-### 3. 非阻塞获取锁
+### 3. 锁丢失事件通知 (新特性)
 
 ```go
-// 尝试获取锁，不阻塞
-acquired, err := distributedLock.TryLock(ctx)
+lock := manager.NewLock("critical-resource", nil)
+
+// 获取锁
+err := lock.Lock(ctx)
 if err != nil {
-    panic(err)
+    log.Fatal(err)
 }
 
-if acquired {
-    // 成功获取锁
-    defer distributedLock.Unlock(ctx)
-    // ... your business logic here ...
-} else {
-    // 锁被其他实例占用
-    fmt.Println("资源被占用，稍后重试")
-}
-```
-
-### 4. 带超时的锁获取
-
-```go
-// 最多等待10秒获取锁
-err := distributedLock.LockWithTimeout(ctx, 10*time.Second)
-if err != nil {
-    if lockErr, ok := err.(*lock.LockError); ok && lockErr.Code == lock.ErrCodeLockTimeout {
-        fmt.Println("获取锁超时")
-    } else {
-        panic(err)
+// 启动关键任务
+go func() {
+    for {
+        select {
+        case <-lock.Done():
+            // 锁丢失！立即停止关键任务
+            log.Warn("锁已丢失，停止关键任务")
+            return
+        case <-time.After(1 * time.Second):
+            // 执行关键任务的一个步骤
+            fmt.Println("执行关键任务...")
+        }
     }
+}()
+
+// ... 其他代码
+```
+
+## API 参考
+
+### LockManager 接口
+
+```go
+type LockManager interface {
+    // 创建新的分布式锁
+    NewLock(key string, opts *LockOptions) DistributedLock
+    
+    // 获取锁信息
+    GetLockInfo(ctx context.Context, key string) (*LockInfo, error)
+    
+    // 列出所有锁
+    ListLocks(ctx context.Context, prefix string) ([]*LockInfo, error)
+    
+    // 强制释放锁（管理员操作）
+    ForceUnlock(ctx context.Context, key string) error
+    
+    // 关闭锁管理器
+    Close() error
 }
-defer distributedLock.Unlock(ctx)
+```
+
+### DistributedLock 接口
+
+```go
+type DistributedLock interface {
+    // 获取锁
+    Lock(ctx context.Context) error
+    
+    // 尝试获取锁，不阻塞
+    TryLock(ctx context.Context) (bool, error)
+    
+    // 带超时的获取锁
+    LockWithTimeout(ctx context.Context, timeout time.Duration) error
+    
+    // 释放锁
+    Unlock(ctx context.Context) error
+    
+    // 检查锁是否被当前实例持有
+    IsLocked() bool
+    
+    // 获取锁的键
+    GetLockKey() string
+    
+    // 🆕 返回锁丢失事件通知 channel
+    Done() <-chan struct{}
+}
 ```
 
 ## 配置选项
+
+### LockManagerOptions
+
+```go
+type LockManagerOptions struct {
+    TTL time.Duration // 锁的生存时间，默认 30 秒
+}
+```
 
 ### LockOptions
 
 ```go
 type LockOptions struct {
-    // TTL 锁的生存时间
-    TTL time.Duration
+    RetryInterval time.Duration // 重试间隔，默认 100ms
+    MaxRetries    int           // 最大重试次数，0 表示无限重试
+}
+```
+
+## 使用示例
+
+### 基本用法
+
+```go
+func basicExample() {
+    lock := manager.NewLock("resource-1", nil)
     
-    // AutoRenew 是否自动续期
-    AutoRenew bool
+    ctx := context.Background()
     
-    // RenewInterval 续期间隔
-    RenewInterval time.Duration
+    // 获取锁
+    if err := lock.Lock(ctx); err != nil {
+        log.Fatal(err)
+    }
+    defer lock.Unlock(context.Background())
     
-    // RetryInterval 重试间隔
-    RetryInterval time.Duration
+    // 执行关键代码
+    fmt.Println("执行受保护的操作")
+}
+```
+
+### 可重入锁
+
+```go
+func reentrantExample() {
+    lock := manager.NewLock("resource-1", nil)
     
-    // MaxRetries 最大重试次数，0表示无限重试
-    MaxRetries int
+    ctx := context.Background()
+    
+    // 第一次获取锁
+    if err := lock.Lock(ctx); err != nil {
+        log.Fatal(err)
+    }
+    defer lock.Unlock(context.Background())
+    
+    // 可重入：同一实例可再次获取
+    if err := lock.Lock(ctx); err != nil {
+        log.Fatal(err)
+    }
+    defer lock.Unlock(context.Background())
+    
+    fmt.Println("可重入锁获取成功")
 }
 ```
 
-### 默认配置
+### 超时控制
 
 ```go
-opts := &lock.LockOptions{
-    TTL:           30 * time.Second,  // 锁有效期30秒
-    AutoRenew:     true,              // 启用自动续期
-    RenewInterval: 10 * time.Second,  // 每10秒续期一次
-    RetryInterval: 100 * time.Millisecond, // 重试间隔100毫秒
-    MaxRetries:    0,                 // 无限重试
+func timeoutExample() {
+    lock := manager.NewLock("resource-1", nil)
+    
+    ctx := context.Background()
+    
+    // 尝试在 5 秒内获取锁
+    err := lock.LockWithTimeout(ctx, 5*time.Second)
+    if err != nil {
+        if e, ok := err.(*lock.LockError); ok && e.Code == lock.ErrCodeLockTimeout {
+            fmt.Println("获取锁超时")
+            return
+        }
+        log.Fatal(err)
+    }
+    defer lock.Unlock(context.Background())
+    
+    fmt.Println("成功获取锁")
 }
 ```
 
-## 可重入锁
-
-同一个拥有者可以多次获取同一把锁：
+### 非阻塞获取
 
 ```go
-lock := lockManager.NewLock("reentrant-resource", lock.DefaultLockOptions())
-
-// 第一次获取锁
-err := lock.Lock(ctx)
-if err != nil {
-    panic(err)
-}
-
-// 可重入获取锁
-err = lock.Lock(ctx)
-if err != nil {
-    panic(err)
-}
-
-// 需要对应数量的释放调用
-lock.Unlock(ctx) // 第一次释放
-lock.Unlock(ctx) // 第二次释放，真正释放锁
-```
-
-## 锁管理功能
-
-### 查看锁信息
-
-```go
-info, err := lockManager.GetLockInfo(ctx, "my-resource")
-if err != nil {
-    panic(err)
-}
-
-fmt.Printf("锁键: %s\n", info.Key)
-fmt.Printf("拥有者: %s\n", info.Owner)
-fmt.Printf("创建时间: %v\n", info.CreateTime)
-fmt.Printf("过期时间: %v\n", info.ExpireTime)
-```
-
-### 列出所有锁
-
-```go
-// 列出所有锁
-locks, err := lockManager.ListLocks(ctx, "")
-if err != nil {
-    panic(err)
-}
-
-// 列出特定前缀的锁
-locks, err = lockManager.ListLocks(ctx, "user-")
-if err != nil {
-    panic(err)
-}
-
-for _, lockInfo := range locks {
-    fmt.Printf("锁: %s, 拥有者: %s\n", lockInfo.Key, lockInfo.Owner)
+func tryLockExample() {
+    lock := manager.NewLock("resource-1", nil)
+    
+    ctx := context.Background()
+    
+    // 尝试获取锁，立即返回
+    acquired, err := lock.TryLock(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    if acquired {
+        defer lock.Unlock(context.Background())
+        fmt.Println("成功获取锁")
+    } else {
+        fmt.Println("锁已被其他实例持有")
+    }
 }
 ```
 
-### 强制释放锁（管理员操作）
+### 锁丢失监控
 
 ```go
-// 强制释放锁，慎用！
-err := lockManager.ForceUnlock(ctx, "my-resource")
-if err != nil {
-    panic(err)
+func monitorLockLoss() {
+    lock := manager.NewLock("critical-resource", nil)
+    
+    ctx := context.Background()
+    
+    // 获取锁
+    if err := lock.Lock(ctx); err != nil {
+        log.Fatal(err)
+    }
+    
+    // 启动监控 goroutine
+    go func() {
+        <-lock.Done()
+        log.Error("锁已丢失！停止所有关键任务")
+        // 执行清理或补偿逻辑
+    }()
+    
+    // 执行长时间运行的关键任务
+    for i := 0; i < 100; i++ {
+        select {
+        case <-lock.Done():
+            log.Error("锁丢失，任务中断")
+            return
+        default:
+            // 执行任务步骤
+            time.Sleep(100 * time.Millisecond)
+        }
+    }
+    
+    lock.Unlock(context.Background())
+}
+```
+
+### 管理员操作
+
+```go
+func adminOperations() {
+    ctx := context.Background()
+    
+    // 查看锁信息
+    info, err := manager.GetLockInfo(ctx, "resource-1")
+    if err != nil {
+        log.Printf("获取锁信息失败: %v", err)
+    } else {
+        fmt.Printf("锁持有者: %s, 创建时间: %v\n", info.Owner, info.CreateTime)
+    }
+    
+    // 列出所有锁
+    locks, err := manager.ListLocks(ctx, "")
+    if err != nil {
+        log.Printf("列出锁失败: %v", err)
+    } else {
+        fmt.Printf("当前共有 %d 个锁\n", len(locks))
+    }
+    
+    // 强制释放锁
+    err = manager.ForceUnlock(ctx, "resource-1")
+    if err != nil {
+        log.Printf("强制释放锁失败: %v", err)
+    } else {
+        fmt.Println("强制释放锁成功")
+    }
 }
 ```
 
 ## 错误处理
 
-lock包定义了具体的错误类型和错误代码：
+分布式锁定义了以下错误类型：
 
 ```go
-if err != nil {
-    if lockErr, ok := err.(*lock.LockError); ok {
-        switch lockErr.Code {
-        case lock.ErrCodeLockTimeout:
-            fmt.Println("获取锁超时")
-        case lock.ErrCodeLockNotHeld:
-            fmt.Println("锁未被持有")
-        case lock.ErrCodeLockAlreadyHeld:
-            fmt.Println("锁已被持有")
-        case lock.ErrCodeLockExpired:
-            fmt.Println("锁已过期")
-        case lock.ErrCodeInvalidKey:
-            fmt.Println("无效的锁键")
-        default:
-            fmt.Printf("未知锁错误: %v\n", lockErr)
-        }
-    }
-}
+const (
+    ErrCodeLockTimeout     = "LOCK_TIMEOUT"     // 锁获取超时
+    ErrCodeLockNotHeld     = "LOCK_NOT_HELD"    // 锁未被持有
+    ErrCodeLockAlreadyHeld = "LOCK_ALREADY_HELD" // 锁已被持有
+    ErrCodeLockExpired     = "LOCK_EXPIRED"     // 锁已过期
+    ErrCodeInvalidKey      = "INVALID_KEY"      // 无效的键
+)
 ```
 
-## 最佳实践
+## 性能优化
 
-1. **总是使用defer释放锁**：
-   ```go
-   err := lock.Lock(ctx)
-   if err != nil {
-       return err
-   }
-   defer lock.Unlock(ctx)
-   ```
+### 共享会话模型的优势
 
-2. **设置合理的TTL**：
-   - TTL应该大于业务逻辑执行时间
-   - 启用自动续期防止意外过期
+1. **减少 ETCD 负载**: 所有锁共享一个会话，大幅减少与 ETCD 的连接数
+2. **提升获取性能**: 避免每次加锁都创建新会话的开销
+3. **自动续期**: 由 ETCD 客户端库自动处理租约续期，无需手动管理
 
-3. **处理错误**：
-   - 检查锁超时错误
-   - 处理网络异常
+### 最佳实践
 
-4. **避免死锁**：
-   - 设置合理的获取超时
-   - 使用TryLock进行非阻塞获取
+1. **合理设置 TTL**: 根据业务需求设置合适的锁生存时间
+2. **监控锁丢失**: 在关键任务中使用 `Done()` channel 监控锁状态
+3. **及时释放锁**: 使用 `defer` 确保锁被正确释放
+4. **错误处理**: 妥善处理各种锁相关错误
 
-5. **资源命名**：
-   - 使用有意义的锁键名
-   - 避免键名冲突
+## 注意事项
 
-## 性能考虑
+1. **网络分区**: 在网络分区情况下，锁可能会意外释放，请使用 `Done()` channel 监控
+2. **时钟同步**: 确保各节点时钟同步，避免 TTL 计算错误
+3. **资源清理**: 应用退出时务必调用 `manager.Close()` 清理资源
+4. **并发安全**: 所有接口都是并发安全的，可以在多个 goroutine 中使用
 
-- 单个ETCD集群支持数千个并发锁
-- 续期操作开销较小
-- 网络延迟影响锁性能
-- 建议在同一数据中心部署ETCD集群
+## 迁移指南
 
-## 故障恢复
+如果您正在从旧版本迁移，请注意以下变化：
 
-- 锁会在TTL到期后自动释放
-- ETCD集群故障时锁操作会失败
-- 应用重启后锁会重新初始化
-- 网络分区可能导致锁状态不一致 
+1. **构造函数变化**: `NewEtcdLockManager` 现在需要 `LockManagerOptions` 参数
+2. **移除的方法**: `Renew()` 方法已移除，续期现在自动处理
+3. **新增的方法**: `Done()` 方法用于锁丢失事件通知
+4. **配置变化**: TTL 配置从锁级别移动到管理器级别
+
+## 故障排除
+
+### 常见问题
+
+1. **锁获取失败**: 检查 ETCD 连接和网络状况
+2. **锁意外释放**: 检查网络稳定性和 TTL 设置
+3. **内存泄漏**: 确保调用 `manager.Close()` 清理资源
+
+### 日志监控
+
+分布式锁会输出详细的日志信息，建议监控以下日志：
+
+- `共享etcd会话已失效`: 表示会话连接问题
+- `成功获取锁` / `成功释放锁`: 正常的锁操作
+- `强制释放锁成功`: 管理员操作日志 

@@ -35,11 +35,12 @@ func (api *API) RegisterRoutes(router fiber.Router, authHandler func(*fiber.Ctx)
 	// 服务实例基本操作
 	registryGroup.Post("/services", authHandler, api.registerService)
 	registryGroup.Delete("/services/:serviceID", authHandler, api.unregisterService)
+	registryGroup.Put("/services/:serviceID/offline", authHandler, api.offlineService)
 	registryGroup.Put("/services/:serviceID/renew", authHandler, api.renewService)
 	registryGroup.Get("/services/:serviceID", authHandler, api.getService)
 
 	// 服务发现相关
-	registryGroup.Get("/services", authHandler, api.getAllServicesAdmin)
+	registryGroup.Get("/services", authHandler, api.listServices)
 	registryGroup.Get("/discovery/:serviceName", authHandler, api.discoverService)
 
 	// 健康检查
@@ -54,6 +55,15 @@ func (api *API) RegisterRoutes(router fiber.Router, authHandler func(*fiber.Ctx)
 	registryGroup.Delete("/admin/services/:serviceName", authHandler, adminRoleHandler, api.removeAllServiceInstances)
 
 	api.logger.Info("服务注册中心API路由已注册")
+}
+
+// listServices 获取所有服务列表
+func (api *API) listServices(c *fiber.Ctx) error {
+	services, err := api.registry.ListServices(c.Context())
+	if err != nil {
+		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("获取服务列表失败: %v", err))
+	}
+	return utils.SuccessResponse(c, services)
 }
 
 // registerService 注册服务实例
@@ -88,7 +98,7 @@ func (api *API) registerService(c *fiber.Ctx) error {
 		request.Weight = 100
 	}
 	if request.Status == "" {
-		request.Status = "active"
+		request.Status = StatusUp
 	}
 	// env的默认值将在注册中心的Register方法中处理
 
@@ -131,6 +141,30 @@ func (api *API) unregisterService(c *fiber.Ctx) error {
 	}
 
 	return utils.SuccessResponse(c, "服务注销成功")
+}
+
+// offlineService 下线服务实例
+func (api *API) offlineService(c *fiber.Ctx) error {
+	serviceID := c.Params("serviceID")
+	if serviceID == "" {
+		return utils.FailResponse(c, utils.StatusBadRequest, "服务实例ID不能为空")
+	}
+
+	// 检查服务是否存在
+	_, err := api.registry.GetService(c.Context(), serviceID)
+	if err != nil {
+		return utils.FailResponse(c, utils.StatusNotFound, fmt.Sprintf("服务实例不存在: %v", err))
+	}
+
+	instance, err := api.registry.Offline(c.Context(), serviceID)
+	if err != nil {
+		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("下线服务失败: %v", err))
+	}
+
+	return utils.SuccessResponse(c, map[string]interface{}{
+		"message":  "服务下线成功",
+		"instance": instance,
+	})
 }
 
 // renewService 续约服务实例
@@ -182,7 +216,7 @@ func (api *API) discoverService(c *fiber.Ctx) error {
 	if env != "" {
 		instances, err = api.registry.DiscoverByEnv(c.Context(), serviceName, ParseEnvironment(env))
 	} else {
-		instances, err = api.registry.Discover(c.Context(), serviceName)
+		instances, err = api.registry.DiscoverAll(c.Context(), serviceName)
 	}
 
 	if err != nil {
@@ -223,8 +257,11 @@ func (api *API) checkServiceHealth(c *fiber.Ctx) error {
 		"service_name":      instance.Name,
 		"status":            instance.Status,
 		"healthy":           instance.IsHealthy(),
+		"online":            instance.IsOnline(),
+		"offline":           instance.IsOffline(),
 		"uptime":            instance.GetUptime().String(),
 		"register_duration": instance.GetRegisterDuration().String(),
+		"offline_duration":  instance.GetOfflineDuration().String(),
 		"last_check":        time.Now(),
 	}
 
@@ -238,31 +275,38 @@ func (api *API) getRegistryStats(c *fiber.Ctx) error {
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("获取服务列表失败: %v", err))
 	}
 
-	totalInstances := 0
-	healthyInstances := 0
-	serviceStats := make(map[string]int)
+	// 统计信息
+	totalServices := int32(len(services))
+	totalInstances := int32(0)
+	healthyInstances := int32(0)
+	unhealthyInstances := int32(0)
+	serviceStats := make(map[string]int32)
 
+	// 遍历每个服务，统计实例数量
 	for _, serviceName := range services {
-		instances, err := api.registry.Discover(c.Context(), serviceName)
+		instances, err := api.registry.DiscoverAll(c.Context(), serviceName)
 		if err != nil {
 			continue
 		}
 
-		serviceStats[serviceName] = len(instances)
-		totalInstances += len(instances)
+		serviceStats[serviceName] = int32(len(instances))
+		totalInstances += int32(len(instances))
 
+		// 统计健康状态
 		for _, instance := range instances {
 			if instance.IsHealthy() {
 				healthyInstances++
+			} else {
+				unhealthyInstances++
 			}
 		}
 	}
 
 	stats := map[string]interface{}{
-		"total_services":      len(services),
+		"total_services":      totalServices,
 		"total_instances":     totalInstances,
 		"healthy_instances":   healthyInstances,
-		"unhealthy_instances": totalInstances - healthyInstances,
+		"unhealthy_instances": unhealthyInstances,
 		"service_stats":       serviceStats,
 		"timestamp":           time.Now(),
 	}
@@ -277,7 +321,7 @@ func (api *API) getServiceStats(c *fiber.Ctx) error {
 		return utils.FailResponse(c, utils.StatusBadRequest, "服务名称不能为空")
 	}
 
-	instances, err := api.registry.Discover(c.Context(), serviceName)
+	instances, err := api.registry.DiscoverAll(c.Context(), serviceName)
 	if err != nil {
 		return utils.FailResponse(c, utils.StatusNotFound, fmt.Sprintf("发现服务失败: %v", err))
 	}
@@ -317,7 +361,7 @@ func (api *API) getAllServicesAdmin(c *fiber.Ctx) error {
 
 	allServices := make(map[string][]*ServiceInstance)
 	for _, serviceName := range services {
-		instances, err := api.registry.Discover(c.Context(), serviceName)
+		instances, err := api.registry.DiscoverAll(c.Context(), serviceName)
 		if err != nil {
 			api.logger.Warn("获取服务实例失败",
 				zap.String("service_name", serviceName),
@@ -337,7 +381,7 @@ func (api *API) removeAllServiceInstances(c *fiber.Ctx) error {
 		return utils.FailResponse(c, utils.StatusBadRequest, "服务名称不能为空")
 	}
 
-	instances, err := api.registry.Discover(c.Context(), serviceName)
+	instances, err := api.registry.DiscoverAll(c.Context(), serviceName)
 	if err != nil {
 		return utils.FailResponse(c, utils.StatusNotFound, fmt.Sprintf("发现服务失败: %v", err))
 	}

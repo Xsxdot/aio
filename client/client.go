@@ -34,6 +34,7 @@ type Client struct {
 	LockManager    lock.LockManager
 	ConfigClient   *ConfigClient
 	RegistryClient *RegistryClient
+	MonitorClient  *MonitorClient
 }
 
 type AioConfig struct {
@@ -78,7 +79,6 @@ func (c *Client) Start(ctx context.Context) error {
 	// 初始化各种服务客户端
 	c.ConfigClient = NewConfigClient(c.grpcManager)
 	c.RegistryClient = NewRegistryClient(c.grpcManager)
-
 	c.mu.Unlock()
 
 	// 等待客户端完全就绪，包括认证 token 获取成功
@@ -113,7 +113,7 @@ func (c *Client) Start(ctx context.Context) error {
 
 	c.log.Info("初始化 etcd 客户端成功")
 
-	c.LockManager, err = lock.NewEtcdLockManager(c.EtcdClient, fmt.Sprintf("aio-lock-manager-%s-%s", c.serviceInfo.Name, c.serviceInfo.Env))
+	c.LockManager, err = lock.NewEtcdLockManager(c.EtcdClient, fmt.Sprintf("aio-lock-manager-%s-%s", c.serviceInfo.Name, c.serviceInfo.Env), lock.DefaultLockManagerOptions())
 	if err != nil {
 		return err
 	}
@@ -140,6 +140,11 @@ func (c *Client) Start(ctx context.Context) error {
 			c.log.Error("设置自动续约失败", zap.Error(err))
 			// 不返回错误，让客户端继续运行
 		}
+	}
+
+	c.MonitorClient = NewMonitorClient(c.serviceInfo, c.grpcManager, c.Scheduler)
+	if err := c.MonitorClient.Start(); err != nil {
+		return fmt.Errorf("启动监控客户端失败: %v", err)
 	}
 
 	c.log.Info("AIO 客户端启动成功",
@@ -187,7 +192,7 @@ func (c *Client) RefreshEndpoints(ctx context.Context) error {
 	}
 
 	// 获取 aio-service 的所有实例
-	instances, err := c.RegistryClient.Discover(ctx, "aio-service", "", "active", "")
+	instances, err := c.RegistryClient.Discover(ctx, "aio-service", "", registry.StatusUp, "")
 	if err != nil {
 		return fmt.Errorf("从注册中心获取服务实例失败: %v", err)
 	}
@@ -258,14 +263,14 @@ func (c *Client) UnregisterSelf(ctx context.Context) error {
 		return fmt.Errorf("服务未注册或服务ID为空")
 	}
 
-	message, err := c.RegistryClient.Unregister(ctx, c.serviceInfo.ID)
+	_, err := c.RegistryClient.Offline(ctx, c.serviceInfo.ID)
 	if err != nil {
 		return fmt.Errorf("注销服务失败: %v", err)
 	}
 
-	c.log.Info("服务注销成功",
+	c.log.Info("服务下线成功",
 		zap.String("service_id", c.serviceInfo.ID),
-		zap.String("message", message))
+		zap.String("message", "下线成功"))
 
 	c.serviceInfo.ID = ""
 	return nil
@@ -296,6 +301,12 @@ func (c *Client) Close() error {
 	defer c.mu.Unlock()
 
 	var errs []error
+
+	if c.MonitorClient != nil {
+		if err := c.MonitorClient.Stop(); err != nil {
+			errs = append(errs, fmt.Errorf("停止监控客户端失败: %v", err))
+		}
+	}
 
 	// 注销服务（如果已注册）
 	if c.serviceInfo != nil && c.serviceInfo.ID != "" {
@@ -367,7 +378,29 @@ func (c *Client) setupAutoRenewal(ctx context.Context) error {
 		scheduler.TaskExecuteModeLocal, // 本地任务
 		5*time.Second,                  // 5秒超时
 		func(ctx context.Context) error {
-			return c.RenewSelf(ctx)
+			// 先尝试续约
+			err := c.RenewSelf(ctx)
+			if err != nil {
+				c.log.Warn("服务续约失败，尝试重新注册",
+					zap.String("service_id", c.serviceInfo.ID),
+					zap.Error(err))
+
+				// 续约失败，尝试重新注册
+				_, registerErr := c.RegisterSelf(ctx)
+				if registerErr != nil {
+					c.log.Error("重新注册服务失败",
+						zap.String("service_id", c.serviceInfo.ID),
+						zap.Error(registerErr))
+					return fmt.Errorf("续约失败且重新注册也失败: 续约错误=%v, 注册错误=%v", err, registerErr)
+				}
+
+				c.log.Info("服务重新注册成功",
+					zap.String("service_id", c.serviceInfo.ID))
+				return nil
+			}
+
+			// 续约成功
+			return nil
 		},
 	)
 

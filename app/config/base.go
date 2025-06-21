@@ -2,10 +2,11 @@ package config
 
 import (
 	"fmt"
-	"github.com/xsxdot/aio/pkg/common"
-	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
+
+	"github.com/xsxdot/aio/pkg/common"
+	"gopkg.in/yaml.v3"
 )
 
 // BaseConfig 表示应用程序配置

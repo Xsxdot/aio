@@ -2,14 +2,15 @@ package registry
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"path"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/xsxdot/aio/internal/etcd"
+	"github.com/xsxdot/aio/pkg/scheduler"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )
@@ -19,17 +20,23 @@ type Registry interface {
 	// Register 注册服务实例
 	Register(ctx context.Context, instance *ServiceInstance) error
 
-	// Unregister 注销服务实例
+	// Unregister 注销服务实例（物理删除）
 	Unregister(ctx context.Context, serviceID string) error
+
+	// Offline 下线服务实例（逻辑删除，保留记录）
+	Offline(ctx context.Context, serviceID string) (*ServiceInstance, error)
 
 	// Renew 续约服务实例
 	Renew(ctx context.Context, serviceID string) error
 
-	// Discover 发现服务实例列表
+	// Discover 发现服务实例列表（只返回在线服务）
 	Discover(ctx context.Context, serviceName string) ([]*ServiceInstance, error)
 
-	// DiscoverByEnv 根据环境发现服务实例列表
+	// DiscoverByEnv 根据环境发现服务实例列表（只返回在线服务）
 	DiscoverByEnv(ctx context.Context, serviceName string, env Environment) ([]*ServiceInstance, error)
+
+	// DiscoverAll 发现所有服务实例列表（包括下线服务）
+	DiscoverAll(ctx context.Context, serviceName string) ([]*ServiceInstance, error)
 
 	// Watch 监听服务变更
 	Watch(ctx context.Context, serviceName string) (Watcher, error)
@@ -39,6 +46,9 @@ type Registry interface {
 
 	// ListServices 列出所有服务名称
 	ListServices(ctx context.Context) ([]string, error)
+
+	// GetExpiredServices 获取过期的服务实例列表
+	GetExpiredServices(ctx context.Context, expireThreshold time.Duration) ([]*ServiceInstance, error)
 
 	// Close 关闭注册中心
 	Close() error
@@ -55,17 +65,19 @@ type Watcher interface {
 
 // etcdRegistry ETCD实现的注册中心
 type etcdRegistry struct {
-	client   *etcd.EtcdClient
-	options  *Options
-	logger   *zap.Logger
-	leases   map[string]clientv3.LeaseID // 保存每个服务实例的租约ID
-	leaseMux sync.RWMutex
-	ctx      context.Context
-	cancel   context.CancelFunc
+	client      *etcd.EtcdClient
+	options     *Options
+	logger      *zap.Logger
+	ctx         context.Context
+	cancel      context.CancelFunc
+	monitorOnce sync.Once // 确保监控任务只启动一次
+	scheduler   *scheduler.Scheduler
 }
 
 // NewRegistry 创建新的注册中心
-func NewRegistry(etcdClient *etcd.EtcdClient, opts ...Option) (Registry, error) {
+// etcdClient: ETCD客户端，用于服务数据存储
+// scheduler: 定时任务调度器，用于定期检查过期服务（可以为nil，但将不支持自动监控过期服务）
+func NewRegistry(etcdClient *etcd.EtcdClient, scheduler *scheduler.Scheduler, opts ...Option) (Registry, error) {
 	if etcdClient == nil {
 		return nil, NewRegistryError(ErrCodeInvalidConfig, "etcd client cannot be nil")
 	}
@@ -82,12 +94,12 @@ func NewRegistry(etcdClient *etcd.EtcdClient, opts ...Option) (Registry, error) 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	registry := &etcdRegistry{
-		client:  etcdClient,
-		options: options,
-		logger:  zap.NewNop(), // 默认使用无操作的logger，可以后续设置
-		leases:  make(map[string]clientv3.LeaseID),
-		ctx:     ctx,
-		cancel:  cancel,
+		client:    etcdClient,
+		options:   options,
+		logger:    zap.NewNop(), // 默认使用无操作的logger，可以后续设置
+		ctx:       ctx,
+		cancel:    cancel,
+		scheduler: scheduler,
 	}
 
 	return registry, nil
@@ -120,7 +132,11 @@ func (r *etcdRegistry) Register(ctx context.Context, instance *ServiceInstance) 
 
 	// 如果没有设置ID，生成一个
 	if instance.ID == "" {
-		instance.ID = r.generateInstanceID(instance.Name)
+		generatedID, err := r.generateInstanceIDWithCollisionCheck(ctx, instance.Name, instance.Address, instance.Env)
+		if err != nil {
+			return NewRegistryErrorWithCause(ErrCodeRegistryFailed, "failed to generate instance ID", err)
+		}
+		instance.ID = generatedID
 	}
 
 	// 如果没有设置环境，默认为all（适用所有环境）
@@ -128,16 +144,9 @@ func (r *etcdRegistry) Register(ctx context.Context, instance *ServiceInstance) 
 		instance.Env = EnvAll
 	}
 
-	// 如果没有设置状态，默认为active
-	if instance.Status == "" {
-		instance.Status = "active"
-	}
-
-	// 创建租约
-	leaseResp, err := r.client.Client.Grant(ctx, r.options.LeaseTTL)
-	if err != nil {
-		return NewRegistryErrorWithCause(ErrCodeLeaseError, "failed to create lease", err)
-	}
+	instance.Status = StatusUp
+	// 设置初始续约时间为注册时间
+	instance.LastRenewTime = instance.RegisterTime
 
 	// 构建key和value
 	key := r.buildServiceKey(instance.Name, instance.ID)
@@ -146,21 +155,19 @@ func (r *etcdRegistry) Register(ctx context.Context, instance *ServiceInstance) 
 		return NewRegistryErrorWithCause(ErrCodeRegistryFailed, "failed to serialize instance", err)
 	}
 
-	// 注册服务，使用底层client并传递租约
-	_, err = r.client.Client.Put(ctx, key, value, clientv3.WithLease(leaseResp.ID))
+	// 注册服务，直接永久保存（不使用租约）
+	_, err = r.client.Client.Put(ctx, key, value)
 	if err != nil {
 		return NewRegistryErrorWithCause(ErrCodeRegistryFailed, "failed to register service", err)
 	}
-
-	// 保存租约ID
-	r.leaseMux.Lock()
-	r.leases[instance.ID] = leaseResp.ID
-	r.leaseMux.Unlock()
 
 	r.logger.Info("Service registered successfully",
 		zap.String("service_id", instance.ID),
 		zap.String("service_name", instance.Name),
 		zap.String("address", instance.Address))
+
+	// 启动监控任务（只启动一次）
+	r.startMonitorOnce()
 
 	return nil
 }
@@ -169,24 +176,6 @@ func (r *etcdRegistry) Register(ctx context.Context, instance *ServiceInstance) 
 func (r *etcdRegistry) Unregister(ctx context.Context, serviceID string) error {
 	if serviceID == "" {
 		return NewRegistryError(ErrCodeInvalidInstance, "service ID cannot be empty")
-	}
-
-	// 获取租约ID
-	r.leaseMux.RLock()
-	leaseID, exists := r.leases[serviceID]
-	r.leaseMux.RUnlock()
-
-	if exists {
-		// 撤销租约（这会自动删除相关的key）
-		_, err := r.client.Client.Revoke(ctx, leaseID)
-		if err != nil {
-			r.logger.Warn("Failed to revoke lease", zap.String("service_id", serviceID), zap.Error(err))
-		}
-
-		// 删除租约记录
-		r.leaseMux.Lock()
-		delete(r.leases, serviceID)
-		r.leaseMux.Unlock()
 	}
 
 	// 确保删除key（兜底操作）
@@ -208,8 +197,72 @@ func (r *etcdRegistry) Unregister(ctx context.Context, serviceID string) error {
 	return nil
 }
 
-// Discover 发现服务实例列表
+// Offline 下线服务实例（逻辑删除，保留记录）
+func (r *etcdRegistry) Offline(ctx context.Context, serviceID string) (*ServiceInstance, error) {
+	if serviceID == "" {
+		return nil, NewRegistryError(ErrCodeInvalidInstance, "service ID cannot be empty")
+	}
+
+	// 获取现有的服务实例
+	instance, err := r.GetService(ctx, serviceID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 如果已经是下线状态，直接返回
+	if instance.IsOffline() {
+		return instance, nil
+	}
+
+	// 更新实例状态为下线
+	instance.Status = StatusDown
+	instance.OfflineTime = time.Now()
+
+	// 构建key和value
+	key := r.buildServiceKey(instance.Name, instance.ID)
+	value, err := instance.ToJSON()
+	if err != nil {
+		return nil, NewRegistryErrorWithCause(ErrCodeRegistryFailed, "failed to serialize instance", err)
+	}
+
+	// 更新服务实例（不使用租约，永久保存）
+	_, err = r.client.Client.Put(ctx, key, value)
+	if err != nil {
+		return nil, NewRegistryErrorWithCause(ErrCodeRegistryFailed, "failed to update service status", err)
+	}
+
+	r.logger.Info("Service offlined successfully",
+		zap.String("service_id", serviceID),
+		zap.String("service_name", instance.Name),
+		zap.Time("offline_time", instance.OfflineTime))
+
+	// 启动监控任务（只启动一次）
+	r.startMonitorOnce()
+
+	return instance, nil
+}
+
+// Discover 发现服务实例列表（只返回在线服务）
 func (r *etcdRegistry) Discover(ctx context.Context, serviceName string) ([]*ServiceInstance, error) {
+	// 获取所有实例
+	allInstances, err := r.DiscoverAll(ctx, serviceName)
+	if err != nil {
+		return nil, err
+	}
+
+	// 过滤只返回在线服务
+	var onlineInstances []*ServiceInstance
+	for _, instance := range allInstances {
+		if instance.IsOnline() {
+			onlineInstances = append(onlineInstances, instance)
+		}
+	}
+
+	return onlineInstances, nil
+}
+
+// DiscoverAll 发现所有服务实例列表（包括下线服务）
+func (r *etcdRegistry) DiscoverAll(ctx context.Context, serviceName string) ([]*ServiceInstance, error) {
 	if serviceName == "" {
 		return nil, NewRegistryError(ErrCodeInvalidInstance, "service name cannot be empty")
 	}
@@ -335,6 +388,33 @@ func (r *etcdRegistry) ListServices(ctx context.Context) ([]string, error) {
 	return names, nil
 }
 
+// GetExpiredServices 获取过期的服务实例列表
+func (r *etcdRegistry) GetExpiredServices(ctx context.Context, expireThreshold time.Duration) ([]*ServiceInstance, error) {
+	// 使用GetWithPrefix获取所有服务
+	kvMap, err := r.client.GetWithPrefix(ctx, r.options.Prefix)
+	if err != nil {
+		return nil, NewRegistryErrorWithCause(ErrCodeDiscoveryFailed, "failed to get services", err)
+	}
+
+	var expiredInstances []*ServiceInstance
+	for k, v := range kvMap {
+		instance, err := FromJSON(v)
+		if err != nil {
+			r.logger.Warn("Failed to parse service instance",
+				zap.String("key", k),
+				zap.Error(err))
+			continue
+		}
+
+		// 检查是否过期
+		if instance.IsExpired(expireThreshold) {
+			expiredInstances = append(expiredInstances, instance)
+		}
+	}
+
+	return expiredInstances, nil
+}
+
 // Close 关闭注册中心
 func (r *etcdRegistry) Close() error {
 	r.cancel()
@@ -356,8 +436,49 @@ func (r *etcdRegistry) validateInstance(instance *ServiceInstance) error {
 }
 
 // generateInstanceID 生成服务实例ID
-func (r *etcdRegistry) generateInstanceID(serviceName string) string {
-	return fmt.Sprintf("%s-%s", serviceName, uuid.New().String()[:8])
+// 使用服务名称、地址和环境的哈希值生成固定ID，确保同一应用在相同环境下生成相同的ID
+func (r *etcdRegistry) generateInstanceID(serviceName string, address string, env Environment) string {
+	// 使用服务名称、地址和环境组合生成哈希
+	data := fmt.Sprintf("%s-%s-%s", serviceName, address, env)
+	hash := sha256.Sum256([]byte(data))
+	// 取前16位十六进制字符作为ID后缀，降低碰撞概率
+	hashStr := fmt.Sprintf("%x", hash)[:16]
+	return fmt.Sprintf("%s-%s", serviceName, hashStr)
+}
+
+// generateInstanceIDWithCollisionCheck 生成服务实例ID并检查冲突
+func (r *etcdRegistry) generateInstanceIDWithCollisionCheck(ctx context.Context, serviceName string, address string, env Environment) (string, error) {
+	// 生成基础ID
+	baseID := r.generateInstanceID(serviceName, address, env)
+
+	// 检查是否已存在
+	existing, err := r.GetService(ctx, baseID)
+	if err != nil && err != ErrServiceNotFound {
+		return "", err
+	}
+
+	// 如果不存在，直接返回
+	if existing == nil {
+		return baseID, nil
+	}
+
+	// 如果存在的服务实例与当前请求的完全匹配，说明是同一个服务实例
+	if existing.Name == serviceName && existing.Address == address && existing.Env == env {
+		return baseID, nil
+	}
+
+	// 如果存在但不匹配，说明发生了哈希冲突，使用更长的哈希值
+	r.logger.Warn("检测到服务ID哈希冲突，使用扩展哈希",
+		zap.String("service_name", serviceName),
+		zap.String("address", address),
+		zap.String("env", string(env)),
+		zap.String("conflicting_id", baseID))
+
+	// 使用完整的哈希值（64位）来避免冲突
+	data := fmt.Sprintf("%s-%s-%s", serviceName, address, env)
+	hash := sha256.Sum256([]byte(data))
+	fullHashStr := fmt.Sprintf("%x", hash)
+	return fmt.Sprintf("%s-%s", serviceName, fullHashStr), nil
 }
 
 // buildServiceKey 构建服务key
@@ -398,7 +519,7 @@ func (w *etcdWatcher) Next() ([]*ServiceInstance, error) {
 		}
 
 		// 获取当前所有实例
-		return w.registry.Discover(w.ctx, w.serviceName)
+		return w.registry.DiscoverAll(w.ctx, w.serviceName)
 	}
 }
 
@@ -413,26 +534,143 @@ func (r *etcdRegistry) Renew(ctx context.Context, serviceID string) error {
 		return NewRegistryError(ErrCodeInvalidInstance, "service ID cannot be empty")
 	}
 
-	// 获取租约ID
-	r.leaseMux.RLock()
-	leaseID, exists := r.leases[serviceID]
-	r.leaseMux.RUnlock()
-
-	if !exists {
-		return NewRegistryError(ErrCodeLeaseError, "lease not found for service")
-	}
-
-	// 续约
-	_, err := r.client.Client.KeepAliveOnce(ctx, leaseID)
+	// 获取现有的服务实例
+	instance, err := r.GetService(ctx, serviceID)
 	if err != nil {
-		r.logger.Error("Failed to renew lease",
-			zap.String("service_id", serviceID),
-			zap.Error(err))
-		return NewRegistryErrorWithCause(ErrCodeLeaseError, "failed to renew lease", err)
+		if err == ErrServiceNotFound {
+			return NewRegistryError(ErrCodeInvalidInstance, "service not found")
+		}
+		return NewRegistryErrorWithCause(ErrCodeRegistryFailed, "failed to get service for renewal", err)
 	}
 
-	r.logger.Debug("Service lease renewed successfully",
-		zap.String("service_id", serviceID))
+	// 更新续约时间
+	instance.LastRenewTime = time.Now()
+
+	// 如果状态不是up，改为up
+	statusChanged := false
+	if instance.Status != StatusUp {
+		instance.Status = StatusUp
+		instance.OfflineTime = time.Time{} // 清空下线时间
+		statusChanged = true
+	}
+
+	// 构建key和value
+	key := r.buildServiceKey(instance.Name, instance.ID)
+	value, err := instance.ToJSON()
+	if err != nil {
+		return NewRegistryErrorWithCause(ErrCodeRegistryFailed, "failed to serialize instance", err)
+	}
+
+	// 更新服务实例
+	_, err = r.client.Client.Put(ctx, key, value)
+	if err != nil {
+		return NewRegistryErrorWithCause(ErrCodeRegistryFailed, "failed to renew service", err)
+	}
+
+	r.logger.Debug("Service renewed successfully",
+		zap.String("service_id", serviceID),
+		zap.Bool("status_changed", statusChanged),
+		zap.String("status", instance.Status))
+
+	// 启动监控任务（只启动一次）
+	r.startMonitorOnce()
 
 	return nil
+}
+
+// startMonitorOnce 启动监控任务（只启动一次）
+func (r *etcdRegistry) startMonitorOnce() {
+	r.monitorOnce.Do(func() {
+		r.scheduleMonitorTask()
+	})
+}
+
+// scheduleMonitorTask 创建并调度监控任务
+func (r *etcdRegistry) scheduleMonitorTask() {
+	if r.scheduler == nil {
+		r.logger.Warn("Scheduler is nil, cannot schedule monitor task")
+		return
+	}
+
+	// 创建定时任务，检查间隔为TTL的一半
+	checkInterval := time.Duration(r.options.LeaseTTL) * time.Second / 2
+
+	// 使用IntervalTask创建周期性任务
+	task := scheduler.NewIntervalTask(
+		"registry-monitor-expired-services",
+		time.Now().Add(checkInterval),  // 首次执行时间
+		checkInterval,                  // 执行间隔
+		scheduler.TaskExecuteModeLocal, // 本地执行模式（每个节点都需要检查自己的服务）
+		30*time.Second,                 // 任务超时时间
+		r.monitorTaskFunc,              // 执行函数
+	)
+
+	// 添加任务到调度器
+	if err := r.scheduler.AddTask(task); err != nil {
+		r.logger.Error("Failed to add monitor task to scheduler", zap.Error(err))
+	} else {
+		r.logger.Info("Monitor task scheduled successfully",
+			zap.Duration("interval", checkInterval))
+	}
+}
+
+// monitorTaskFunc 监控任务执行函数
+func (r *etcdRegistry) monitorTaskFunc(ctx context.Context) error {
+	r.checkAndOfflineExpiredServices()
+	return nil
+}
+
+// checkAndOfflineExpiredServices 检查并将过期服务设为离线状态
+// 此方法由调度器定时调用，检查所有在线服务是否已过期
+func (r *etcdRegistry) checkAndOfflineExpiredServices() {
+	ctx, cancel := context.WithTimeout(r.ctx, 30*time.Second)
+	defer cancel()
+
+	// 获取所有服务实例
+	kvMap, err := r.client.GetWithPrefix(ctx, r.options.Prefix)
+	if err != nil {
+		r.logger.Error("Failed to get services for expiration check", zap.Error(err))
+		return
+	}
+
+	expiredCount := 0
+	for k, v := range kvMap {
+		instance, err := FromJSON(v)
+		if err != nil {
+			r.logger.Warn("Failed to parse service instance during expiration check",
+				zap.String("key", k),
+				zap.Error(err))
+			continue
+		}
+
+		// 只检查在线服务
+		if !instance.IsOnline() {
+			continue
+		}
+
+		// 检查是否过期（续约间隔的3倍作为过期时间）
+		expireThreshold := time.Duration(r.options.LeaseTTL) * time.Second
+		if instance.IsExpired(expireThreshold) {
+			// 将服务标记为离线
+			_, err := r.Offline(ctx, instance.ID)
+			if err != nil {
+				r.logger.Error("Failed to offline expired service",
+					zap.String("service_id", instance.ID),
+					zap.String("service_name", instance.Name),
+					zap.Error(err))
+			} else {
+				r.logger.Info("Service marked as offline due to expiration",
+					zap.String("service_id", instance.ID),
+					zap.String("service_name", instance.Name),
+					zap.Duration("last_renew_duration", instance.GetLastRenewDuration()))
+				expiredCount++
+			}
+		}
+	}
+
+	if expiredCount > 0 {
+		r.logger.Info("Expired services check completed",
+			zap.Int("expired_count", expiredCount),
+			zap.Int("total_checked", len(kvMap)))
+	}
 }

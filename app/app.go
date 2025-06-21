@@ -6,13 +6,14 @@ import (
 	"log"
 	"sync"
 
+	"github.com/xsxdot/aio/pkg/monitoring"
+
 	"github.com/xsxdot/aio/app/config"
 	"github.com/xsxdot/aio/internal/authmanager"
 	"github.com/xsxdot/aio/internal/certmanager"
 	"github.com/xsxdot/aio/internal/etcd"
 	"github.com/xsxdot/aio/internal/fiber"
 	"github.com/xsxdot/aio/internal/grpc"
-	"github.com/xsxdot/aio/internal/monitoring"
 	"github.com/xsxdot/aio/pkg/common"
 	config3 "github.com/xsxdot/aio/pkg/config"
 	"github.com/xsxdot/aio/pkg/lock"
@@ -112,7 +113,7 @@ func (a *App) Stop() error {
 
 	// 注销服务实例
 	if a.serviceInstanceID != "" && a.Registry != nil {
-		err := a.Registry.Unregister(context.Background(), a.serviceInstanceID)
+		_, err := a.Registry.Offline(context.Background(), a.serviceInstanceID)
 		if err != nil {
 			log.Printf("注销AIO服务实例失败: %v\n", err)
 		} else {

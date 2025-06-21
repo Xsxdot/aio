@@ -206,6 +206,96 @@ func (t *OnceTask) UpdateNextTime(currentTime time.Time) time.Time {
 	return t.NextTime
 }
 
+// RetryableOnceTask 可重试的一次性任务
+type RetryableOnceTask struct {
+	*BaseTask
+	MaxRetries      int           `json:"max_retries"`       // 最大重试次数
+	CurrentRetries  int           `json:"current_retries"`   // 当前重试次数
+	RetryInterval   time.Duration `json:"retry_interval"`    // 重试间隔
+	LastExecuteTime time.Time     `json:"last_execute_time"` // 上次执行时间
+}
+
+// NewRetryableOnceTask 创建可重试的一次性任务
+func NewRetryableOnceTask(name string, executeTime time.Time, executeMode TaskExecuteMode, timeout time.Duration, maxRetries int, retryInterval time.Duration, fn TaskFunc) *RetryableOnceTask {
+	return &RetryableOnceTask{
+		BaseTask: &BaseTask{
+			ID:          uuid.New().String(),
+			Name:        name,
+			Type:        TaskTypeOnce,
+			ExecuteMode: executeMode,
+			Status:      TaskStatusWaiting,
+			NextTime:    executeTime,
+			Timeout:     timeout,
+			Func:        fn,
+			CreateTime:  time.Now(),
+			UpdateTime:  time.Now(),
+		},
+		MaxRetries:     maxRetries,
+		CurrentRetries: 0,
+		RetryInterval:  retryInterval,
+	}
+}
+
+// Execute 执行任务（覆盖基础实现以支持重试逻辑）
+func (t *RetryableOnceTask) Execute(ctx context.Context) error {
+	if t.Func == nil {
+		return nil
+	}
+
+	t.SetStatus(TaskStatusRunning)
+	t.LastExecuteTime = time.Now()
+
+	err := t.Func(ctx)
+
+	if err != nil {
+		t.CurrentRetries++
+		if t.CurrentRetries >= t.MaxRetries {
+			// 达到最大重试次数，标记为失败
+			t.SetStatus(TaskStatusFailed)
+		} else {
+			// 还可以重试，保持等待状态并设置下次执行时间
+			t.SetStatus(TaskStatusWaiting)
+			t.NextTime = time.Now().Add(t.RetryInterval)
+		}
+	} else {
+		// 执行成功，标记为完成
+		t.SetStatus(TaskStatusCompleted)
+	}
+
+	return err
+}
+
+// UpdateNextTime 更新下次执行时间（用于重试）
+func (t *RetryableOnceTask) UpdateNextTime(currentTime time.Time) time.Time {
+	// 如果任务失败且还有重试机会，返回重试时间
+	if t.Status == TaskStatusWaiting && t.CurrentRetries < t.MaxRetries {
+		return t.NextTime
+	}
+	// 否则不再执行
+	return time.Time{}
+}
+
+// GetCurrentRetries 获取当前重试次数
+func (t *RetryableOnceTask) GetCurrentRetries() int {
+	return t.CurrentRetries
+}
+
+// GetMaxRetries 获取最大重试次数
+func (t *RetryableOnceTask) GetMaxRetries() int {
+	return t.MaxRetries
+}
+
+// GetRetryInterval 获取重试间隔
+func (t *RetryableOnceTask) GetRetryInterval() time.Duration {
+	return t.RetryInterval
+}
+
+// IsCompleted 检查任务是否已完成（覆盖基础实现）
+func (t *RetryableOnceTask) IsCompleted() bool {
+	return t.Status == TaskStatusCompleted || t.Status == TaskStatusCanceled ||
+		(t.Status == TaskStatusFailed && t.CurrentRetries >= t.MaxRetries)
+}
+
 // IntervalTask 固定间隔任务
 type IntervalTask struct {
 	*BaseTask

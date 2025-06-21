@@ -8,6 +8,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/xsxdot/aio/pkg/monitoring"
+	"github.com/xsxdot/aio/pkg/monitoring/storage"
+
 	"github.com/xsxdot/aio/internal/fiber"
 	grpcserver "github.com/xsxdot/aio/internal/grpc"
 	"github.com/xsxdot/aio/pkg/lock"
@@ -20,7 +23,6 @@ import (
 	"github.com/xsxdot/aio/internal/authmanager"
 	"github.com/xsxdot/aio/internal/certmanager"
 	"github.com/xsxdot/aio/internal/etcd"
-	"github.com/xsxdot/aio/internal/monitoring"
 	common2 "github.com/xsxdot/aio/pkg/common"
 )
 
@@ -42,7 +44,7 @@ func (a *App) startApp() error {
 	}
 	a.Etcd = etcdClient
 
-	lockManager, err := lock.NewEtcdLockManager(etcdClient, "aio-lock-manager")
+	lockManager, err := lock.NewEtcdLockManager(etcdClient, "aio-lock-manager", lock.DefaultLockManagerOptions())
 	if err != nil {
 		return err
 	}
@@ -75,13 +77,13 @@ func (a *App) startApp() error {
 		return err
 	}
 
-	discoveryComponent, err := registry.NewRegistry(etcdClient)
+	discoveryComponent, err := registry.NewRegistry(etcdClient, schedulerWithEtcd)
 	if err != nil {
 		return err
 	}
 	a.Registry = discoveryComponent
 
-	monitor := monitoring.New(a.BaseConfig, etcdClient)
+	monitor := monitoring.New(a.BaseConfig, etcdClient, schedulerWithEtcd)
 	a.Monitor = monitor
 	err = monitor.Start(context.Background())
 	if err != nil {
@@ -144,6 +146,19 @@ func (a *App) initGrpc() error {
 		log.Fatal("注册 Registry gRPC 服务失败", zap.Error(err))
 	}
 
+	// 注册存储服务（必须在启动服务器之前）
+	storageEntity := a.Monitor.GetStorage()
+	grpcStorage := storage.NewGrpcStorage(storage.GrpcStorageConfig{
+		Storage:  storageEntity,
+		Registry: a.Registry,
+		Logger:   a.Logger.GetZapLogger("GrpcStorage"),
+	})
+	if err := server.RegisterService(grpcStorage); err != nil {
+		log.Fatal("注册存储服务失败", zap.Error(err))
+		return err
+	}
+	a.Monitor.SetGrpcStorage(grpcStorage)
+
 	// 启动服务器
 	if err := server.Start(); err != nil {
 		log.Fatal("启动 gRPC 服务器失败", zap.Error(err))
@@ -180,7 +195,7 @@ func (a *App) initHTTPServer() error {
 	}
 
 	if a.Monitor != nil {
-		fiberServer.RegisterMonitorAPI(a.Monitor)
+		fiberServer.RegisterMonitorAPI(a.BaseConfig.System.HttpPort, a.Monitor)
 	} else {
 		a.Logger.Warn("监控服务未初始化，跳过API注册")
 	}
@@ -221,7 +236,7 @@ func (a *App) registerAIOService() error {
 			"services":  "auth,config,registry,monitor,ssl", // 支持的服务列表
 		},
 		Weight: 100,
-		Status: "active",
+		Status: registry.StatusUp,
 	}
 
 	// 注册服务实例
@@ -236,8 +251,13 @@ func (a *App) registerAIOService() error {
 
 	if a.serviceInstanceID == "" {
 		return fmt.Errorf("注册成功但未获取到服务实例ID")
+	} else {
+		// 启动应用指标收集器
+		if err := a.Monitor.StartAppCollector("aio-service", instance.ID); err != nil {
+			log.Printf("启动应用指标收集器失败: %v", err)
+			// 不返回错误，让服务继续运行
+		}
 	}
-
 	log.Printf("AIO服务已成功注册到服务中心: %s (ID: %s, Env: %s)", instance.Address, instance.ID, instance.Env)
 
 	// 创建自动续约定时任务

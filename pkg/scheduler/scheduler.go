@@ -60,21 +60,21 @@ type SchedulerStats struct {
 
 // SchedulerConfig 调度器配置
 type SchedulerConfig struct {
-	NodeID        string        `json:"node_id"`
-	LockKey       string        `json:"lock_key"`
-	LockTTL       time.Duration `json:"lock_ttl"`
-	CheckInterval time.Duration `json:"check_interval"`
-	MaxWorkers    int           `json:"max_workers"`
+	NodeID            string        `json:"node_id"`
+	LockKey           string        `json:"lock_key"`
+	LockTTL           time.Duration `json:"lock_ttl"`
+	LockRetryInterval time.Duration `json:"lock_retry_interval"`
+	MaxWorkers        int           `json:"max_workers"`
 }
 
 // DefaultSchedulerConfig 默认调度器配置
 func DefaultSchedulerConfig() *SchedulerConfig {
 	return &SchedulerConfig{
-		NodeID:        fmt.Sprintf("scheduler-%d", time.Now().UnixNano()),
-		LockKey:       "aio/scheduler/leader",
-		LockTTL:       30 * time.Second,
-		CheckInterval: 1 * time.Second,
-		MaxWorkers:    10,
+		NodeID:            fmt.Sprintf("scheduler-%d", time.Now().UnixNano()),
+		LockKey:           "aio/scheduler/leader",
+		LockTTL:           30 * time.Second,
+		LockRetryInterval: 5 * time.Second,
+		MaxWorkers:        10,
 	}
 }
 
@@ -91,7 +91,7 @@ func NewScheduler(lockManager lock.LockManager, config *SchedulerConfig) *Schedu
 		lockManager:     lockManager,
 		lockKey:         config.LockKey,
 		lockTTL:         config.LockTTL,
-		checkInterval:   config.CheckInterval,
+		checkInterval:   config.LockRetryInterval,
 		maxWorkers:      config.MaxWorkers,
 		ctx:             ctx,
 		cancel:          cancel,
@@ -103,9 +103,6 @@ func NewScheduler(lockManager lock.LockManager, config *SchedulerConfig) *Schedu
 
 	// 创建分布式锁
 	lockOpts := &lock.LockOptions{
-		TTL:           config.LockTTL,
-		AutoRenew:     true,
-		RenewInterval: config.LockTTL / 3,
 		RetryInterval: 1 * time.Second,
 		MaxRetries:    0,
 	}
@@ -169,7 +166,12 @@ func (s *Scheduler) AddTask(task Task) error {
 	s.taskHeap.SafePush(task)
 	s.stats.IncrementTotalTasks()
 
-	s.logger.Infof("添加任务: %s [%s]", task.GetName(), task.GetID())
+	// 根据任务类型选择合适的日志级别
+	if task.GetType() == TaskTypeInterval {
+		s.logger.Debugf("添加固定间隔任务: %s [%s]", task.GetName(), task.GetID())
+	} else {
+		s.logger.Infof("添加任务: %s [%s]", task.GetName(), task.GetID())
+	}
 
 	// 重新设置定时器
 	s.resetTimer()
@@ -181,7 +183,7 @@ func (s *Scheduler) AddTask(task Task) error {
 func (s *Scheduler) RemoveTask(taskID string) bool {
 	removed := s.taskHeap.SafeRemove(taskID)
 	if removed {
-		s.logger.Infof("移除任务: %s", taskID)
+		s.logger.Debugf("移除任务: %s", taskID)
 		s.resetTimer()
 	}
 	return removed
@@ -236,49 +238,66 @@ func (s *Scheduler) hasLocalTasks() bool {
 	return false
 }
 
-// mainLoop 主循环
+// mainLoop 主循环，负责领导者选举和任期管理
 func (s *Scheduler) mainLoop() {
 	defer s.wg.Done()
 
-	leaderCheckTicker := time.NewTicker(s.checkInterval)
-	defer leaderCheckTicker.Stop()
+	// 初始时随机延迟，避免所有节点同时竞争
+	time.Sleep(time.Duration(time.Now().UnixNano()%1000) * time.Millisecond)
 
 	for {
+		// 检查调度器是否已停止
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-leaderCheckTicker.C:
-			s.tryBecomeLeader()
+		default:
 		}
+
+		s.logger.Info("尝试成为领导者...")
+
+		// 阻塞式获取锁，直到成功或上下文取消
+		err := s.distributedLock.Lock(s.ctx)
+		if err != nil {
+			if s.ctx.Err() != nil {
+				s.logger.Info("调度器已停止，退出领导者选举循环")
+				return
+			}
+			s.logger.Errorf("获取领导者锁失败，将在 %v 后重试: %v", s.checkInterval, err)
+			time.Sleep(s.checkInterval) // 等待后重试
+			continue
+		}
+
+		// 成功获取锁，开始领导者任期
+		s.runLeaderTerm()
 	}
 }
 
-// tryBecomeLeader 尝试成为领导者
-func (s *Scheduler) tryBecomeLeader() {
-	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
-	defer cancel()
-
-	// 尝试获取分布式锁
-	locked, err := s.distributedLock.TryLock(ctx)
-	if err != nil {
-		s.logger.Errorf("尝试获取分布式锁失败: %v", err)
+// runLeaderTerm 执行一个完整的领导者任期
+func (s *Scheduler) runLeaderTerm() {
+	// 确保在任期结束时，状态变回 Follower 并释放锁
+	defer func() {
 		s.becomeFollower()
-		return
-	}
+		// 使用后台上下文确保即使父上下文取消，也能尝试释放锁
+		if err := s.distributedLock.Unlock(context.Background()); err != nil {
+			// 如果锁因会话丢失而已被释放，这里会报错，是正常现象
+			s.logger.Warnf("卸任时释放领导者锁可能失败（通常是正常的）: %v", err)
+		}
+	}()
 
-	if locked {
-		if !s.isLeader.Load() {
-			s.logger.Info("成为领导者")
-			s.isLeader.Store(true)
-			s.stats.IncrementLeaderElections()
-			s.resetTimer()
-		}
-	} else {
-		s.becomeFollower()
-		// 即使不是领导者，如果有本地任务也需要启动定时器
-		if s.hasLocalTasks() {
-			s.resetTimer()
-		}
+	// 更新状态为领导者
+	s.logger.Info("成功成为领导者，开始任期")
+	s.isLeader.Store(true)
+	s.stats.IncrementLeaderElections()
+
+	// 作为领导者，立即重置定时器以调度任务
+	s.resetTimer()
+
+	// 等待任期结束：要么是调度器关闭，要么是锁丢失
+	select {
+	case <-s.ctx.Done():
+		s.logger.Info("调度器停止，正常卸任领导者")
+	case <-s.distributedLock.Done():
+		s.logger.Warn("检测到领导者锁已丢失，任期结束，将重新进入选举")
 	}
 }
 
@@ -411,7 +430,29 @@ func (s *Scheduler) executeTask(task Task) {
 // runTask 运行任务
 func (s *Scheduler) runTask(task Task) {
 	start := time.Now()
-	s.logger.Infof("开始执行任务: %s [%s]", task.GetName(), task.GetID())
+
+	// 添加panic恢复机制
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Errorf("任务执行发生panic: %s [%s], panic: %v",
+				task.GetName(), task.GetID(), r)
+
+			// 将任务状态设置为已取消，防止再次执行
+			task.SetStatus(TaskStatusCanceled)
+			s.stats.IncrementFailedTasks()
+
+			// 任务已取消，重置定时器以便调度其他任务
+			s.resetTimer()
+		}
+	}()
+
+	// 根据任务类型选择合适的日志级别
+	isIntervalTask := task.GetType() == TaskTypeInterval
+	if isIntervalTask {
+		s.logger.Debugf("开始执行固定间隔任务: %s [%s]", task.GetName(), task.GetID())
+	} else {
+		s.logger.Infof("开始执行任务: %s [%s]", task.GetName(), task.GetID())
+	}
 
 	// 创建带超时的上下文
 	ctx, cancel := context.WithTimeout(s.ctx, task.GetTimeout())
@@ -428,8 +469,13 @@ func (s *Scheduler) runTask(task Task) {
 			task.GetName(), task.GetID(), duration, err)
 		s.stats.IncrementFailedTasks()
 	} else {
-		s.logger.Infof("任务执行成功: %s [%s], 耗时: %v",
-			task.GetName(), task.GetID(), duration)
+		if isIntervalTask {
+			s.logger.Debugf("固定间隔任务执行成功: %s [%s], 耗时: %v",
+				task.GetName(), task.GetID(), duration)
+		} else {
+			s.logger.Infof("任务执行成功: %s [%s], 耗时: %v",
+				task.GetName(), task.GetID(), duration)
+		}
 		s.stats.IncrementCompletedTasks()
 	}
 

@@ -669,7 +669,6 @@ func (m *AuthManager) initializeJWTConfig(ctx context.Context) error {
 
 	// 创建分布式锁，防止多个节点同时生成证书
 	lockOpts := lock.DefaultLockOptions()
-	lockOpts.TTL = 30 * time.Second // 锁超时时间
 	distributedLock := m.lockManager.NewLock(jwtLockKey, lockOpts)
 
 	// 获取锁

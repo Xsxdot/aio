@@ -8,8 +8,11 @@ service RegistryService {
   // Register 注册服务实例
   rpc Register(RegisterRequest) returns (RegisterResponse);
   
-  // Unregister 注销服务实例
+  // Unregister 注销服务实例（物理删除）
   rpc Unregister(UnregisterRequest) returns (UnregisterResponse);
+  
+  // Offline 下线服务实例（逻辑删除，保留记录）
+  rpc Offline(OfflineRequest) returns (OfflineResponse);
   
   // Renew 续约服务实例
   rpc Renew(RenewRequest) returns (RenewResponse);
@@ -32,6 +35,9 @@ service RegistryService {
   // GetServiceStats 获取指定服务的统计信息
   rpc GetServiceStats(GetServiceStatsRequest) returns (GetServiceStatsResponse);
   
+  // Watch 监听服务变化
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
+  
   // Admin APIs - 管理员功能
   
   // GetAllServices 管理员获取所有服务详细信息
@@ -52,7 +58,8 @@ message ServiceInstance {
   int64 start_time = 7;                // 启动时间戳
   map<string, string> metadata = 8;    // 服务元数据
   int32 weight = 9;                    // 负载均衡权重
-  string status = 10;                  // 服务状态
+  string status = 10;                  // 服务状态：up(在线)、down(下线)、starting(启动中)、stopping(停止中)、maintenance(维护)、unhealthy(不健康)
+  int64 offline_time = 11;             // 下线时间戳
 }
 
 // Register API
@@ -83,6 +90,19 @@ message UnregisterRequest {
 // 注销服务实例响应
 message UnregisterResponse {
   string message = 1;                  // 操作结果消息
+}
+
+// Offline API
+
+// 下线服务实例请求
+message OfflineRequest {
+  string service_id = 1;               // 服务实例ID
+}
+
+// 下线服务实例响应
+message OfflineResponse {
+  string message = 1;                  // 操作结果消息
+  ServiceInstance instance = 2;        // 下线后的服务实例信息
 }
 
 // Renew API
@@ -188,6 +208,26 @@ message GetServiceStatsResponse {
   map<string, int32> statuses = 6;     // 状态分布
   repeated ServiceInstance instances = 7; // 所有实例列表
   int64 timestamp = 8; // 统计时间（Unix时间戳）
+}
+
+// Watch API
+
+// 监听服务变化请求
+message WatchRequest {
+  string service_name = 1;              // 服务名称，空值监听所有服务
+  string env = 2;                       // 环境标识，空值监听所有环境
+}
+
+// 监听服务变化响应
+message WatchResponse {
+  enum EventType {
+    ADDED = 0;                          // 服务实例添加
+    MODIFIED = 1;                       // 服务实例修改
+    DELETED = 2;                        // 服务实例删除
+  }
+  EventType event_type = 1;             // 事件类型
+  ServiceInstance instance = 2;         // 变化的服务实例
+  int64 timestamp = 3;                  // 事件时间戳
 }
 
 // Admin APIs
