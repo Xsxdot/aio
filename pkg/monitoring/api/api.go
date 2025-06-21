@@ -14,8 +14,8 @@ import (
 	"github.com/xsxdot/aio/pkg/monitoring/alerting"
 	"github.com/xsxdot/aio/pkg/monitoring/collector"
 	"github.com/xsxdot/aio/pkg/monitoring/models"
-	"github.com/xsxdot/aio/pkg/monitoring/notifier"
 	"github.com/xsxdot/aio/pkg/monitoring/storage"
+	"github.com/xsxdot/aio/pkg/notifier"
 
 	"github.com/xsxdot/aio/pkg/utils"
 
@@ -611,18 +611,28 @@ func (api *API) getMetricsByName(c *fiber.Ctx) error {
 
 // getNotifiers 获取所有通知器
 func (api *API) getNotifiers(c *fiber.Ctx) error {
-	notifiers := api.notifierMgr.GetNotifiers()
-	return utils.SuccessResponse(c, notifiers)
+	configs := api.notifierMgr.GetNotifiers()
+
+	// 转换为前端期望的格式
+	result := make([]*models.Notifier, 0, len(configs))
+	for _, config := range configs {
+		result = append(result, convertNotifierConfigToModel(config))
+	}
+
+	return utils.SuccessResponse(c, result)
 }
 
 // getNotifier 获取特定通知器
 func (api *API) getNotifier(c *fiber.Ctx) error {
 	id := c.Params("id")
-	notifier, err := api.notifierMgr.GetNotifier(id)
+	config, err := api.notifierMgr.GetNotifier(id)
 	if err != nil {
 		return utils.FailResponse(c, utils.StatusNotFound, fmt.Sprintf("获取通知器失败: %v", err))
 	}
-	return utils.SuccessResponse(c, notifier)
+
+	// 转换为前端期望的格式
+	result := convertNotifierConfigToModel(config)
+	return utils.SuccessResponse(c, result)
 }
 
 // createNotifier 创建通知器
@@ -638,7 +648,9 @@ func (api *API) createNotifier(c *fiber.Ctx) error {
 		notifier.ID = api.generateNotifierID(notifier.Name, string(notifier.Type))
 	}
 
-	if err := api.notifierMgr.CreateNotifier(notifier); err != nil {
+	// 转换为新的配置格式
+	config := convertModelToNotifierConfig(notifier)
+	if err := api.notifierMgr.CreateNotifier(config); err != nil {
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("创建通知器失败: %v", err))
 	}
 
@@ -656,7 +668,9 @@ func (api *API) updateNotifier(c *fiber.Ctx) error {
 	// 确保ID匹配
 	notifier.ID = id
 
-	if err := api.notifierMgr.UpdateNotifier(notifier); err != nil {
+	// 转换为新的配置格式
+	config := convertModelToNotifierConfig(notifier)
+	if err := api.notifierMgr.UpdateNotifier(config); err != nil {
 		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("更新通知器失败: %v", err))
 	}
 
@@ -702,8 +716,24 @@ func (api *API) testNotifier(c *fiber.Ctx) error {
 		UpdatedAt:   now,
 	}
 
-	// 发送测试告警
-	results := api.notifierMgr.SendAlert(testAlert, "test")
+	// 创建通知消息
+	notification := &notifier.Notification{
+		ID:        "test-notification",
+		Title:     "测试通知",
+		Content:   fmt.Sprintf("这是一个测试通知，告警规则：%s，指标值：%.2f，阈值：%.2f", testAlert.RuleName, testAlert.Value, testAlert.Threshold),
+		Level:     notifier.NotificationLevelWarning,
+		CreatedAt: time.Now(),
+		Labels:    testAlert.Labels,
+		Data: map[string]interface{}{
+			"alert_id":    testAlert.ID,
+			"rule_name":   testAlert.RuleName,
+			"metric":      testAlert.Metric,
+			"description": testAlert.Description,
+		},
+	}
+
+	// 发送测试通知
+	results := api.notifierMgr.SendNotification(notification)
 
 	return utils.SuccessResponse(c, fiber.Map{
 		"message": "测试通知已发送",
@@ -1111,4 +1141,26 @@ func (api *API) calculateAPIStats(serviceName, instanceID string, endpoint APIEn
 	}
 
 	return stats, nil
+}
+
+// 转换函数：将新的NotifierConfig转换为旧的models.Notifier
+func convertNotifierConfigToModel(config *notifier.NotifierConfig) *models.Notifier {
+	return &models.Notifier{
+		ID:      config.ID,
+		Name:    config.Name,
+		Type:    models.NotifierType(config.Type),
+		Enabled: config.Enabled,
+		Config:  config.Config,
+	}
+}
+
+// 转换函数：将旧的models.Notifier转换为新的NotifierConfig
+func convertModelToNotifierConfig(model *models.Notifier) *notifier.NotifierConfig {
+	return &notifier.NotifierConfig{
+		ID:      model.ID,
+		Name:    model.Name,
+		Type:    notifier.NotifierType(model.Type),
+		Enabled: model.Enabled,
+		Config:  model.Config,
+	}
 }

@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/xsxdot/aio/pkg/monitoring/models"
 	"net/http"
 	"net/url"
 	"text/template"
@@ -19,107 +18,95 @@ import (
 
 // DingTalkNotifier 钉钉通知器
 type DingTalkNotifier struct {
-	config *models.DingTalkNotifierConfig
+	config *DingTalkNotifierConfig
 	logger *zap.Logger
 	id     string
 	name   string
 }
 
 // 默认的标题模板
-const defaultDingTalkTitleTemplate = "【{{.Severity}}】告警: {{.RuleName}}"
+const defaultDingTalkTitleTemplate = "【{{.Level}}】{{.Title}}"
 
 // 默认的内容模板 (Markdown格式)
 const defaultDingTalkContentTemplate = `
-### 告警详情
+### 通知详情
 
-- **告警描述**: {{.Description}}
-- **告警状态**: {{if eq .EventType "triggered"}}已触发{{else}}已解决{{end}}
-- **开始时间**: {{formatTime .StartsAt}}
-{{if eq .EventType "resolved"}}
-- **解决时间**: {{formatTime .EndsAt}}
-{{end}}
+- **消息标题**: {{.Title}}
+- **消息级别**: {{.Level}}
+- **发送时间**: {{formatTime .CreatedAt}}
 
-### 指标信息
+### 消息内容
 
-- **指标名称**: {{.Metric}}
-- **当前值**: {{.Value}}
-- **阈值**: {{.Threshold}}
-- **条件**: {{.Condition}}
+{{.Content}}
 
 {{if .Labels}}
-### 标签
+### 标签信息
 
 {{range $key, $value := .Labels}}
+- **{{$key}}**: {{$value}}
+{{end}}
+{{end}}
+
+{{if .Data}}
+### 附加数据
+
+{{range $key, $value := .Data}}
 - **{{$key}}**: {{$value}}
 {{end}}
 {{end}}
 `
 
 // NewDingTalkNotifier 创建新的钉钉通知器
-func NewDingTalkNotifier(notifier *models.Notifier) (Notifier, error) {
-	if notifier.Type != models.NotifierTypeDingTalk {
-		return nil, fmt.Errorf("通知器类型不是dingtalk: %s", notifier.Type)
+func NewDingTalkNotifier(config *NotifierConfig) (Notifier, error) {
+	if config.Type != NotifierTypeDingTalk {
+		return nil, fmt.Errorf("通知器类型不是dingtalk: %s", config.Type)
 	}
 
 	// 解析配置
-	var config models.DingTalkNotifierConfig
-	configData, err := json.Marshal(notifier.Config)
+	var dingConfig DingTalkNotifierConfig
+	configData, err := json.Marshal(config.Config)
 	if err != nil {
 		return nil, fmt.Errorf("序列化配置失败: %w", err)
 	}
 
-	if err := json.Unmarshal(configData, &config); err != nil {
+	if err := json.Unmarshal(configData, &dingConfig); err != nil {
 		return nil, fmt.Errorf("解析钉钉通知器配置失败: %w", err)
 	}
 
 	// 验证必要字段
-	if config.WebhookURL == "" {
+	if dingConfig.WebhookURL == "" {
 		return nil, fmt.Errorf("钉钉Webhook URL不能为空")
 	}
 
 	// 设置默认值
-	if config.TitleTemplate == "" {
-		config.TitleTemplate = defaultDingTalkTitleTemplate
+	if dingConfig.TitleTemplate == "" {
+		dingConfig.TitleTemplate = defaultDingTalkTitleTemplate
 	}
-	if config.ContentTemplate == "" {
-		config.ContentTemplate = defaultDingTalkContentTemplate
+	if dingConfig.ContentTemplate == "" {
+		dingConfig.ContentTemplate = defaultDingTalkContentTemplate
 	}
-	if !config.UseMarkdown {
-		config.UseMarkdown = true // 总是使用Markdown格式
+	if !dingConfig.UseMarkdown {
+		dingConfig.UseMarkdown = true // 总是使用Markdown格式
 	}
 
 	logger, _ := zap.NewProduction()
 
 	return &DingTalkNotifier{
-		config: &config,
+		config: &dingConfig,
 		logger: logger,
-		id:     notifier.ID,
-		name:   notifier.Name,
+		id:     config.ID,
+		name:   config.Name,
 	}, nil
 }
 
 // Send 发送钉钉通知
-func (n *DingTalkNotifier) Send(alert *models.Alert, eventType string) (*models.NotificationResult, error) {
-	result := &models.NotificationResult{
+func (n *DingTalkNotifier) Send(notification *Notification) (*NotificationResult, error) {
+	result := &NotificationResult{
 		NotifierID:   n.id,
 		NotifierName: n.name,
-		NotifierType: models.NotifierTypeDingTalk,
+		NotifierType: NotifierTypeDingTalk,
 		Success:      false,
 		Timestamp:    time.Now().Unix(),
-	}
-
-	// 准备渲染的数据
-	data := struct {
-		*models.Alert
-		EventType string
-		EndsAt    time.Time
-	}{
-		Alert:     alert,
-		EventType: eventType,
-	}
-
-	if alert.EndsAt != nil {
-		data.EndsAt = *alert.EndsAt
 	}
 
 	// 渲染标题
@@ -130,7 +117,7 @@ func (n *DingTalkNotifier) Send(alert *models.Alert, eventType string) (*models.
 	}
 
 	var titleBuf bytes.Buffer
-	if err := titleTmpl.Execute(&titleBuf, data); err != nil {
+	if err := titleTmpl.Execute(&titleBuf, notification); err != nil {
 		result.Error = fmt.Sprintf("渲染标题模板失败: %s", err.Error())
 		return result, nil
 	}
@@ -150,7 +137,7 @@ func (n *DingTalkNotifier) Send(alert *models.Alert, eventType string) (*models.
 	}
 
 	var contentBuf bytes.Buffer
-	if err := contentTmpl.Execute(&contentBuf, data); err != nil {
+	if err := contentTmpl.Execute(&contentBuf, notification); err != nil {
 		result.Error = fmt.Sprintf("渲染内容模板失败: %s", err.Error())
 		return result, nil
 	}
@@ -199,47 +186,68 @@ func (n *DingTalkNotifier) Send(alert *models.Alert, eventType string) (*models.
 
 	// 检查响应状态
 	if resp.StatusCode != http.StatusOK {
-		result.Error = fmt.Sprintf("HTTP请求返回非成功状态码: %d", resp.StatusCode)
+		result.Error = fmt.Sprintf("HTTP响应状态异常: %d", resp.StatusCode)
 		return result, nil
 	}
 
 	// 解析响应
-	var responseData struct {
-		ErrCode int    `json:"errcode"`
-		ErrMsg  string `json:"errmsg"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
+	var response map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		result.Error = fmt.Sprintf("解析响应失败: %s", err.Error())
 		return result, nil
 	}
 
-	// 检查业务状态码
-	if responseData.ErrCode != 0 {
-		result.Error = fmt.Sprintf("钉钉API返回错误: %s", responseData.ErrMsg)
+	// 检查钉钉接口返回
+	if errCode, ok := response["errcode"]; ok && errCode.(float64) != 0 {
+		errMsg := response["errmsg"]
+		result.Error = fmt.Sprintf("钉钉接口返回错误: %v", errMsg)
 		return result, nil
 	}
 
 	result.Success = true
+	n.logger.Info("钉钉通知发送成功",
+		zap.String("id", notification.ID),
+		zap.String("title", notification.Title))
+
 	return result, nil
 }
 
-// addSignature 为钉钉Webhook URL添加签名
-func (n *DingTalkNotifier) addSignature(webhookURL string) string {
-	timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
-	stringToSign := timestamp + "\n" + n.config.Secret
+// GetType 获取通知器类型
+func (n *DingTalkNotifier) GetType() NotifierType {
+	return NotifierTypeDingTalk
+}
 
-	// 计算HMAC-SHA256签名
+// GetID 获取通知器ID
+func (n *DingTalkNotifier) GetID() string {
+	return n.id
+}
+
+// GetName 获取通知器名称
+func (n *DingTalkNotifier) GetName() string {
+	return n.name
+}
+
+// addSignature 添加签名到Webhook URL
+func (n *DingTalkNotifier) addSignature(webhookURL string) string {
+	timestamp := time.Now().UnixNano() / 1e6 // 毫秒时间戳
+	stringToSign := fmt.Sprintf("%d\n%s", timestamp, n.config.Secret)
+
+	// 使用HmacSHA256算法计算签名
 	h := hmac.New(sha256.New, []byte(n.config.Secret))
 	h.Write([]byte(stringToSign))
 	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
 
-	// 构建带签名的URL
-	u, _ := url.Parse(webhookURL)
-	query := u.Query()
-	query.Set("timestamp", timestamp)
-	query.Set("sign", signature)
-	u.RawQuery = query.Encode()
+	// 对签名进行URL编码
+	signatureEncoded := url.QueryEscape(signature)
 
-	return u.String()
+	// 在URL中添加时间戳和签名参数
+	if len(webhookURL) > 0 {
+		if webhookURL[len(webhookURL)-1] == '&' {
+			return fmt.Sprintf("%stimestamp=%d&sign=%s", webhookURL, timestamp, signatureEncoded)
+		} else {
+			return fmt.Sprintf("%s&timestamp=%d&sign=%s", webhookURL, timestamp, signatureEncoded)
+		}
+	}
+
+	return webhookURL
 }

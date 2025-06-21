@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/xsxdot/aio/pkg/monitoring/models"
-	"github.com/xsxdot/aio/pkg/monitoring/storage"
 	"path"
 	"sync"
 	"time"
+
+	"github.com/xsxdot/aio/pkg/monitoring/models"
+	"github.com/xsxdot/aio/pkg/monitoring/storage"
+	"github.com/xsxdot/aio/pkg/notifier"
 
 	"github.com/google/uuid"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -38,7 +40,7 @@ type Manager struct {
 
 // NotifierManager 通知管理器接口
 type NotifierManager interface {
-	SendAlert(alert *models.Alert, eventType string) []models.NotificationResult
+	SendAlert(alert *models.Alert, eventType string) []notifier.NotificationResult
 }
 
 // Config 告警管理器配置

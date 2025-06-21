@@ -6,14 +6,16 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/xsxdot/aio/pkg/monitoring/alerting"
 	collector2 "github.com/xsxdot/aio/pkg/monitoring/collector"
-	"github.com/xsxdot/aio/pkg/monitoring/notifier"
 	"github.com/xsxdot/aio/pkg/monitoring/storage"
 	"github.com/xsxdot/aio/pkg/scheduler"
 
 	"github.com/xsxdot/aio/pkg/common"
+	"github.com/xsxdot/aio/pkg/notifier"
+	notifierstorage "github.com/xsxdot/aio/pkg/notifier/storage"
 
 	"github.com/xsxdot/aio/app/config"
 	"go.uber.org/zap"
@@ -52,12 +54,13 @@ type Monitor struct {
 	wg     sync.WaitGroup
 
 	// 内部组件
-	etcdClient  *etcd.EtcdClient
-	storage     *storage.Storage
-	notifierMgr *notifier.Manager
-	alertMgr    *alerting.Manager
-	scheduler   *scheduler.Scheduler
-	grpcStorage *storage.GrpcStorage
+	etcdClient          *etcd.EtcdClient
+	storage             *storage.Storage
+	notifierMgr         *notifier.Manager
+	notifierIntegration *alerting.NotifierIntegration
+	alertMgr            *alerting.Manager
+	scheduler           *scheduler.Scheduler
+	grpcStorage         *storage.GrpcStorage
 
 	// 各类收集器
 	serverCollector *collector2.ServerCollector
@@ -103,25 +106,44 @@ func (m *Monitor) Start(ctx context.Context) error {
 	}
 
 	// 2. 初始化通知管理器
-	notifierConfig := notifier.Config{
-		EtcdClient:     m.etcdClient,
-		NotifierPrefix: m.config.EtcdNotifierPrefix,
-		Logger:         m.config.Logger,
+	etcdStorage, err := notifierstorage.NewEtcdStorage(notifierstorage.EtcdStorageConfig{
+		Client: m.etcdClient,
+		Prefix: m.config.EtcdNotifierPrefix,
+		Logger: m.config.Logger,
+	})
+	if err != nil {
+		m.storage.Stop()
+		return fmt.Errorf("创建通知器存储失败: %w", err)
 	}
-	m.notifierMgr = notifier.New(notifierConfig)
+
+	m.notifierMgr, err = notifier.NewManager(notifier.ManagerConfig{
+		Storage:       etcdStorage,
+		Factory:       notifier.NewDefaultFactory(),
+		Logger:        m.config.Logger,
+		EnableWatcher: true,
+		SendTimeout:   30 * time.Second,
+	})
+	if err != nil {
+		m.storage.Stop()
+		return fmt.Errorf("创建通知管理器失败: %w", err)
+	}
+
 	if err := m.notifierMgr.Start(); err != nil {
 		m.storage.Stop()
 		return fmt.Errorf("启动通知管理器失败: %w", err)
 	}
 
-	// 3. 初始化告警管理器
+	// 3. 创建通知器集成适配器
+	m.notifierIntegration = alerting.NewNotifierIntegration(m.notifierMgr, m.config.Logger)
+
+	// 4. 初始化告警管理器
 	alertConfig := alerting.Config{
 		EtcdClient:  m.etcdClient,
 		Storage:     m.storage,
 		AlertPrefix: m.config.EtcdAlertPrefix,
 		Logger:      m.config.Logger,
 	}
-	m.alertMgr = alerting.New(alertConfig, m.notifierMgr)
+	m.alertMgr = alerting.New(alertConfig, m.notifierIntegration)
 	if err := m.alertMgr.Start(); err != nil {
 		m.notifierMgr.Stop()
 		m.storage.Stop()
@@ -226,6 +248,11 @@ func (m *Monitor) GetAlertManager() *alerting.Manager {
 // GetNotifierManager 返回通知管理器实例
 func (m *Monitor) GetNotifierManager() *notifier.Manager {
 	return m.notifierMgr
+}
+
+// GetNotifierIntegration 返回通知器集成适配器
+func (m *Monitor) GetNotifierIntegration() *alerting.NotifierIntegration {
+	return m.notifierIntegration
 }
 
 // GetServerCollector 返回服务器数据采集器实例
