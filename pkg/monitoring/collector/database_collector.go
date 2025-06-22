@@ -179,20 +179,20 @@ const (
 // DatabaseOperationMetrics 表示单次数据库操作的指标数据
 type DatabaseOperationMetrics struct {
 	// 基础信息
-	Timestamp   time.Time `json:"timestamp"`            // 操作时间戳
-	ServiceName string    `json:"service_name"`         // 服务名称
-	InstanceID  string    `json:"instance_id"`          // 服务实例ID
-	Env         string    `json:"env"`                  // 环境标识（如：dev, test, prod）
-	RequestID   string    `json:"request_id,omitempty"` // 请求ID（用于链路追踪）
-	TraceID     string    `json:"trace_id,omitempty"`   // 链路追踪ID
-	SpanID      string    `json:"span_id,omitempty"`    // Span ID
+	Timestamp   time.Time `json:"timestamp"`          // 操作时间戳
+	ServiceName string    `json:"service_name"`       // 服务名称
+	InstanceID  string    `json:"instance_id"`        // 服务实例ID
+	Env         string    `json:"env"`                // 环境标识（如：dev, test, prod）
+	TraceID     string    `json:"trace_id,omitempty"` // 链路追踪ID
 
 	// 数据库信息
-	DatabaseName string            `json:"database_name"`    // 数据库名称
-	TableName    string            `json:"table_name"`       // 数据表名称
-	Operation    DatabaseOperation `json:"operation"`        // 操作类型
-	Method       string            `json:"method,omitempty"` // 执行方法（如函数名、方法名）
-	SQL          string            `json:"sql,omitempty"`    // SQL语句
+	DatabaseName string            `json:"database_name"`       // 数据库名称
+	TableName    string            `json:"table_name"`          // 数据表名称
+	Operation    DatabaseOperation `json:"operation"`           // 操作类型
+	Method       string            `json:"method,omitempty"`    // 执行方法（如函数名、方法名）
+	FileName     string            `json:"file_name,omitempty"` // 文件名称
+	Line         int               `json:"line,omitempty"`      // 行号
+	SQL          string            `json:"sql,omitempty"`       // SQL语句
 
 	// 执行信息
 	Duration     float64 `json:"duration_ms"`   // 执行耗时(毫秒)
