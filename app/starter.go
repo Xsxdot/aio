@@ -8,6 +8,9 @@ import (
 	"strconv"
 	"time"
 
+	config2 "github.com/xsxdot/aio/app/config"
+	"github.com/xsxdot/aio/pkg/server/service"
+
 	"github.com/xsxdot/aio/pkg/monitoring"
 	"github.com/xsxdot/aio/pkg/monitoring/storage"
 
@@ -67,12 +70,12 @@ func (a *App) startApp() error {
 		return err
 	}
 
-	service, err := config.NewService(a.BaseConfig, etcdClient)
+	configService, err := config.NewService(a.BaseConfig, etcdClient)
 	if err != nil {
 		return err
 	}
-	a.ConfigService = service
-	err = service.Start(context.Background())
+	a.ConfigService = configService
+	err = configService.Start(context.Background())
 	if err != nil {
 		return err
 	}
@@ -99,6 +102,18 @@ func (a *App) startApp() error {
 	if err != nil {
 		return err
 	}
+
+	serverService, err := service.NewService(service.Config{
+		EtcdClient: etcdClient,
+		Logger:     common2.GetLogger().GetZapLogger("Server"),
+		Registry:   a.Registry,
+		Scheduler:  a.Scheduler,
+		Collector:  a.Monitor.GetServerCollector(),
+	})
+	if err != nil {
+		return err
+	}
+	a.ServerService = serverService
 
 	err = a.initGrpc()
 	if err != nil {
@@ -207,6 +222,12 @@ func (a *App) initHTTPServer() error {
 		a.Logger.Warn("证书管理器未初始化，跳过API注册")
 	}
 
+	if a.ServerService != nil {
+		fiberServer.RegisterServerAPI(a.ServerService)
+	} else {
+		a.Logger.Warn("服务器服务未初始化，跳过API注册")
+	}
+
 	a.FiberServer = fiberServer
 
 	return fiberServer.Start(a.BaseConfig.System.HttpPort)
@@ -222,12 +243,17 @@ func (a *App) registerAIOService() error {
 		return fmt.Errorf("获取本机IP失败: %w", err)
 	}
 
+	env := registry.EnvAll
+	if a.BaseConfig.System.Dev {
+		env = registry.EnvDev
+	}
+
 	// 构建服务实例
 	instance := &registry.ServiceInstance{
 		Name:     "aio-service",
 		Address:  fmt.Sprintf("%s:%d", localIP, a.BaseConfig.System.GrpcPort),
 		Protocol: "grpc",
-		Env:      registry.EnvAll, // AIO服务适用于所有环境
+		Env:      env, // AIO服务适用于所有环境
 		Metadata: map[string]string{
 			"version":   "1.0.0",
 			"node_type": "aio-node",
@@ -259,6 +285,12 @@ func (a *App) registerAIOService() error {
 		}
 	}
 	log.Printf("AIO服务已成功注册到服务中心: %s (ID: %s, Env: %s)", instance.Address, instance.ID, instance.Env)
+
+	config2.GlobalNodeID = instance.ID
+	config2.GlobalNodeName = instance.Name
+	config2.GlobalNodeIP = localIP
+	config2.GlobalNodeHttpPort = a.BaseConfig.System.HttpPort
+	config2.GlobalNodeGrpcPort = a.BaseConfig.System.GrpcPort
 
 	// 创建自动续约定时任务
 	if err := a.setupAutoRenewal(ctx); err != nil {

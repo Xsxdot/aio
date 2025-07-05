@@ -1,0 +1,28 @@
+logger:
+  compress: true
+  console: true
+  file: ./logs/aio.log
+  level: info
+  max_age: 7
+  max_backups: 10
+  max_size: 100
+system:
+  config_salt: "123456789087654321"
+  dev: false
+  http_port: 9999
+  grpc_port: 6666
+etcd:
+  endpoints: https://172.17.59.164:2379,https://172.17.59.165:2379,https://172.17.59.166:2379
+  dial_timeout: 5
+  auto_sync_endpoints: true
+  username: "root"
+  password: "h9day89d123"
+  tls:
+    tls_enabled: true
+    auto_tls: true
+monitor:
+  collect_interval: 30
+  retention_days: 7
+ssl:
+  email: "10811836@qq.com"
+  cert_dir: cert

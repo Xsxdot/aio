@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/xsxdot/aio/pkg/monitoring"
+	"github.com/xsxdot/aio/pkg/server"
 
 	"github.com/xsxdot/aio/app/config"
 	"github.com/xsxdot/aio/internal/authmanager"
@@ -40,8 +41,9 @@ type App struct {
 	Registry      registry.Registry
 
 	// 可选服务组件
-	Monitor *monitoring.Monitor
-	SSL     *certmanager.CertManager
+	Monitor       *monitoring.Monitor
+	SSL           *certmanager.CertManager
+	ServerService server.Service
 
 	// Fiber
 	FiberServer *fiber.Server

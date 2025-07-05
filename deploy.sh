@@ -101,7 +101,7 @@ prepare_package() {
     fi
     
     # 复制配置文件
-    cp -r conf $BUILD_DIR/
+    cp -r prod $BUILD_DIR/conf
     
     # 复制web文件
     cp -r web $BUILD_DIR/

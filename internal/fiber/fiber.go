@@ -8,6 +8,11 @@ import (
 	"github.com/xsxdot/aio/pkg/monitoring"
 	monitorapi "github.com/xsxdot/aio/pkg/monitoring/api"
 	"github.com/xsxdot/aio/pkg/registry"
+	"github.com/xsxdot/aio/pkg/server"
+	"github.com/xsxdot/aio/pkg/server/credential"
+	"github.com/xsxdot/aio/pkg/server/nginx"
+	"github.com/xsxdot/aio/pkg/server/service"
+	"github.com/xsxdot/aio/pkg/server/systemd"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -203,6 +208,27 @@ func (s *Server) RegisterCertManagerAPI(certManager *certmanager.CertManager) {
 	api := certmanager.NewAPI(certManager, s.logger)
 	api.RegisterRoutes(s.router, s.baseAuthHandler, s.adminRoleHandler)
 	s.logger.Info("已注册证书管理器API路由")
+}
+
+// RegisterServerAPI 注册服务器API路由
+func (s *Server) RegisterServerAPI(serverService server.Service) {
+	if serverService == nil {
+		s.logger.Warn("服务器服务为空，跳过API注册")
+		return
+	}
+
+	api := service.NewAPI(serverService, s.logger)
+	api.RegisterRoutes(s.router, s.baseAuthHandler, s.adminRoleHandler)
+	s.logger.Info("已注册服务器API路由")
+	credentialApi := credential.NewAPI(serverService.GetCredentialService(), s.logger)
+	credentialApi.RegisterRoutes(s.router, s.baseAuthHandler, s.adminRoleHandler)
+	s.logger.Info("已注册凭证API路由")
+	systemdApi := systemd.NewAPIHandler(serverService.GetSystemdManager())
+	systemdApi.RegisterRoutes(s.router, s.baseAuthHandler, s.adminRoleHandler)
+	s.logger.Info("已注册systemd API路由")
+	nginxApi := nginx.NewAPIHandler(serverService.GetNginxManager())
+	nginxApi.RegisterRoutes(s.router, s.baseAuthHandler, s.adminRoleHandler)
+	s.logger.Info("已注册nginx API路由")
 }
 
 // 自定义错误处理程序

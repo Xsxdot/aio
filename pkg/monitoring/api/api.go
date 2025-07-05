@@ -63,6 +63,13 @@ func (api *API) RegisterRoutes(router fiber.Router, authHandler func(*fiber.Ctx)
 	// 系统概览
 	monitoringGroup.Get("/system/overview", authHandler, api.getSystemOverview)
 
+	// 外部服务器指标接收接口
+	monitoringGroup.Post("/server/metrics", authHandler, api.receiveServerMetrics)
+	monitoringGroup.Post("/server/metrics/batch", authHandler, api.receiveServerMetricsBatch)
+
+	// 获取所有服务器列表（通过IP和hostname）
+	monitoringGroup.Get("/servers", authHandler, api.getServerList)
+
 	// 通用指标路径，支持直接查询指标
 	monitoringGroup.Get("/metrics/:name", authHandler, api.getMetricsByName)
 
@@ -381,6 +388,9 @@ func (api *API) getActiveAlerts(c *fiber.Ctx) error {
 
 // getSystemOverview 获取系统概览信息
 func (api *API) getSystemOverview(c *fiber.Ctx) error {
+	// 获取可选的IP参数，用于查询特定服务器
+	targetIP := c.Query("ip", "")
+
 	// 查询所需的指标
 	now := time.Now()
 	startTime := now.Add(-1 * time.Minute)
@@ -392,6 +402,14 @@ func (api *API) getSystemOverview(c *fiber.Ctx) error {
 		Limit:     1,
 	}
 
+	// 如果指定了IP，添加到标签匹配器中
+	if targetIP != "" {
+		query.LabelMatchers = map[string]string{
+			"ip": targetIP,
+		}
+		api.logger.Info("查询特定IP的系统概览", zap.String("ip", targetIP))
+	}
+
 	// 创建前端期望的扁平响应结构
 	response := fiber.Map{
 		"cpu_usage":    0.0,                      // CPU使用率（百分比）
@@ -400,12 +418,14 @@ func (api *API) getSystemOverview(c *fiber.Ctx) error {
 		"load_average": []float64{0.0, 0.0, 0.0}, // 1分钟、5分钟、15分钟负载
 		"uptime":       0,                        // 系统运行时间（秒）
 		"boot_time":    now.Unix() - 3600,        // 系统启动时间（Unix时间戳）
+		"ip":           targetIP,                 // 添加IP字段到响应中
 	}
 
 	// 安全封装查询逻辑，避免任何可能的错误
 	safeQuery := func(metricName string) (float64, error) {
-		query.MetricNames = []string{metricName}
-		result, err := api.storage.QueryTimeSeries(query)
+		queryClone := query
+		queryClone.MetricNames = []string{metricName}
+		result, err := api.storage.QueryTimeSeries(queryClone)
 		if err != nil {
 			return 0.0, err
 		}
@@ -425,21 +445,21 @@ func (api *API) getSystemOverview(c *fiber.Ctx) error {
 	if cpuUsage, err := safeQuery(string(collector.MetricCPUUsage)); err == nil {
 		response["cpu_usage"] = cpuUsage
 	} else {
-		api.logger.Warn("获取CPU使用率失败", zap.Error(err))
+		api.logger.Warn("获取CPU使用率失败", zap.Error(err), zap.String("ip", targetIP))
 	}
 
 	// 查询内存使用率
 	if memUsage, err := safeQuery(string(collector.MetricMemoryUsedPercent)); err == nil {
 		response["memory_usage"] = memUsage
 	} else {
-		api.logger.Warn("获取内存使用率失败", zap.Error(err))
+		api.logger.Warn("获取内存使用率失败", zap.Error(err), zap.String("ip", targetIP))
 	}
 
 	// 查询磁盘使用率
 	if diskUsage, err := safeQuery(string(collector.MetricDiskUsedPercent)); err == nil {
 		response["disk_usage"] = diskUsage
 	} else {
-		api.logger.Warn("获取磁盘使用率失败", zap.Error(err))
+		api.logger.Warn("获取磁盘使用率失败", zap.Error(err), zap.String("ip", targetIP))
 	}
 
 	// 安全封装负载查询逻辑
@@ -449,19 +469,19 @@ func (api *API) getSystemOverview(c *fiber.Ctx) error {
 	if load1, err := safeQuery(string(collector.MetricCPULoad1)); err == nil {
 		loadAvg[0] = load1
 	} else {
-		api.logger.Warn("获取Load1失败", zap.Error(err))
+		api.logger.Warn("获取Load1失败", zap.Error(err), zap.String("ip", targetIP))
 	}
 
 	if load5, err := safeQuery(string(collector.MetricCPULoad5)); err == nil {
 		loadAvg[1] = load5
 	} else {
-		api.logger.Warn("获取Load5失败", zap.Error(err))
+		api.logger.Warn("获取Load5失败", zap.Error(err), zap.String("ip", targetIP))
 	}
 
 	if load15, err := safeQuery(string(collector.MetricCPULoad15)); err == nil {
 		loadAvg[2] = load15
 	} else {
-		api.logger.Warn("获取Load15失败", zap.Error(err))
+		api.logger.Warn("获取Load15失败", zap.Error(err), zap.String("ip", targetIP))
 	}
 
 	response["load_average"] = loadAvg
@@ -478,12 +498,16 @@ func (api *API) getMetricsByName(c *fiber.Ctx) error {
 		return utils.FailResponse(c, utils.StatusBadRequest, "必须指定指标名称")
 	}
 
+	// 获取可选的IP参数
+	targetIP := c.Query("ip", "")
+
 	// 记录详细的请求日志，帮助调试
 	api.logger.Info("接收到指标查询请求",
 		zap.String("metrics", name),
 		zap.String("start", c.Query("start", "")),
 		zap.String("step", c.Query("step", "")),
-		zap.String("labels", c.Query("labels", "")))
+		zap.String("labels", c.Query("labels", "")),
+		zap.String("ip", targetIP))
 
 	// 支持多个指标（以逗号分隔）
 	metricNames := strings.Split(name, ",")
@@ -553,6 +577,14 @@ func (api *API) getMetricsByName(c *fiber.Ctx) error {
 		Interval:      stepParam,
 	}
 
+	// 如果指定了IP，添加到标签匹配器中
+	if targetIP != "" {
+		if query.LabelMatchers == nil {
+			query.LabelMatchers = make(map[string]string)
+		}
+		query.LabelMatchers["ip"] = targetIP
+	}
+
 	// 添加特殊处理网络指标的逻辑
 	containsNetworkMetrics := false
 	for _, metricName := range metricNames {
@@ -564,7 +596,7 @@ func (api *API) getMetricsByName(c *fiber.Ctx) error {
 
 	// 如果包含网络指标，单独处理每个指标以避免批量请求可能导致的索引越界
 	if containsNetworkMetrics {
-		api.logger.Info("检测到网络指标查询，使用安全处理模式")
+		api.logger.Info("检测到网络指标查询，使用安全处理模式", zap.String("ip", targetIP))
 		result := &models.QueryResult{
 			Series: []models.TimeSeries{},
 		}
@@ -578,6 +610,7 @@ func (api *API) getMetricsByName(c *fiber.Ctx) error {
 			if err != nil {
 				api.logger.Warn("查询单个指标失败",
 					zap.String("metric", metricName),
+					zap.String("ip", targetIP),
 					zap.Error(err))
 				continue
 			}
@@ -596,6 +629,7 @@ func (api *API) getMetricsByName(c *fiber.Ctx) error {
 	if err != nil {
 		api.logger.Error("查询指标数据失败",
 			zap.Strings("metrics", metricNames),
+			zap.String("ip", targetIP),
 			zap.Error(err))
 
 		// 返回空结果集而非错误，以便前端仍能正常显示
@@ -1163,4 +1197,222 @@ func convertModelToNotifierConfig(model *models.Notifier) *notifier.NotifierConf
 		Enabled: model.Enabled,
 		Config:  model.Config,
 	}
+}
+
+// ========================= 服务器指标接收相关处理函数 =========================
+
+// receiveServerMetrics 接收外部服务器指标数据
+func (api *API) receiveServerMetrics(c *fiber.Ctx) error {
+	var metrics collector.ServerMetrics
+	if err := c.BodyParser(&metrics); err != nil {
+		return utils.FailResponse(c, utils.StatusBadRequest, fmt.Sprintf("无法解析指标数据: %v", err))
+	}
+
+	// 验证必要字段
+	if metrics.Hostname == "" {
+		return utils.FailResponse(c, utils.StatusBadRequest, "hostname不能为空")
+	}
+
+	if metrics.IP == "" {
+		return utils.FailResponse(c, utils.StatusBadRequest, "IP地址不能为空")
+	}
+
+	if len(metrics.Metrics) == 0 {
+		return utils.FailResponse(c, utils.StatusBadRequest, "指标数据不能为空")
+	}
+
+	// 如果时间戳为空，使用当前时间
+	if metrics.Timestamp.IsZero() {
+		metrics.Timestamp = time.Now()
+	}
+
+	// 存储指标数据
+	if err := api.storage.StoreMetricProvider(&metrics); err != nil {
+		api.logger.Error("存储外部服务器指标失败",
+			zap.String("hostname", metrics.Hostname),
+			zap.String("ip", metrics.IP),
+			zap.Error(err))
+		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("存储指标数据失败: %v", err))
+	}
+
+	api.logger.Info("成功接收外部服务器指标",
+		zap.String("hostname", metrics.Hostname),
+		zap.String("ip", metrics.IP),
+		zap.Time("timestamp", metrics.Timestamp),
+		zap.Int("metrics_count", len(metrics.Metrics)))
+
+	return utils.SuccessResponse(c, fiber.Map{
+		"message":       "指标数据接收成功",
+		"hostname":      metrics.Hostname,
+		"ip":            metrics.IP,
+		"timestamp":     metrics.Timestamp,
+		"metrics_count": len(metrics.Metrics),
+	})
+}
+
+// receiveServerMetricsBatch 批量接收外部服务器指标数据
+func (api *API) receiveServerMetricsBatch(c *fiber.Ctx) error {
+	var metricsList []collector.ServerMetrics
+	if err := c.BodyParser(&metricsList); err != nil {
+		return utils.FailResponse(c, utils.StatusBadRequest, fmt.Sprintf("无法解析批量指标数据: %v", err))
+	}
+
+	if len(metricsList) == 0 {
+		return utils.FailResponse(c, utils.StatusBadRequest, "批量指标数据不能为空")
+	}
+
+	var successCount, failureCount int
+	var errors []string
+
+	for i, metrics := range metricsList {
+		// 验证必要字段
+		if metrics.Hostname == "" {
+			failureCount++
+			errors = append(errors, fmt.Sprintf("第%d条记录: hostname不能为空", i+1))
+			continue
+		}
+
+		if metrics.IP == "" {
+			failureCount++
+			errors = append(errors, fmt.Sprintf("第%d条记录: IP地址不能为空", i+1))
+			continue
+		}
+
+		if len(metrics.Metrics) == 0 {
+			failureCount++
+			errors = append(errors, fmt.Sprintf("第%d条记录: 指标数据不能为空", i+1))
+			continue
+		}
+
+		// 如果时间戳为空，使用当前时间
+		if metrics.Timestamp.IsZero() {
+			metricsList[i].Timestamp = time.Now()
+		}
+
+		// 存储指标数据
+		if err := api.storage.StoreMetricProvider(&metricsList[i]); err != nil {
+			failureCount++
+			errors = append(errors, fmt.Sprintf("第%d条记录存储失败: %v", i+1, err))
+			api.logger.Warn("批量存储中单个指标失败",
+				zap.Int("index", i),
+				zap.String("hostname", metrics.Hostname),
+				zap.String("ip", metrics.IP),
+				zap.Error(err))
+		} else {
+			successCount++
+		}
+	}
+
+	api.logger.Info("批量接收外部服务器指标完成",
+		zap.Int("total", len(metricsList)),
+		zap.Int("success", successCount),
+		zap.Int("failure", failureCount))
+
+	response := fiber.Map{
+		"message": "批量指标数据处理完成",
+		"total":   len(metricsList),
+		"success": successCount,
+		"failure": failureCount,
+	}
+
+	if failureCount > 0 {
+		response["errors"] = errors
+	}
+
+	// 如果有部分成功，返回成功状态码，否则返回错误状态码
+	if successCount > 0 {
+		return utils.SuccessResponse(c, response)
+	} else {
+		return utils.FailResponse(c, utils.StatusBadRequest, "所有指标数据处理失败")
+	}
+}
+
+// ServerInfo 服务器信息结构体
+type ServerInfo struct {
+	Hostname string    `json:"hostname"`
+	IP       string    `json:"ip"`
+	LastSeen time.Time `json:"last_seen"`
+}
+
+// getServerList 获取所有服务器列表
+func (api *API) getServerList(c *fiber.Ctx) error {
+	// 解析查询参数
+	timeRange := c.Query("timeRange", "24h")
+
+	// 解析时间范围
+	duration, err := time.ParseDuration(timeRange)
+	if err != nil {
+		return utils.FailResponse(c, utils.StatusBadRequest, fmt.Sprintf("无效的时间范围格式: %v", err))
+	}
+
+	// 设置查询时间
+	now := time.Now()
+	startTime := now.Add(-duration)
+
+	// 查询服务器指标，获取所有唯一的服务器信息
+	query := storage.MetricQuery{
+		StartTime:   startTime,
+		EndTime:     now,
+		MetricNames: []string{string(collector.MetricCPUUsage)}, // 使用CPU使用率作为基准指标
+		Limit:       10000,
+	}
+
+	result, err := api.storage.QueryTimeSeries(query)
+	if err != nil {
+		api.logger.Error("查询服务器列表失败", zap.Error(err))
+		return utils.FailResponse(c, utils.StatusInternalError, fmt.Sprintf("查询服务器列表失败: %v", err))
+	}
+
+	// 收集唯一的服务器信息
+	serverMap := make(map[string]*ServerInfo)
+
+	for _, series := range result.Series {
+		hostname := series.Labels["hostname"]
+		ip := series.Labels["ip"]
+
+		if hostname == "" {
+			continue
+		}
+
+		// 使用IP+Hostname作为唯一键
+		key := fmt.Sprintf("%s:%s", ip, hostname)
+
+		// 查找最新的时间戳
+		var lastSeen time.Time
+		for _, point := range series.Points {
+			if point.Timestamp.After(lastSeen) {
+				lastSeen = point.Timestamp
+			}
+		}
+
+		// 如果已存在该服务器，更新最新时间
+		if existingServer, exists := serverMap[key]; exists {
+			if lastSeen.After(existingServer.LastSeen) {
+				existingServer.LastSeen = lastSeen
+			}
+		} else {
+			serverMap[key] = &ServerInfo{
+				Hostname: hostname,
+				IP:       ip,
+				LastSeen: lastSeen,
+			}
+		}
+	}
+
+	// 转换为数组并按最新时间排序
+	servers := make([]*ServerInfo, 0, len(serverMap))
+	for _, server := range serverMap {
+		servers = append(servers, server)
+	}
+
+	// 按最新时间倒序排列
+	sort.Slice(servers, func(i, j int) bool {
+		return servers[i].LastSeen.After(servers[j].LastSeen)
+	})
+
+	api.logger.Info("获取服务器列表成功",
+		zap.Int("server_count", len(servers)),
+		zap.String("time_range", timeRange))
+
+	return utils.SuccessResponse(c, servers)
 }

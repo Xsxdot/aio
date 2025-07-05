@@ -9,6 +9,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var (
+	GlobalNodeID       string
+	GlobalNodeName     string
+	GlobalNodeIP       string
+	GlobalNodeHttpPort int
+	GlobalNodeGrpcPort int
+)
+
 // BaseConfig 表示应用程序配置
 type BaseConfig struct {
 	System  *SystemConfig     `yaml:"system"`
@@ -22,6 +30,7 @@ type BaseConfig struct {
 type SystemConfig struct {
 	DataDir    string `yaml:"data_dir"`
 	ConfigSalt string `yaml:"config_salt"`
+	Dev        bool   `yaml:"dev"`
 	HttpPort   int    `yaml:"http_port"`
 	GrpcPort   int    `yaml:"grpc_port"`
 }

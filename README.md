@@ -4,101 +4,106 @@
 
 ## 🚀 项目特性
 
-- ✅ **基础架构**: 完整的项目结构和配置管理
-- ✅ **日志系统**: 基于logrus的结构化日志
-- ✅ **自定义错误**: 统一的错误处理和HTTP状态码映射
-- 🚧 **服务注册与发现**: 基于ETCD的服务注册发现机制
-- 🚧 **分布式锁**: 高可用的分布式锁服务
-- 🚧 **配置中心**: 集中化配置管理和热更新
-- 🚧 **定时任务**: 分布式定时任务调度
-- 🚧 **SSL证书**: 自动证书管理和部署
+- ✅ **一体化解决方案**: 提供服务注册与发现、配置中心、分布式锁、定时任务、监控告警、证书管理等功能。
+- ✅ **高可用架构**: 基于ETCD构建，支持集群部署，保证核心服务高可用。
+- ✅ **插件化设计**: 客户端支持插件，方便与GORM等第三方库集成。
+- ✅ **Web管理界面**: 提供美观易用的Web UI，方便管理和监控。
+- ✅ **gRPC支持**: 内置gRPC服务框架，遵循规范，方便开发微服务。
+- ✅ **自动化部署**: 提供一键部署脚本，支持滚动更新、健康检查和回滚。
 
 ## 📁 项目结构
 
 ```
 aio/
-├── cmd/                     # 应用程序入口
-│   ├── server/             # 主服务器
-│   │   ├── main.go         # 主入口文件
-│   │   └── app.go          # 应用程序结构
-│   └── client/             # 客户端工具 (待开发)
-├── internal/               # 内部包
-│   ├── config/            # 配置管理
-│   │   └── config.go      # 配置结构和加载逻辑
-│   ├── registry/          # 服务注册与发现 (待开发)
-│   ├── lock/              # 分布式锁 (待开发)
-│   ├── scheduler/         # 分布式定时任务 (待开发)
-│   ├── cert/              # SSL证书管理 (待开发)
-│   ├── web/               # Web服务(Fiber) (待开发)
-│   ├── tcp/               # TCP通信 (待开发)
-│   └── etcd/              # ETCD客户端封装 (待开发)
-├── pkg/                    # 公共包
-│   ├── logger/            # 日志模块
-│   │   └── logger.go      # 日志接口和实现
-│   ├── errors/            # 自定义错误
-│   │   ├── error.go       # 错误定义和处理
-│   │   └── error_test.go  # 错误处理测试
-│   ├── utils/             # 工具函数
-│   │   ├── string.go      # 字符串工具
-│   │   └── time.go        # 时间工具
-│   └── proto/             # 协议定义 (待开发)
-├── configs/               # 配置文件
-│   └── config.yaml        # 示例配置文件
-├── docs/                  # 文档 (待完善)
-├── scripts/               # 脚本 (待开发)
-├── deployments/           # 部署文件 (待开发)
+├── api/                   # API协议定义 (Protobuf)
+├── app/                   # 应用核心与启动器
+├── client/                # AIO客户端库
+├── cmd/                   # 应用程序入口
+│   └── server/            # 主服务器
+├── conf/                  # 生产环境配置文件示例
+├── internal/              # 内部业务逻辑模块
+│   ├── authmanager/       # 认证管理
+│   ├── certmanager/       # 证书管理
+│   ├── etcd/              # ETCD客户端封装
+│   ├── fiber/             # Web框架集成
+│   └── grpc/              # gRPC服务框架
+├── pkg/                   # 公共功能包
+│   ├── config/            # 配置中心
+│   ├── lock/              # 分布式锁
+│   ├── monitoring/        # 监控
+│   ├── notifier/          # 通知服务
+│   ├── registry/          # 服务注册与发现
+│   ├── scheduler/         # 定时任务
+│   └── ...
+├── web/                   # 前端静态资源
+├── deploy.sh              # 部署脚本
 ├── go.mod                 # Go模块文件
 └── README.md              # 项目说明
 ```
 
-## ⚡ 快速开始
+## ⚡ 部署与运行
 
-### 1. 环境要求
+### 环境要求
 
-- Go 1.24+
-- ETCD 3.5+ (可选，用于分布式功能)
+- Go 1.24+ (如果需要从源码部署)
+- ETCD 3.5+
+- 可以访问目标服务器的SSH免密登录 (如果使用部署脚本)
 
-### 2. 克隆项目
+### 方式一：使用预编译包（推荐）
 
-```bash
-git clone <repository-url>
-cd aio/go
-```
+1.  **下载安装包**
+    访问项目的 GitHub Releases 页面，下载最新的 `aio-linux-amd64.tar.gz` 安装包。
 
-### 3. 安装依赖
+2.  **上传并解压**
+    将安装包上传到服务器，并解压到指定目录，例如 `/opt/aio`。
+    ```bash
+    mkdir -p /opt/aio
+    tar -zxvf aio-linux-amd64.tar.gz -C /opt/aio
+    ```
 
-```bash
-go mod tidy
-```
+3.  **修改配置**
+    进入 `conf` 目录，将示例配置文件 `aio-example.yaml` 复制为 `aio.yaml`，并根据实际需求（如ETCD地址、数据库连接等）进行修改。
+    ```bash
+    cd /opt/aio/conf
+    cp aio-example.yaml aio.yaml
+    vim aio.yaml
+    ```
 
-### 4. 运行服务
+4.  **启动服务**
+    回到 `/opt/aio` 目录，直接运行主程序即可。
+    ```bash
+    cd /opt/aio
+    ./aio
+    ```
+    建议使用 `systemd` 或 `supervisor` 等工具管理服务进程，以实现开机自启和守护进程。部署脚本中已包含 `systemd` 服务文件示例。
 
-```bash
-# 使用默认配置
-go run cmd/server/*.go
+### 方式二：源码编译部署
 
-# 使用指定配置文件
-go run cmd/server/*.go -config ./configs/config.yaml
+此方式适用于开发环境或需要自定义构建的场景。
 
-# 查看帮助
-go run cmd/server/*.go -help
+1.  **克隆项目**
+    ```bash
+    git clone https://github.com/xsxdot/aio.git
+    cd aio/go
+    ```
 
-# 查看版本
-go run cmd/server/*.go -version
-```
+2.  **配置部署脚本**
+    打开 `deploy.sh` 文件，修改 `SERVERS` 和 `REMOTE_USER` 等变量，配置目标服务器信息。
+    ```bash
+    vim deploy.sh
+    ```
 
-### 5. 测试服务
+3.  **执行部署**
+    运行部署脚本。脚本会自动完成编译、打包、上传、安装、启动服务、健康检查等一系列操作。
+    ```bash
+    ./deploy.sh deploy
+    ```
 
-```bash
-# 健康检查
-curl http://localhost:8080/health
+### 访问服务
 
-# 服务信息
-curl http://localhost:8080/info
-
-# 访问Web界面
-open http://localhost:8080
-```
+- **Web界面**: `http://<server-ip>:9999` (默认端口，见配置文件)
+- **gRPC服务**: `<server-ip>:6666` (默认端口，见配置文件)
+- **健康检查**: `http://<server-ip>:9999/health`
 
 ## 🔧 配置说明
 
@@ -122,90 +127,157 @@ export AIO_LOGGER_LEVEL=debug
 export AIO_ETCD_ENDPOINTS=localhost:2379,localhost:2380
 ```
 
-## 📋 已实现功能
+## 💻 客户端使用
 
-### ✅ 基础架构
+AIO提供了Go客户端库，方便业务应用集成AIO的各项能力。
 
-- [x] 项目目录结构
-- [x] Go模块初始化
-- [x] 主程序入口
-- [x] 应用程序生命周期管理
+### 1. 引入客户端
 
-### ✅ 配置管理
+```bash
+go get github.com/xsxdot/aio/client
+```
 
-- [x] 基于Viper的配置加载
-- [x] YAML配置文件支持
-- [x] 环境变量支持
-- [x] 配置验证
-- [x] 默认配置
+### 2. 使用示例
 
-### ✅ 日志系统
+以下是一个简单的使用示例，演示了如何初始化客户端并使用配置中心、服务发现和分布式锁功能。
 
-- [x] 基于Logrus的结构化日志
-- [x] 多种日志级别 (debug, info, warn, error, fatal, panic)
-- [x] 多种输出格式 (text, json)
-- [x] 多种输出目标 (stdout, stderr, file)
-- [x] 调用者信息显示
-- [x] 自定义格式化器
+```go
+package main
 
-### ✅ 自定义错误
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
 
-- [x] 结构化错误定义
-- [x] 错误码和HTTP状态码映射
-- [x] 错误包装和链式调用
-- [x] 便捷错误创建函数
-- [x] 错误处理测试
+	"github.com/xsxdot/aio/client"
+	"github.com/xsxdot/aio/pkg/registry"
+	"github.com/xsxdot/aio/pkg/scheduler"
+)
 
-### ✅ 工具函数
+func main() {
+	// 1. 初始化AIO客户端配置
+	// 客户端ID和密钥需在AIO服务端预先创建
+	aioClient := client.New(&client.AioConfig{
+		Endpoints: []string{"127.0.0.1:6666"}, // AIO的gRPC服务地址
+		ClientId:  "your-app-id",
+		Secret:    "your-app-secret",
+	}, &registry.ServiceInstance{
+		Name:     "my-awesome-app",
+		Address:  "127.0.0.1:8080",
+		Protocol: "http",
+		Env:      registry.Development,
+	})
 
-- [x] 字符串处理工具
-- [x] 时间处理工具
-- [x] 命名转换 (camelCase, snake_case, kebab-case)
+	// 2. 启动客户端并连接到AIO服务
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := aioClient.Start(ctx); err != nil {
+		log.Fatalf("无法启动AIO客户端: %v", err)
+	}
+	defer aioClient.Close()
+	log.Println("AIO客户端启动成功")
 
-### ✅ HTTP服务
+	// 3. 使用配置中心
+	// 假设AIO配置中心有名为 "my-awesome-app.database" 的配置
+	type dbConfig struct {
+		Host string `json:"host"`
+		Port int    `json:"port"`
+	}
+	var myDbConfig dbConfig
+	
+	err := aioClient.ConfigClient.GetEnvConfigJSONWithParse(context.Background(), "my-awesome-app.database", "dev", []string{"default"}, &myDbConfig)
+	if err != nil {
+		log.Printf("获取配置失败: %v\n", err)
+	} else {
+		log.Printf("成功加载配置: %+v\n", myDbConfig)
+	}
 
-- [x] 基础HTTP服务器
-- [x] 健康检查端点
-- [x] 服务信息端点
-- [x] 美观的Web界面
-- [x] 优雅关闭
+	// 4. 使用服务发现
+	// 假设需要发现名为 "user-service" 的服务
+	service, err := aioClient.RegistryClient.GetService(context.Background(), "user-service")
+	if err != nil {
+		log.Printf("服务发现失败: %v\n", err)
+	} else {
+		log.Printf("发现服务实例: %+v\n", service.Instances)
+	}
 
-## 🚧 待开发功能
+	// 5. 使用分布式锁
+	lock, err := aioClient.LockManager.NewLock("my-critical-resource", 15*time.Second)
+	if err != nil {
+		log.Fatalf("创建锁失败: %v", err)
+	}
+	
+	log.Println("尝试获取锁...")
+	if err := lock.Lock(context.Background()); err != nil {
+		log.Println("获取锁失败")
+	} else {
+		log.Println("成功获取锁！执行关键业务...")
+		time.Sleep(5 * time.Second) // 模拟业务操作
+		_ = lock.Unlock(context.Background())
+		log.Println("锁已释放")
+	}
 
-### ETCD客户端
+	// 6. 使用分布式定时任务
+	// 创建一个5秒后执行的本地一次性任务
+	oneTimeTask := scheduler.NewOnceTask(
+		"my-one-time-task",
+		time.Now().Add(5*time.Second),
+		scheduler.TaskExecuteModeLocal,
+		10*time.Second, // 超时时间
+		func(ctx context.Context) error {
+			log.Println("分布式一次性任务被执行！")
+			return nil
+		},
+	)
 
-- [ ] ETCD连接管理
-- [ ] 键值存储操作
-- [ ] 监听和事件处理
-- [ ] 集群管理
+	if err := aioClient.Scheduler.AddTask(oneTimeTask); err != nil {
+		log.Printf("添加一次性任务失败: %v", err)
+	} else {
+		log.Println("成功添加一次性任务，ID:", oneTimeTask.GetID())
+	}
 
-### 服务注册与发现
+	// 创建一个每10秒执行一次的分布式周期性任务
+	// TaskExecuteModeDistributed 表示任务将在集群中选举一个节点执行
+	intervalTask := scheduler.NewIntervalTask(
+		"my-interval-task",
+		time.Now().Add(10*time.Second),
+		10*time.Second,
+		scheduler.TaskExecuteModeDistributed,
+		5*time.Second,
+		func(ctx context.Context) error {
+			log.Println("分布式周期性任务被执行！")
+			return nil
+		},
+	)
 
-- [ ] 服务注册
-- [ ] 服务发现
-- [ ] 健康检查
-- [ ] 负载均衡策略
+	if err := aioClient.Scheduler.AddTask(intervalTask); err != nil {
+		log.Printf("添加周期性任务失败: %v", err)
+	} else {
+		log.Println("成功添加周期性任务，ID:", intervalTask.GetID())
+	}
 
-### 分布式锁
+	// 主程序需要持续运行才能看到定时任务执行
+	// 这里等待足够长的时间以便观察任务执行
+	log.Println("等待定时任务执行...")
+	time.Sleep(30 * time.Second)
+}
+```
 
-- [ ] 互斥锁
-- [ ] 读写锁
-- [ ] 可重入锁
-- [ ] 锁超时和续期
+## 📋 功能清单
 
-### 定时任务调度
-
-- [ ] Cron表达式支持
-- [ ] 任务分片
-- [ ] 故障转移
-- [ ] 任务监控
-
-### SSL证书管理
-
-- [ ] Let's Encrypt集成
-- [ ] 自签名证书生成
-- [ ] 证书自动续期
-- [ ] 多域名支持
+- [x] **核心架构**: 基于ETCD，提供稳定的分布式协调能力。
+- [x] **配置中心**: 支持动态配置下发、版本管理、环境隔离。
+- [x] **服务注册与发现**: 支持服务实例注册、健康检查和客户端服务发现。
+- [x] **分布式锁**: 提供基于ETCD的分布式互斥锁，支持超时和自动续期。
+- [x] **定时任务**: 支持Cron表达式，实现分布式任务调度、分片和故障转移。
+- [x] **证书管理**: 集成Let's Encrypt，实现SSL证书自动申请和续期。
+- [x] **监控告警**: 提供应用和系统指标采集、存储，并支持多种通知渠道（钉钉、企业微信、邮件、Webhook）发送告警。
+- [x] **Web管理界面**: 可视化管理所有功能模块。
+- [x] **Go客户端**: 提供简单易用的Go Client SDK，方便应用快速接入。
+- [x] **gRPC框架**: 标准化的gRPC服务开发、注册和管理。
+- [x] **日志系统**: 基于Logrus的结构化日志。
+- [x] **部署工具**: 提供`deploy.sh`脚本，简化部署流程。
 
 ## 🧪 测试
 

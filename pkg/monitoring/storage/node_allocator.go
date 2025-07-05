@@ -173,6 +173,13 @@ func (na *NodeAllocator) discoverAIONodes(ctx context.Context) ([]*registry.Serv
 		return nil, fmt.Errorf("发现AIO服务实例失败: %w", err)
 	}
 
+	var realInstances []*registry.ServiceInstance
+	for _, instance := range instances {
+		if instance.Env == registry.EnvAll {
+			realInstances = append(realInstances, instance)
+		}
+	}
+
 	na.logger.Debug("发现AIO节点", zap.Int("total_nodes", len(instances)))
 
 	return instances, nil
