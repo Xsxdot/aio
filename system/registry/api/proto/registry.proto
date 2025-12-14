@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package xiaozhizhang.registry.v1;
+
+option go_package = "xiaozhizhang/system/registry/api/proto;proto";
+
+// RegistryService 注册中心服务
+service RegistryService {
+  // RegisterInstance 注册实例（上线）
+  rpc RegisterInstance(RegisterInstanceRequest) returns (RegisterInstanceResponse);
+  
+  // DeregisterInstance 注销实例（下线）
+  rpc DeregisterInstance(DeregisterInstanceRequest) returns (DeregisterInstanceResponse);
+  
+  // HeartbeatStream 心跳流（双向流：客户端持续发送心跳，服务端逐条响应续租结果）
+  rpc HeartbeatStream(stream HeartbeatRequest) returns (stream HeartbeatResponse);
+  
+  // ListServices 获取服务列表（包含在线实例）
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
+  
+  // GetServiceByID 根据 ID 获取服务详情（包含在线实例）
+  rpc GetServiceByID(GetServiceByIDRequest) returns (GetServiceByIDResponse);
+}
+
+// ===== 实例注册 =====
+
+// RegisterInstanceRequest 注册实例请求
+message RegisterInstanceRequest {
+  int64 service_id = 1;                      // 服务 ID（必填）
+  string instance_key = 2;                   // 实例唯一标识（可为空，服务端生成）
+  string env = 3;                            // 环境（必填）
+  string host = 4;                           // 主机地址（必填）
+  string endpoint = 5;                       // 服务端点（必填）
+  string meta_json = 6;                      // 实例元数据（JSON 字符串）
+  int64 ttl_seconds = 7;                     // TTL 秒数（默认 60）
+}
+
+// RegisterInstanceResponse 注册实例响应
+message RegisterInstanceResponse {
+  string instance_key = 1;                   // 实例唯一标识
+  int64 expires_at = 2;                      // 过期时间戳（unix 秒）
+}
+
+// ===== 实例注销 =====
+
+// DeregisterInstanceRequest 注销实例请求
+message DeregisterInstanceRequest {
+  int64 service_id = 1;                      // 服务 ID（必填）
+  string instance_key = 2;                   // 实例唯一标识（必填）
+}
+
+// DeregisterInstanceResponse 注销实例响应
+message DeregisterInstanceResponse {
+  bool success = 1;                          // 是否成功
+  string message = 2;                        // 消息
+}
+
+// ===== 心跳流 =====
+
+// HeartbeatRequest 心跳请求
+message HeartbeatRequest {
+  int64 service_id = 1;                      // 服务 ID（必填）
+  string instance_key = 2;                   // 实例唯一标识（必填）
+}
+
+// HeartbeatResponse 心跳响应
+message HeartbeatResponse {
+  int64 expires_at = 1;                      // 新的过期时间戳（unix 秒）
+}
+
+// ===== 服务列表 =====
+
+// ListServicesRequest 获取服务列表请求
+message ListServicesRequest {
+  string project = 1;                        // 项目名（可选，过滤条件）
+  string env = 2;                            // 环境（可选，过滤条件）
+}
+
+// ListServicesResponse 获取服务列表响应
+message ListServicesResponse {
+  repeated ServiceWithInstances services = 1; // 服务列表（包含在线实例）
+  int32 total = 2;                            // 总数
+}
+
+// ===== 服务详情 =====
+
+// GetServiceByIDRequest 获取服务详情请求
+message GetServiceByIDRequest {
+  int64 id = 1;                              // 服务 ID
+}
+
+// GetServiceByIDResponse 获取服务详情响应
+message GetServiceByIDResponse {
+  ServiceWithInstances service = 1;          // 服务详情（包含在线实例）
+}
+
+// ===== 通用消息 =====
+
+// Service 服务定义
+message Service {
+  int64 id = 1;                              // 服务 ID
+  string project = 2;                        // 项目名
+  string name = 3;                           // 服务名
+  string owner = 4;                          // 负责人
+  string description = 5;                    // 描述
+  string spec_json = 6;                      // 服务规格（JSON 字符串）
+  int64 created_at = 7;                      // 创建时间（unix 秒）
+  int64 updated_at = 8;                      // 更新时间（unix 秒）
+}
+
+// Instance 实例信息
+message Instance {
+  int64 id = 1;                              // 实例 ID
+  int64 service_id = 2;                      // 服务 ID
+  string instance_key = 3;                   // 实例唯一标识
+  string env = 4;                            // 环境
+  string host = 5;                           // 主机地址
+  string endpoint = 6;                       // 服务端点
+  string meta_json = 7;                      // 实例元数据（JSON 字符串）
+  int64 ttl_seconds = 8;                     // TTL 秒数
+  int64 last_heartbeat_at = 9;               // 最后心跳时间（unix 秒）
+  int64 created_at = 10;                     // 创建时间（unix 秒）
+  int64 updated_at = 11;                     // 更新时间（unix 秒）
+}
+
+// ServiceWithInstances 服务及其在线实例
+message ServiceWithInstances {
+  Service service = 1;                       // 服务定义
+  repeated Instance instances = 2;           // 在线实例列表
+}
+

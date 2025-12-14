@@ -1,0 +1,29 @@
+package base
+
+import (
+	"xiaozhizhang/pkg/core/logger"
+	"xiaozhizhang/pkg/core/security"
+	"xiaozhizhang/pkg/core/start"
+	"xiaozhizhang/pkg/grpc"
+	"xiaozhizhang/pkg/oss"
+	"xiaozhizhang/pkg/scheduler"
+
+	"github.com/go-redis/cache/v9"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
+)
+
+var (
+	Configures *start.Configures
+	Logger     *logger.Log
+	ENV        string
+	AdminAuth  *security.AdminAuth
+	UserAuth   *security.UserAuth
+	ClientAuth *security.ClientAuth
+	DB         *gorm.DB
+	RDB        *redis.Client
+	Cache      *cache.Cache
+	OSS        *oss.AliyunService
+	Scheduler  *scheduler.Scheduler
+	GRPCServer *grpc.Server
+)

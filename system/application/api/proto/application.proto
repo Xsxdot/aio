@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package xiaozhizhang.application.v1;
+
+option go_package = "xiaozhizhang/system/application/api/proto";
+
+// ApplicationService Application 服务
+service ApplicationService {
+  // 流式上传产物
+  rpc UploadArtifact(stream UploadArtifactChunk) returns (UploadArtifactResponse);
+  
+  // 触发部署
+  rpc Deploy(DeployRequest) returns (DeployResponse);
+  
+  // 获取部署状态
+  rpc GetDeployment(GetDeploymentRequest) returns (DeploymentInfo);
+}
+
+// UploadArtifactChunk 上传产物分块
+message UploadArtifactChunk {
+  // 元数据（仅第一个 chunk 需要）
+  ArtifactMeta meta = 1;
+  // 数据块
+  bytes data = 2;
+}
+
+// ArtifactMeta 产物元数据
+message ArtifactMeta {
+  int64 application_id = 1;
+  string file_name = 2;
+  string artifact_type = 3; // backend / frontend
+  int64 size = 4;
+  string sha256 = 5;
+  string content_type = 6;
+}
+
+// UploadArtifactResponse 上传响应
+message UploadArtifactResponse {
+  int64 artifact_id = 1;
+  string object_key = 2;
+  string storage_mode = 3;
+}
+
+// DeployRequest 部署请求
+message DeployRequest {
+  int64 application_id = 1;
+  string version = 2;
+  int64 backend_artifact_id = 3;
+  int64 frontend_artifact_id = 4;
+  string spec_json = 5; // JSON 格式的 DeploySpec
+  string operator = 6;
+}
+
+// DeployResponse 部署响应
+message DeployResponse {
+  int64 deployment_id = 1;
+  int64 release_id = 2;
+  string status = 3;
+}
+
+// GetDeploymentRequest 获取部署请求
+message GetDeploymentRequest {
+  int64 deployment_id = 1;
+}
+
+// DeploymentInfo 部署信息
+message DeploymentInfo {
+  int64 id = 1;
+  int64 application_id = 2;
+  int64 release_id = 3;
+  string version = 4;
+  string action = 5;
+  string status = 6;
+  int64 started_at = 7;
+  int64 finished_at = 8;
+  repeated string logs = 9;
+  string error_message = 10;
+  string operator = 11;
+}
+

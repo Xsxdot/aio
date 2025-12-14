@@ -1,0 +1,50 @@
+serviceName: backend-app
+ssl: true
+sslKeyPath: /opt/cert/your-domain.key
+sslCertPath: /opt/cert/your-domain.crt
+startCommand: ${installPath}/backend-app -env=${env} -config=${installPath}/config/app.yaml
+testEnv:
+  domain: backend-test.yourdomain.com
+  port: 8080
+  installPath: /opt/backend-test
+  frontendBuildCommands:
+    - "npm install"
+    - "npm run build"
+  backendBuildCommands:
+    - "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o backend-app ."
+  healthUrl: http://${host}:8080/health
+  servers:
+    - 192.168.1.101
+prodEnv:
+  domain: backend.yourdomain.com
+  port: 8080
+  installPath: /opt/backend
+  frontendBuildCommands:
+    - "npm install"
+    - "npm run build"
+  backendBuildCommands:
+    - "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o backend-app ."
+  healthUrl: http://${host}:8080/health
+  servers:
+    - 192.168.1.102
+    - 192.168.1.103
+    - 192.168.1.104
+    - 192.168.1.105
+frontendWorkDir: /path/to/your/frontend/project
+backendWorkDir: /path/to/your/backend/project
+copyFiles:
+    - source: /path/to/your/frontend/project/dist
+      target: ${workDir}/web
+      mode: move
+      type: front
+    - source: /path/to/your/backend/project/backend-app
+      target: ${workDir}/backend-app
+      mode: move
+      type: back
+    - target: ${workDir}/config
+      mode: mkdir
+      type: back
+    - source: /path/to/your/backend/project/config/${env}.yaml
+      target: ${workDir}/config/app.yaml
+      mode: copy
+      type: back

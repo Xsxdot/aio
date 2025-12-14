@@ -1,0 +1,154 @@
+### Registry 注册中心 API 测试
+
+@baseUrl = http://localhost:8080
+@adminToken = your-admin-token-here
+@clientToken = your-client-token-here
+
+### =========================
+### 管理员：服务管理
+### =========================
+
+### 1. 创建服务定义
+POST {{baseUrl}}/admin/registry/services
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "project": "demo",
+  "name": "api-gateway",
+  "owner": "platform-team",
+  "description": "API网关服务",
+  "spec": {
+    "protocol": "http",
+    "port": 8080
+  }
+}
+
+### 2. 查询服务列表
+GET {{baseUrl}}/admin/registry/services?project=demo
+Authorization: Bearer {{adminToken}}
+
+### 3. 查询服务详情
+GET {{baseUrl}}/admin/registry/services/1
+Authorization: Bearer {{adminToken}}
+
+### 4. 更新服务定义
+PUT {{baseUrl}}/admin/registry/services/1
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "description": "API网关服务（更新）",
+  "spec": {
+    "protocol": "http",
+    "port": 8080,
+    "version": "v2"
+  }
+}
+
+### 5. 删除服务定义
+DELETE {{baseUrl}}/admin/registry/services/1
+Authorization: Bearer {{adminToken}}
+
+### =========================
+### 管理员：实例管理
+### =========================
+
+### 6. 查看服务的在线实例（默认 aliveOnly=true）
+GET {{baseUrl}}/admin/registry/services/1/instances
+Authorization: Bearer {{adminToken}}
+
+### 7. 查看服务的所有实例（包括离线的）
+GET {{baseUrl}}/admin/registry/services/1/instances?aliveOnly=false
+Authorization: Bearer {{adminToken}}
+
+### 8. 查看服务在指定环境的在线实例
+GET {{baseUrl}}/admin/registry/services/1/instances?env=prod&aliveOnly=true
+Authorization: Bearer {{adminToken}}
+
+### 9. 强制下线实例
+POST {{baseUrl}}/admin/registry/services/1/instances/instance-key-123/offline
+Authorization: Bearer {{adminToken}}
+
+### 10. 删除实例记录
+DELETE {{baseUrl}}/admin/registry/services/1/instances/instance-key-123
+Authorization: Bearer {{adminToken}}
+
+### =========================
+### 客户端/Agent：实例注册与心跳
+### =========================
+
+### 11. 注册实例
+POST {{baseUrl}}/api/registry/v1/instances/register
+Content-Type: application/json
+Authorization: Bearer {{clientToken}}
+
+{
+  "serviceId": 1,
+  "instanceKey": "api-gateway-001",
+  "env": "prod",
+  "host": "10.0.1.100",
+  "endpoint": "http://10.0.1.100:8080",
+  "meta": {
+    "version": "1.0.0",
+    "region": "us-west"
+  },
+  "ttlSeconds": 60
+}
+
+### 12. 实例心跳
+POST {{baseUrl}}/api/registry/v1/instances/heartbeat
+Content-Type: application/json
+Authorization: Bearer {{clientToken}}
+
+{
+  "serviceId": 1,
+  "instanceKey": "api-gateway-001"
+}
+
+### 13. 实例下线（客户端主动）
+POST {{baseUrl}}/api/registry/v1/instances/deregister
+Content-Type: application/json
+Authorization: Bearer {{clientToken}}
+
+{
+  "serviceId": 1,
+  "instanceKey": "api-gateway-001"
+}
+
+### =========================
+### Agent：拉取服务信息
+### =========================
+
+### 14. 查询所有服务及在线实例
+GET {{baseUrl}}/api/registry/v1/services
+
+### 15. 查询指定项目的服务及在线实例
+GET {{baseUrl}}/api/registry/v1/services?project=demo
+
+### 16. 查询指定项目和环境的服务及在线实例
+GET {{baseUrl}}/api/registry/v1/services?project=demo&env=prod
+
+### 17. 查询服务详情及在线实例
+GET {{baseUrl}}/api/registry/v1/services/1
+
+### =========================
+### 测试场景：完整流程
+### =========================
+
+# 场景1：实例生命周期管理
+# 1. 管理员创建服务定义（请求1）
+# 2. 客户端注册实例（请求11）
+# 3. 管理员查看在线实例（请求6）- 应该看到该实例
+# 4. 客户端发送心跳（请求12）
+# 5. 管理员强制下线（请求9）
+# 6. 管理员查看在线实例（请求6）- 不应该看到该实例
+# 7. 管理员查看所有实例（请求7）- 应该看到该实例但已离线
+# 8. 管理员删除实例（请求10）
+# 9. 管理员查看所有实例（请求7）- 不应该看到该实例
+
+# 场景2：多环境实例管理
+# 1. 注册 prod 环境实例（请求11，env=prod）
+# 2. 注册 dev 环境实例（请求11，env=dev）
+# 3. 查看 prod 环境实例（请求8，env=prod）- 只看到 prod 实例
+# 4. 查看所有环境实例（请求6）- 看到所有实例

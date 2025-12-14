@@ -1,0 +1,425 @@
+## 整体架构与目录结构（所有人必读）
+
+- **目录结构**
+  - **`base/`**：应用基础设施根，只负责保存配置、日志、数据库、缓存、调度器、鉴权等基础实例，不承载任何业务逻辑。
+  - **`app/`**：应用层入口（Application Root），负责组合和调度各业务组件的 Service/App，实现复杂业务流程。
+  - **`router/`**：路由装配层，集中注册 HTTP/RPC 路由，只依赖 `app`、`base` 和各组件的 Controller。
+  - **`system/`**：业务服务组件包，每个子包为一个独立业务域（如 `config`、`order`、`user`），内部包含 DDD 分层。
+  - **`pkg/`**：中间件和通用基础能力（`core`、`oss`、`sms`、`db`、`cache` 等）。
+  - **`docs/`**：API 文档与说明。
+  - **`http/`**：API 测试文件（`.http`）。
+  - **`main.go`**：程序入口。
+
+- **分层说明**
+  - **`model`**：数据模型定义，含内部使用的 `dto` 子包。
+  - **`dao`**：数据访问层，只负责单一 `model`。
+  - **`service`**：业务逻辑层，只实现本服务组件的业务逻辑。
+  - **`controller`**：控制器层，处理 HTTP/RPC 请求，调用 App 或 API Client。
+  - **`app`**：应用层，负责 Service 组合调度，实现复杂业务。
+  - **`migrations`**：数据库迁移脚本。
+
+---
+
+## 顶层 base / app / router 目录约定
+
+- **`base/`：应用基础设施根**
+  - **[MUST]** 只包含基础设施实例：`Configures`、`Logger`、`ENV`、`DB`、`RDB`、`Cache`、`Scheduler`、`AdminAuth`、`UserAuth`、`OSS`、`Wechat` 等。
+  - **[MUST]** `base` 中不得定义任何业务 DAO / Service / 领域 App，`base` 只负责能力，不负责业务。
+  - **[MUST]** 所有业务组件（`system/*`、`app`、`router`、`external/*`）在构造时，通过参数或 `base.*` 注入这些实例，不得在组件内部重复初始化 DB、Redis、Logger 等。
+  - **[MUST NOT]** 在 `base` 中保存任何与“当前请求/当前用户/当前工厂”强相关的业务状态，这类信息统一通过 `security` + `context.Context` 传递。
+
+- **`app/`：应用组合根（Application Root）**
+  - **[MUST]** 在 `app` 包中定义进程唯一的根对象，例如：
+    - `type App struct { ... }`，聚合各 `system/<component>/internal/app` 或 `system/<component>/api/client`。
+  - **[MUST]** 由 `main.go` 创建单例 `*app.App`，并在应用启动时注入到路由层（`router` 包）和 Controller 层。
+  - **[MUST]** `app` 包只依赖各业务组件的 Service/App 或 Client 以及 `base`，**不得依赖任何 `external/controller` 包**，以避免循环依赖。
+  - **[SHOULD]** Controller 构造函数接收 `*app.App` 或其抽象接口，而不是直接依赖多个 `*XxxService`。
+  - **[MUST NOT]** 在 `app` 包中直接访问 DAO 或数据库连接，复杂事务统一在 App 层编排，通过 Service/DAO 完成。
+
+- **`router/`：路由装配层**
+  - **[MUST]** `router` 包负责集中注册所有 HTTP/RPC 路由，对外暴露形如 `func Register(app *app.App, f *fiber.App)` 的函数，由 `main` 调用。
+  - **[MUST]** `router` 只依赖 `app`、`base` 以及各组件的 `external/controller`，**不得依赖任何 `system/*/internal/*` 包或 DAO/Service**。
+  - **[MUST]** 路由层中不包含业务逻辑，只完成：分组、挂载中间件、调用各 Controller 的 `RegisterRoutes` 方法。
+  - **[MUST NOT]** 在 `router` 包中创建或管理事务、直接访问数据库或缓存。
+
+---
+
+## 分层职责与调用链
+
+### 调用链规范（Controller -> App -> Service -> DAO）
+
+- **[MUST]** 调用链为：`Controller -> App -> Service -> DAO`，禁止反向依赖或跨层跳跃：
+  - Controller 不得直接调用 DAO 或数据库。
+  - Controller 不得绕过 App 直接持有或构造 Service 实例（例如直接注入 `*XxxService`）。
+  - Controller 在调用业务逻辑时，应通过 App：既可以调用 App 封装的方法，也可以通过 App 暴露的 Service 字段（如 `c.app.UserService.Xxx(...)`）直接执行简单逻辑，而无需在 App 中再包一层。
+  - App 只调用本组件的 Service（或其他组件暴露的 API Client）。
+  - Service 只调用本组件的 DAO。
+- **[MUST]** 复杂业务流程（跨多个 Service、跨组件、需要事务）由 App 层统一编排和管理事务。
+
+### system 组件 DDD 目录结构
+
+- **推荐结构**（可逐步迁移）：
+
+```text
+system/<component>/
+  internal/                  # 组件内部实现，对其他组件不可见
+    model/                   # 领域模型，仅组件内部使用
+    dao/                     # 数据访问接口与实现，只负责单一 model
+    service/                 # 业务逻辑层，只操作单模型或简单从属子模型
+    app/                     # 应用层编排，只调用本组件的 service
+    facade/                  # 本组件对「其他组件」的出站依赖抽象接口
+    controller/              # 可选：仅供内部使用的控制器
+
+  api/                       # 组件对外暴露的稳定接口（被其他组件调用）
+    dto/                     # 对外暴露的 DTO，禁止包含业务逻辑
+    client/                  # 对外门面 Client，封装对 internal/app 的调用
+
+  external/                  # 对前端/网关/独立进程的适配层
+    http/                    # HTTP 协议适配层（Controller/Handler 直接放在这里）
+    # 如果有多种协议，可以按协议拆包：
+    # grpc/                  # gRPC 协议适配层（Server 实现）
+    # websocket/             # WebSocket 协议适配层（Handler 实现）
+```
+
+- **internal 层约束**
+  - **[MUST]** `internal/*` 仅允许被同一组件（同一 `system/<component>` 前缀）内部代码引用，其他组件禁止 import。
+  - **[MUST]** `internal/model` 中的领域模型不能直接暴露给其他组件或外部 API。
+  - **[MUST]** 每个 `internal/dao` 只负责一个领域模型，可按存储实现（gorm、mongo 等）拆分。
+  - **[MUST]** `internal/service`：
+    - 每个 Service 只负责一个领域模型或简单从属子模型。
+    - 只能依赖本组件的 DAO/Model，禁止调用其他 Service 或 Controller/App。
+  - **[MUST]** `internal/app`：
+    - 负责组合/调度本组件的多个 Service，实现复杂业务流程。
+    - 只能依赖本组件的 Service，禁止直接访问 DAO 或其他组件的内部实现。
+    - 是事务的边界，负责开启、提交、回滚事务。
+  - **[SHOULD]** `internal/facade` 只定义 interface，由上层组装根在启动时注入具体实现（通常为其他组件的 `api/client`）。
+
+- **api 层约束**
+  - **[MUST]** `api/dto` 只承载数据，不包含任何业务逻辑。
+  - **[MUST]** `api/client` 作为对外门面，封装对 `internal/app` 的调用，对外只暴露 DTO，禁止泄漏 `internal/model`。
+
+- **external 层约束**
+  - **[MUST]** `external/controller` 只依赖 App 层或 `api/client`，不得依赖 DAO 或其他组件的内部实现。
+  - **[MUST]** Controller 层只负责：参数解析、鉴权、调用 App/Client、统一返回结果，不参与业务规则细节。
+  - **[SHOULD]** 如果只有单一协议（如 HTTP），可以直接使用 `external/controller`；如果有多种协议（HTTP、gRPC、WebSocket 等），则按协议分层如 `external/http/controller`、`external/grpc/server` 等。
+
+---
+
+### system 组件入口文件规范（migrate.go / module.go / router.go）
+
+- **migrate.go（数据库迁移入口）**
+  - **[MUST]** 每个业务组件在 `system/<component>/migrate.go` 下提供一个统一入口函数：
+    ```go
+    func AutoMigrate(db *gorm.DB, log *logger.Log) error
+    ```
+  - **[MUST]** 只负责调用本组件 `internal/model` 等定义的模型进行 `db.AutoMigrate`，不包含任何业务逻辑。
+  - **[MUST]** 仅由全局迁移入口（如 `pkg/db/migrate.go`）调用，对外暴露的只有 `AutoMigrate` 函数签名，内部模型不对外泄漏。
+
+- **module.go（组件门面 Module）**
+  - **[MUST]** 每个业务组件在 `system/<component>/module.go` 下定义进程内唯一的组件门面：
+    ```go
+    type Module struct {
+      internalApp *internalapp.App       // 组件内部 App，仅在本组件内部使用
+      Client      *client.XxxClient      // 对外客户端，供其他组件调用
+    }
+    func NewModule() *Module
+    ```
+  - **[MUST]** `internalApp` 字段必须是非导出字段，只允许 `system/<component>` 包内访问。
+  - **[MUST]** 其他组件如需调用本组件业务，必须通过 `Module.Client` 或 `api/client`，禁止直接依赖本组件的 `internal/*`。
+  - **[MUST]** 顶层 `app.App` 只持有各组件的 `*Module` 或 `Client`，用作跨组件编排入口。
+
+- **router.go（组件内路由注册入口）**
+  - **[MUST]** 每个组件在 `system/<component>/router.go` 下提供统一的路由注册函数：
+    ```go
+    func RegisterRoutes(m *Module, api, admin fiber.Router)
+    ```
+  - **[MUST]** 该函数在组件内部负责：
+    - 使用 `m.internalApp` 创建和注入后台管理类 Controller（如后台配置管理）。
+    - 使用 `m.Client` 创建对外查询/开放接口的 Controller（如公开配置查询）。
+  - **[MUST]** 顶层 `router` 包只调用 `<component>.RegisterRoutes(app.<Component>Module, api, admin)`，不得直接 import 组件的 `external/http` 或内部实现。
+  - **[MUST]** `router.go` 中不包含业务逻辑，只负责分组与调度 Controller 的 `RegisterRoutes`。
+
+---
+
+## 按角色速查表
+
+### 1. Model / DTO 开发
+
+- **Model（`internal/model`）**
+  - **[MUST]** 所有整型主键模型必须匿名嵌入 `common.Model`（禁止使用 `gorm.Model`）。
+  - **[MUST]** 如需字符串主键（雪花 ID、UUID），使用 `common.ModelString`。
+  - **[MUST]** 非标准模型用JSON 字段存储时使用 `common.JSON` 类型，避免自行实现 `Scan/Value`。serializer:json;
+  - **[MUST]** 标准模型用JSON 字段存储时使用 gorm的`serializer:json`标签
+  - **[MUST]** 表名需实现 `TableName()`，使用统一前缀，例如：
+    ```go
+    func (Xxx) TableName() string {
+      return "prefix_xxx"
+    }
+    ```
+  - **[MUST]** JSON 标签采用驼峰命名，GORM 标签规范，索引/外键需明确。
+  - **[SHOULD]** 多状态字段使用枚举类型（而不是魔法数字）。
+  - **[MUST]** Model/DTO 都要包含 `comment` 标签，标注中文名。
+  - **[MUST]** 在 `pkg/db` 中使用 GORM 的 `AutoMigrate` 自动建表，每个组件一个文件。
+  - **[MUST]** 统一从 `"pkg/core/model/common"`（或等价路径）导入公共类型。
+
+- **内部 DTO（`model/dto`）**
+  - **[MUST]** `package` 名统一为 `dto`。
+  - **[MUST]** 只做 Controller/Service/App 之间的数据传输，不包含业务逻辑。
+  - **[SHOULD]** 合理利用组合，避免重复字段。
+
+- **对外 DTO（`<component>/api/dto`）**
+  - **[MUST]** 稳定对外结构，避免频繁变更。
+  - **[MUST]** 不得包含业务逻辑。
+  - **[SHOULD]** 尽量兼容向后兼容扩展（新增字段而非修改语义）。
+
+---
+
+### 2. DAO 开发
+
+- **结构与依赖**
+  - **[MUST]** 每个 DAO 只负责一个 model，统一实现 `mvc.IBaseDao[model.Xxx]`。
+  - **[MUST]** DAO 结构体包含字段：
+    - `log *logger.Log`
+    - `err *errorc.ErrorBuilder`
+    - `db  *gorm.DB`
+  - **[MUST]** 提供 `NewXxxDao` 构造函数，完成依赖注入和日志/错误构造。
+  - **[MUST]** 日志与错误处理统一参见「通用基础规范 - 日志与错误处理」。
+
+- **上下文和数据库访问**
+  - **[MUST]** 所有自定义查询/更新方法显式接收 `ctx context.Context`。
+  - **[MUST]** 数据库访问必须使用 `db.WithContext(ctx)`。
+  - **[MUST]** DAO 不得自行管理事务，只接收由上层传入的 `*gorm.DB`（例如 App 层传入的 tx）。
+
+- **存储技术**
+  - **[MUST]** ORM 使用 GORM，数据库使用 MySql（如需更换需统一评审）。
+
+---
+
+### 3. Service 开发
+
+- **结构与依赖**
+  - **[MUST]** 每个 Service 只负责一个 model（及其简单从属子模型）。
+  - **[MUST]** Service 结构体匿名嵌入 `mvc.IBaseService[model.Xxx]`，并包含：
+    - `dao *dao.XxxDao`
+    - `log *logger.Log`
+    - `err *errorc.ErrorBuilder`
+  - **[MUST]** 提供 `NewXxxService` 构造函数。
+  - **[MUST]** Service 只依赖本组件的 DAO/Model，禁止调用其他 Service 或 Controller/App。
+  - **[MUST]** 通用 CRUD 通过 `mvc.NewBaseService` 封装。
+
+- **事务与调用**
+  - **[MUST]** 复杂业务事务由 App 层统一管理，Service 中不得自行开启全局事务。
+  - **[SHOULD]** 通用接口需要事务时，通过 `svc.WithTx(tx)` 获取绑定到 `*gorm.DB` 的临时 Service。
+  - **[SHOULD]** 特定方法如需事务，由 App 层传入 `tx *gorm.DB`，结合 `base.DB.Begin()/Commit()/Rollback()`。
+
+---
+
+### 4. Controller 开发（HTTP/RPC）
+
+- **依赖与职责**
+  - **[MUST]** Controller 通过 App 层注入创建，不得直接以字段形式依赖 Service 或 DAO。
+  - **[SHOULD]** 调用业务逻辑时，优先调用 App 封装的方法；对于简单 CRUD / 基础逻辑，可以通过 App 暴露的 Service 字段（如 `c.app.UserService`) 直接调用 Service，而无需在 App 中再实现一遍。
+  - **[MUST]** 只处理参数解析、鉴权、调用 App/Service（通过 App）或 Client、统一返回结果。
+  - **[MUST]** Controller 必须包含 `err *errorc.ErrorBuilder` 字段。
+  - **[MUST]** 路由注册使用 Fiber：
+    ```go
+    func (c *EnterpriseController) RegisterRoutes(admin fiber.Router) {
+      adminRouter := admin.Group("/enterprises")
+      adminRouter.Get("/", base.AdminAuth.RequireAdminAuth("admin:enterprise:read"), c.GetAllForAdmin)
+      adminRouter.Get("/:id", base.AdminAuth.RequireAdminAuth("admin:enterprise:read"), c.GetByIDForAdmin)
+      adminRouter.Put("/status", base.AdminAuth.RequireAdminAuth("admin:enterprise:update"), c.UpdateStatusForAdmin)
+    }
+    ```
+
+- **请求与上下文**
+  - **[MUST]** 所有 MVC Handler 必须接收 ctx，并尽量向下传递 `ctx.UserContext()`。
+  - **[MUST]** 使用 `utils.Validate` 校验请求数据。
+  - **[MUST]** 使用 `security` 能力获取当前用户/管理员信息，禁止手动解析 `Authorization` 或信任请求中的租户 ID。
+
+- **返回与错误处理**
+  - **[MUST]** 调用 App/Service 的方法：
+    - 如果只返回 `err`：直接 `return err`，不得使用 `result.BadRequestNormal` 包一层。
+    - 如果返回结果 + `err`：不需要 `if err != nil` 判断，直接使用 `result.Once` 或 `result.OK` 返回（遵循内部约定）。
+  - **[MUST]** 调用非 App/Service 的方法返回 `err` 时：
+    - 使用 `err.New(msg, err).WithTraceID(ctx.UserContext())` 创建错误并直接返回，不要使用 `result.BadRequestNormal`。
+  - **[MUST]** 分页返回统一为：
+    ```go
+    return result.OK(ctx, fiber.Map{
+      "total":   total,
+      "content": factories,
+    })
+    ```
+
+---
+
+### 5. App 层开发
+
+- **职责与结构**
+  - **[MUST]** App 层负责组合/调度 Service，实现复杂业务逻辑（跨多个 Dao/Service/组件）。
+  - **[MUST]** `app.go` 负责初始化所有 Service，整个 app 包中只有一个 `*App` 实例。
+  - **[SHOULD]** 每种职责单独文件，通过 `*App` 实例方法对外暴露。
+  - **[SHOULD]** 复杂业务使用事务、缓存、消息队列等解耦。
+
+- **事务管理**
+  - **[MUST]** App 层是事务边界：
+    - 使用 `base.DB.Begin()/Commit()/Rollback()` 管理事务。
+    - 通过 `WithTx` 或传入 `tx *gorm.DB` 的方式，将事务传递给 Service/DAO。
+  - **[MUST]** 不得在 DAO 层或 Controller 中开启/提交/回滚事务。
+
+---
+
+### 6. 组件间集成与 Facade
+
+- **[MUST]** 组件之间调用必须通过对方组件的 `api/client` 或统一的 `facade`，禁止直接 import 对方的 `internal` 包。
+- **[MUST]** 如需依赖其他业务组件，在自身的 `internal/facade` 中定义抽象接口，由上层组装根注入具体实现（通常为对方的 `api/client`）。
+- **[MUST]** 不得直接引用其他组件的数据库表、内部 model 或 DAO。
+- **[SHOULD]** 跨组件强关联通过 ID/引用字段和 facade 协议完成，避免隐式耦合。
+
+---
+
+## 通用基础规范（集中抽取，避免重复）
+
+### 1. 安全与鉴权（`pkg/core/security`）
+
+- **[MUST]** 登录态与权限校验统一通过 `security.AdminAuth` / `security.UserAuth` Fiber 中间件完成，禁止手动解析 Token/Authorization。
+- **[MUST]** 后台管理路由使用 `base.AdminAuth.RequireAdminAuth("perm:code")` 保护。
+- **[SHOULD]** 前台根据业务选择 `UserAuth.RequireAuth` / `RequirePermission` / `OptionalAuth`。
+- **[MUST]** 获取当前登录主体信息使用：
+  - 管理员：`security.GetAdminId(ctx)`、`security.GetAdminAccount(ctx)`、`security.GetAdminRoles(ctx)`。
+  - 用户：`security.GetUserID(ctx)`、`security.GetUserRoles(ctx)`、`security.GetUserClaimsByCtx(ctx.UserContext())`。
+- **[MUST]** 与租户、工厂、用户强相关的数据隔离必须基于 `security` 提供的 Claims，禁止硬编码租户/工厂标识。
+
+### 2. 日志与错误处理（统一规范）
+
+- **[MUST]** 日志统一使用 `pkg/core/logger`，禁止在业务代码中使用 `fmt.Println`、`log.Println` 作为日志。
+- **[MUST]** 错误统一使用 `errorc`（对外路径为 `pkg/core/err`），禁止使用 `fmt.Errorf`、`errors.New` 自行构造错误。
+- **[MUST]** 每个服务组件使用：
+  - `logger.GetLogger().WithEntryName("Xxx")` 创建带组件名的日志实例。
+  - `errorc.NewErrorBuilder("Xxx")` 创建组件级 ErrorBuilder。
+- **[SHOULD]** 使用以下辅助方法：
+  - `log.WithFields(arg interface{})` 快速记录结构体。
+  - `log.WithErr(err error)` 记录错误。
+  - `log.WithField(key string, value interface{})` 记录单个字段。
+  - `log.WithTrace(ctx context.Context)` 自动记录 traceId。
+- **[MUST]** 错误记录时有 `ctx`：
+  - 使用 `err.WithTraceID(ctx context.Context)` 将 traceId 和上下文带入错误。
+  - 使用 `error.ToLog(log *logrus.Entry, msgs ...string)` 将 error 转为日志记录，如使用该方法，无需重复打日志。
+  - ToLog方法是err的方法，并非log的方法,如：a.err.New("开启事务失败", tx.Error).ToLog(a.log.GetLogger())
+    ```go
+    return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+    ```
+### 3. 事务、缓存与数据库
+
+- **[MUST]** ORM 使用 GORM，数据库为 MySQL。
+- **[MUST]** 所有数据库操作必须有错误处理。
+- **[MUST]** 复杂操作使用事务，由 App 层统一管理（见上文 App 规范）。
+- **[SHOULD]** 合理使用 `base.RDB` 作为缓存，避免滥用全量查询。
+- **[SHOULD]** 合理使用 `base.Cache` 作为缓存，避免滥用全量查询,这是redis官方封装的缓存包,用法如base.Cache.Once(*cache.Item)。
+
+### 4. 任务调度与定时任务（`pkg/scheduler`）
+
+- **[MUST]** 应用内定时任务与分布式调度统一使用 `pkg/scheduler`。
+- **[MUST]** 调度器由应用启动阶段创建，例如：
+  - `scheduler.NewScheduler(scheduler.DefaultSchedulerConfig())`。
+  - 优雅关闭时调用 `Scheduler.Stop()`。
+- **[MUST]** 所有定时/延迟任务实现 `scheduler.Task` 接口，推荐使用：
+  - `NewOnceTask`、`NewRetryableOnceTask`、`NewIntervalTask`、`NewCronTask`。
+- **[MUST]** 任务函数签名为 `TaskFunc(ctx context.Context) error`，实现必须处理超时和取消（尊重 `ctx.Done()`）。
+- **[MUST]** 任务逻辑必须保持幂等，并通过业务唯一键控制并发和重复执行风险。
+- **[MUST]** 不允许在 Controller 中直接创建/启动调度器，或在 HTTP Handler 中动态定义定时任务；任务注册应放在 App 层或独立的 `internal/scheduler` 组合模块中。
+
+### 5. 配置管理
+
+- **[MUST]** 配置统一通过 `base.Config` 操作，禁止在业务代码中散落读取环境变量或配置文件。
+
+### 6. gRPC 服务规范（`pkg/grpc`）
+
+- **基础组件位置**
+  - **[MUST]** gRPC 服务器统一使用 `pkg/grpc` 包提供的能力，不直接在业务组件中裸用 `grpc.NewServer`。
+  - **[MUST]** gRPC 对外协议的实现代码放在各组件的 `system/<component>/external/grpc` 目录下（如 `server/`），仅包含协议适配和服务注册逻辑。
+
+- **配置与启动**
+  - **[MUST]** gRPC 配置使用 `grpc.Config`（或等价结构）统一管理，包括地址、TLS、KeepAlive、鉴权等，通过 `base.Config` 加载。
+  - **[MUST]** 使用 `grpc.DefaultConfig()` 作为默认配置基准，根据环境覆盖必要字段。
+  - **[MUST]** 通过 `config.BuildServerOptions(logger)` 构建 `grpc.ServerOption` 列表，再使用 `grpc.NewServer(config, logger)` 或 `grpc.NewServerWithOptions(...)` 创建服务器实例。
+  - **[MUST]** gRPC 服务器的生命周期（`Start` / `Stop` / `Shutdown`）由应用启动/关闭流程统一管理，不在业务 Handler 中随意创建/关闭。
+
+- **服务注册规范**
+  - **[MUST]** 所有 gRPC 服务必须实现 `grpc.ServiceRegistrar` 接口（`RegisterService(*grpc.Server) error`、`ServiceName() string`、`ServiceVersion() string`）。
+  - **[MUST]** 使用 `(*grpc.Server).RegisterService` 在统一启动阶段集中注册服务，不在请求处理过程中动态注册。
+  - **[MUST]** 每个组件在自身的 `external/grpc` 中实现服务注册逻辑，并在顶层 gRPC 启动处调用对应的注册函数。
+
+- **鉴权与权限验证**
+  - **[MUST]** gRPC 鉴权必须通过 `pkg/grpc` 中的 `AuthProvider` + `AuthConfig` + `AuthInterceptor` / `PermissionInterceptor` 实现，禁止在业务 Handler 中手写重复的 Token/权限校验逻辑。
+  - **[MUST]** 需要鉴权的服务通过实现 `AuthProvider`（`VerifyToken` / `VerifyPermission`）并调用 `Server.SetAuthProvider` 或 `EnableAuth` 启用鉴权/权限验证。
+  - **[SHOULD]** 使用 `DefaultAuthConfig()` 并在 `SkipMethods` 中显式声明无需鉴权的方法（例如健康检查、反射服务等）。
+  - **[MUST]** 认证信息与 Token 必须通过拦截器注入到 `context.Context`，业务层只能从 `ctx` 中读取，不得自行从 metadata 解析 `authorization` / `token`。
+
+- **中间件与日志**
+  - **[MUST]** 日志记录统一使用 `unaryLoggingInterceptor`，禁止在每个 Handler 中手写重复的请求日志逻辑。
+  - **[MUST]** 使用 `RecoveryInterceptor` 统一处理 panic，防止单个请求导致进程崩溃。
+  - **[MUST]** 需要参数校验的请求消息应实现 `Validate() error` 方法，并通过 `ValidationInterceptor` 统一触发，禁止在 Handler 内手写重复校验逻辑。
+  - **[MUST]** 中间件链统一通过 `ChainUnaryInterceptors` 组合，顺序为：恢复 → 鉴权 → 权限 → 日志 → 参数校验 → 业务 Handler。
+
+- **错误与状态码**
+  - **[MUST]** gRPC 服务错误必须使用 `status.Error` / `status.Errorf` 返回标准 `codes`，禁止直接返回未包装的 Go `error`。
+  - **[SHOULD]** 对应 HTTP 层的错误规范，gRPC 中应使用：
+    - `codes.InvalidArgument` 表示参数校验失败。
+    - `codes.Unauthenticated` 表示认证失败或缺少 Token。
+    - `codes.PermissionDenied` 表示权限不足。
+    - `codes.Internal` 表示服务器内部错误。
+
+---
+
+### 7. 命名、接口与依赖注入
+
+- **命名规范**
+  - **[MUST]** 文件名使用下划线命名法（snake_case）。
+  - **[MUST]** 结构体和接口使用大驼峰命名（PascalCase）。
+  - **[MUST]** 变量和函数使用小驼峰命名（camelCase）。
+  - **[MUST]** 常量使用全大写加下划线（`CONST_NAME`）。
+
+- **接口设计**
+  - **[SHOULD]** 每层都定义清晰接口，便于测试与替换实现。
+  - **[SHOULD]** 接口命名以 `I` 开头（如 `IUserService`），实现类完整实现接口方法。
+
+- **依赖注入**
+  - **[MUST]** 使用构造函数进行依赖注入（`NewXxx(...) *Xxx`）。
+  - **[MUST]** 避免全局可变变量保存业务状态。
+  - **[MUST]** 每个组件都要有对应的 `NewXxx` 构造函数。
+
+---
+
+## 绝对禁止的内容
+
+以下行为在任何业务代码中 **[MUST NOT]** 出现：
+
+- 控制器层直接访问 DAO、数据库连接或缓存客户端（必须经由 App 暴露的 Service 或 Client）。
+- Service 调用其他 Service，或跨组件调用其他组件的内部实现（必须通过 facade/client）。
+- 组件直接 import 其他组件的 `internal` 包。
+- 在业务代码中使用 `fmt.Println`、`log.Println`、`panic` 作为正常日志或错误处理方式。
+- 使用 `errors.New`、`fmt.Errorf` 等方式绕过统一错误处理规范。
+- 在应用层之外随意开启事务，或在 DAO 层中嵌套管理事务。
+- 在对外 API（HTTP/RPC）层直接暴露 `internal/model` 中的领域模型。
+- 在任意层中使用硬编码的工厂/租户/环境等多租户标识（必须通过统一的 `security` 能力获取）。
+- 使用全局可变变量保存业务状态，导致并发安全和可测试性问题。
+
+---
+
+## 开发流程与文档规范（简版）
+
+- **开发流程**
+  - **[SHOULD]** 按以下顺序开发：
+    1. 定义 Model 和 DTO。
+    2. 实现 DAO 层数据访问。
+    3. 实现 Service 层业务逻辑。
+    4. 实现 Controller 层 HTTP/RPC 处理。
+    5. 在 App 层组合和调度。
+    6. 编写单元测试。
+    7. 更新 API 文档。
+
+- **文档规范**
+  - **[SHOULD]** 每个包都有 `README.md` 简要说明职责与用法。
+  - **[SHOULD]** 重要函数编写注释，说明输入、输出和边界条件。
+  - **[SHOULD]** API 需有完整文档，和前端/调用方对齐。
+  - **[MUST]** 数据库变更要有迁移脚本，并通过迁移工具统一执行。

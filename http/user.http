@@ -1,0 +1,130 @@
+### 用户组件 API 测试
+
+@baseUrl = http://localhost:8080
+@adminToken = your-admin-token-here
+
+### =========================
+### 管理员管理
+### =========================
+
+### 1. 创建管理员
+POST {{baseUrl}}/admin/admins
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "account": "admin",
+  "password": "admin123",
+  "remark": "系统管理员"
+}
+
+### 2. 管理员登录
+POST {{baseUrl}}/admin/login
+Content-Type: application/json
+
+{
+  "account": "admin",
+  "password": "admin123"
+}
+
+### 3. 查询管理员列表
+GET {{baseUrl}}/admin/admins
+Authorization: Bearer {{adminToken}}
+
+### 4. 查询管理员详情
+GET {{baseUrl}}/admin/admins/1
+Authorization: Bearer {{adminToken}}
+
+### 5. 重置管理员密码
+PUT {{baseUrl}}/admin/admins/1/password
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "newPassword": "newpassword123"
+}
+
+### 6. 更新管理员状态
+PUT {{baseUrl}}/admin/admins/1/status
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "status": 0
+}
+
+### 7. 删除管理员
+DELETE {{baseUrl}}/admin/admins/1
+Authorization: Bearer {{adminToken}}
+
+### =========================
+### 客户端凭证管理
+### =========================
+
+### 8. 创建客户端凭证
+POST {{baseUrl}}/admin/client-credentials
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "name": "测试客户端",
+  "description": "用于测试的客户端",
+  "ipWhitelist": ["127.0.0.1", "192.168.1.0/24"],
+  "expiresAt": null
+}
+
+### 9. 查询客户端凭证列表
+GET {{baseUrl}}/admin/client-credentials
+Authorization: Bearer {{adminToken}}
+
+### 10. 查询客户端凭证详情
+GET {{baseUrl}}/admin/client-credentials/1
+Authorization: Bearer {{adminToken}}
+
+### 11. 更新客户端凭证
+PUT {{baseUrl}}/admin/client-credentials/1
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "name": "更新后的客户端",
+  "description": "更新后的描述",
+  "ipWhitelist": ["127.0.0.1"],
+  "expiresAt": null
+}
+
+### 12. 更新客户端状态
+PUT {{baseUrl}}/admin/client-credentials/1/status
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "status": 0
+}
+
+### 13. 重新生成客户端 Secret
+POST {{baseUrl}}/admin/client-credentials/1/rotate-secret
+Authorization: Bearer {{adminToken}}
+
+### 14. 删除客户端凭证
+DELETE {{baseUrl}}/admin/client-credentials/1
+Authorization: Bearer {{adminToken}}
+
+### =========================
+### gRPC 测试命令（使用 grpcurl）
+### =========================
+
+# 列出所有服务
+# grpcurl -plaintext localhost:9090 list
+
+# 客户端认证
+# grpcurl -plaintext -d '{"client_key":"your-key","client_secret":"your-secret"}' \
+#   localhost:9090 user.v1.ClientAuthService/AuthenticateClient
+
+# Token 续期
+# grpcurl -plaintext \
+#   -H "authorization: Bearer your-token" \
+#   localhost:9090 user.v1.ClientAuthService/RenewToken
+
+
+

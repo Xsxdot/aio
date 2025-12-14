@@ -1,0 +1,8 @@
+package consts
+
+const (
+	TOPIC_DATA_CHANGE = "SZL_NORMAL_CHANGE"
+	TOPIC_DELAY       = "SZL_DELAY"
+
+	MSG_KEY_CACHE = "ROCKETMQ:MSG:"
+)

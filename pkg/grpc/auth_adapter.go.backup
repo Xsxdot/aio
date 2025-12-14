@@ -1,0 +1,146 @@
+package grpc
+
+import (
+	"fmt"
+	"xiaozhizhang/pkg/core/security"
+)
+
+// SecurityAuthProvider 基于现有 security 包的鉴权适配器
+type SecurityAuthProvider struct {
+	adminAuth *security.AdminAuth
+	userAuth  *security.UserAuth
+}
+
+// NewSecurityAuthProvider 创建安全鉴权提供者
+func NewSecurityAuthProvider(adminAuth *security.AdminAuth, userAuth *security.UserAuth) *SecurityAuthProvider {
+	return &SecurityAuthProvider{
+		adminAuth: adminAuth,
+		userAuth:  userAuth,
+	}
+}
+
+// VerifyToken 验证令牌并返回认证信息
+// 优先尝试解析为管理员令牌，如果失败则尝试用户令牌
+func (p *SecurityAuthProvider) VerifyToken(token string) (*AuthInfo, error) {
+	// 先尝试解析为管理员令牌
+	if adminClaims, err := p.adminAuth.ParseToken(token); err == nil {
+		// 转换为 AuthInfo
+		authInfo := &AuthInfo{
+			SubjectID:   fmt.Sprintf("%d", adminClaims.ID),
+			SubjectType: "admin",
+			Name:        adminClaims.Account,
+			Roles:       adminClaims.AdminType,
+			Permissions: make([]Permission, 0),
+			Extra: map[string]interface{}{
+				"id":      adminClaims.ID,
+				"account": adminClaims.Account,
+			},
+		}
+
+		// 将角色转换为权限（简单映射）
+		for _, role := range adminClaims.AdminType {
+			// SuperAdmin 拥有所有权限
+			if role == "SuperAdmin" {
+				authInfo.Permissions = append(authInfo.Permissions, Permission{
+					Resource: "*",
+					Action:   "*",
+				})
+				break
+			}
+		}
+
+		return authInfo, nil
+	}
+
+	// 尝试解析为用户令牌
+	if userClaims, err := p.userAuth.ParseToken(token); err == nil {
+		authInfo := &AuthInfo{
+			SubjectID:   fmt.Sprintf("%d", userClaims.ID),
+			SubjectType: "user",
+			Name:        "",
+			Roles:       []string{"user"},
+			Permissions: make([]Permission, 0),
+			Extra: map[string]interface{}{
+				"id": userClaims.ID,
+			},
+		}
+		return authInfo, nil
+	}
+
+	return nil, fmt.Errorf("无效的认证令牌")
+}
+
+// VerifyPermission 验证权限
+func (p *SecurityAuthProvider) VerifyPermission(token string, resource, action string) (*PermissionResult, error) {
+	// 解析令牌获取认证信息
+	authInfo, err := p.VerifyToken(token)
+	if err != nil {
+		return &PermissionResult{
+			Allowed: false,
+			Reason:  "令牌验证失败",
+		}, err
+	}
+
+	// SuperAdmin 拥有所有权限
+	for _, role := range authInfo.Roles {
+		if role == "SuperAdmin" {
+			return &PermissionResult{
+				Allowed: true,
+				Reason:  "超级管理员拥有所有权限",
+			}, nil
+		}
+	}
+
+	// 检查是否有匹配的权限
+	for _, perm := range authInfo.Permissions {
+		// 通配符权限
+		if perm.Resource == "*" && perm.Action == "*" {
+			return &PermissionResult{
+				Allowed: true,
+				Reason:  "拥有通配符权限",
+			}, nil
+		}
+
+		// 资源匹配
+		if perm.Resource == resource || perm.Resource == "*" {
+			// 操作匹配
+			if perm.Action == action || perm.Action == "*" {
+				return &PermissionResult{
+					Allowed: true,
+					Reason:  fmt.Sprintf("拥有权限 %s:%s", resource, action),
+				}, nil
+			}
+		}
+	}
+
+	// 如果是管理员类型，检查特定管理员权限
+	if authInfo.SubjectType == "admin" {
+		// 这里可以根据实际需求添加更细粒度的权限控制
+		// 例如：从数据库查询管理员的具体权限
+		// 目前简单处理：所有管理员都允许访问配置相关资源
+		if resource == "config.v1.ConfigService" {
+			return &PermissionResult{
+				Allowed: true,
+				Reason:  "管理员拥有配置服务权限",
+			}, nil
+		}
+	}
+
+	// 用户类型只能访问查询接口
+	if authInfo.SubjectType == "user" {
+		if resource == "config.v1.ConfigService" {
+			// 只允许查询操作
+			if action == "getconfig" || action == "batchgetconfigs" {
+				return &PermissionResult{
+					Allowed: true,
+					Reason:  "用户拥有配置查询权限",
+				}, nil
+			}
+		}
+	}
+
+	return &PermissionResult{
+		Allowed: false,
+		Reason:  fmt.Sprintf("没有权限访问资源 %s 的操作 %s", resource, action),
+	}, nil
+}

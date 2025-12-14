@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package xiaozhizhang.user.v1;
+
+option go_package = "xiaozhizhang/system/user/api/proto;proto";
+
+// ClientAuthService 客户端认证服务（gRPC 对外接口）
+service ClientAuthService {
+  // AuthenticateClient 客户端认证，返回 JWT token
+  rpc AuthenticateClient(AuthenticateClientRequest) returns (AuthenticateClientResponse);
+  
+  // RenewToken 续期 token（在未过期时延长有效期）
+  rpc RenewToken(RenewTokenRequest) returns (RenewTokenResponse);
+}
+
+// AuthenticateClientRequest 客户端认证请求
+message AuthenticateClientRequest {
+  string client_key = 1;  // 客户端 key
+  string client_secret = 2;  // 客户端 secret
+}
+
+// AuthenticateClientResponse 客户端认证响应
+message AuthenticateClientResponse {
+  string access_token = 1;  // 访问令牌（JWT）
+  int64 expires_at = 2;  // 过期时间戳（秒）
+  string token_type = 3;  // 令牌类型（默认 "Bearer"）
+}
+
+// RenewTokenRequest 续期令牌请求
+message RenewTokenRequest {
+  // token 通过 gRPC metadata 中的 "authorization" 字段传递
+  // 格式: "Bearer <token>"
+}
+
+// RenewTokenResponse 续期令牌响应
+message RenewTokenResponse {
+  string access_token = 1;  // 新的访问令牌（JWT）
+  int64 expires_at = 2;  // 新的过期时间戳（秒）
+  string token_type = 3;  // 令牌类型（默认 "Bearer"）
+}
+
+

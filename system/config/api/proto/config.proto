@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package xiaozhizhang.config.v1;
+
+option go_package = "xiaozhizhang/system/config/api/proto;proto";
+
+// ConfigService 配置服务
+service ConfigService {
+  // 管理端接口（需要admin权限）
+  rpc CreateConfig(CreateConfigRequest) returns (ConfigResponse);
+  rpc UpdateConfig(UpdateConfigRequest) returns (ConfigResponse);
+  rpc DeleteConfig(DeleteConfigRequest) returns (DeleteConfigResponse);
+  rpc GetConfigForAdmin(GetConfigForAdminRequest) returns (ConfigResponse);
+  rpc ListConfigsForAdmin(ListConfigsForAdminRequest) returns (ListConfigsForAdminResponse);
+  rpc UpdateConfigStatus(UpdateConfigStatusRequest) returns (ConfigResponse);
+  
+  // 查询端接口（公开或需要user权限）
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+  rpc BatchGetConfigs(BatchGetConfigsRequest) returns (BatchGetConfigsResponse);
+}
+
+// ValueType 配置值类型
+enum ValueType {
+  VALUE_TYPE_UNSPECIFIED = 0;
+  VALUE_TYPE_STRING = 1;
+  VALUE_TYPE_INT = 2;
+  VALUE_TYPE_FLOAT = 3;
+  VALUE_TYPE_BOOL = 4;
+  VALUE_TYPE_REF = 5;
+  VALUE_TYPE_OBJECT = 6;
+  VALUE_TYPE_ARRAY = 7;
+  VALUE_TYPE_ENCRYPTED = 8;
+}
+
+// ConfigValue 配置值
+message ConfigValue {
+  string value = 1;  // 配置值
+  ValueType type = 2;  // 配置类型
+}
+
+// CreateConfigRequest 创建配置请求
+message CreateConfigRequest {
+  string key = 1;  // 配置键
+  map<string, ConfigValue> value = 2;  // 配置值，key为环境名
+  map<string, string> metadata = 3;  // 元数据
+  string description = 4;  // 配置描述
+  string change_note = 5;  // 变更说明
+}
+
+// UpdateConfigRequest 更新配置请求
+message UpdateConfigRequest {
+  string key = 1;  // 配置键
+  map<string, ConfigValue> value = 2;  // 配置值
+  map<string, string> metadata = 3;  // 元数据
+  string description = 4;  // 配置描述
+  string change_note = 5;  // 变更说明
+}
+
+// DeleteConfigRequest 删除配置请求
+message DeleteConfigRequest {
+  string key = 1;  // 配置键
+}
+
+// DeleteConfigResponse 删除配置响应
+message DeleteConfigResponse {
+  bool success = 1;  // 是否成功
+  string message = 2;  // 消息
+}
+
+// GetConfigForAdminRequest 获取配置请求（管理端）
+message GetConfigForAdminRequest {
+  string key = 1;  // 配置键
+}
+
+// ListConfigsForAdminRequest 列表查询请求（管理端）
+message ListConfigsForAdminRequest {
+  string key = 1;  // 配置键（支持模糊查询）
+  string environment = 2;  // 环境
+  int32 page_num = 3;  // 页码
+  int32 size = 4;  // 每页数量
+}
+
+// ListConfigsForAdminResponse 列表查询响应（管理端）
+message ListConfigsForAdminResponse {
+  repeated ConfigResponse content = 1;  // 配置列表
+  int64 total = 2;  // 总数
+}
+
+// UpdateConfigStatusRequest 更新配置状态请求
+message UpdateConfigStatusRequest {
+  string key = 1;  // 配置键
+  string status = 2;  // 状态
+}
+
+// ConfigResponse 配置响应
+message ConfigResponse {
+  int64 id = 1;  // ID
+  string key = 2;  // 配置键
+  map<string, ConfigValue> value = 3;  // 配置值
+  int64 version = 4;  // 版本号
+  map<string, string> metadata = 5;  // 元数据
+  string description = 6;  // 配置描述
+  string created_at = 7;  // 创建时间
+  string updated_at = 8;  // 更新时间
+}
+
+// GetConfigRequest 获取配置请求（查询端）
+message GetConfigRequest {
+  string key = 1;  // 配置键
+  string env = 2;  // 环境
+}
+
+// GetConfigResponse 获取配置响应（查询端）
+message GetConfigResponse {
+  string json_str = 1;  // JSON字符串格式的配置值
+}
+
+// BatchGetConfigsRequest 批量获取配置请求
+message BatchGetConfigsRequest {
+  repeated string keys = 1;  // 配置键列表
+  string env = 2;  // 环境
+}
+
+// BatchGetConfigsResponse 批量获取配置响应
+message BatchGetConfigsResponse {
+  map<string, string> configs = 1;  // 配置映射，key为配置键，value为JSON字符串
+}
+
+

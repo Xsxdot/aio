@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package xiaozhizhang.server.v1;
+
+option go_package = "xiaozhizhang/system/server/api/proto";
+
+// ServerService 服务器管理服务
+service ServerService {
+  // 上报服务器状态（供 agent/脚本调用）
+  rpc ReportServerStatus(ReportServerStatusRequest) returns (ReportServerStatusResponse);
+  
+  // 获取所有服务器状态（主页聚合查询）
+  rpc GetAllServerStatus(GetAllServerStatusRequest) returns (GetAllServerStatusResponse);
+  
+  // 获取单个服务器状态
+  rpc GetServerStatus(GetServerStatusRequest) returns (ServerStatusInfo);
+}
+
+// ReportServerStatusRequest 上报服务器状态请求
+message ReportServerStatusRequest {
+  int64 server_id = 1;
+  SystemStatus status = 2;
+}
+
+// SystemStatus 系统状态
+message SystemStatus {
+  double cpu_percent = 1;
+  int64 mem_used = 2;
+  int64 mem_total = 3;
+  double load1 = 4;
+  double load5 = 5;
+  double load15 = 6;
+  repeated DiskItem disk_items = 7;
+  int64 collected_at = 8; // Unix timestamp
+  string error_message = 9;
+}
+
+// DiskItem 磁盘项
+message DiskItem {
+  string mount_point = 1;
+  int64 used = 2;
+  int64 total = 3;
+  double percent = 4;
+}
+
+// ReportServerStatusResponse 上报响应
+message ReportServerStatusResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// GetAllServerStatusRequest 获取所有服务器状态请求
+message GetAllServerStatusRequest {
+  // 空请求，返回所有服务器
+}
+
+// GetAllServerStatusResponse 获取所有服务器状态响应
+message GetAllServerStatusResponse {
+  repeated ServerStatusInfo servers = 1;
+}
+
+// GetServerStatusRequest 获取单个服务器状态请求
+message GetServerStatusRequest {
+  int64 server_id = 1;
+}
+
+// ServerStatusInfo 服务器状态信息
+message ServerStatusInfo {
+  // 服务器基本信息
+  int64 id = 1;
+  string name = 2;
+  string host = 3;
+  string agent_grpc_address = 4;
+  bool enabled = 5;
+  map<string, string> tags = 6;
+  string comment = 7;
+  
+  // 状态信息（可能为空）
+  SystemStatus status = 8;
+  int64 reported_at = 9; // Unix timestamp，平台接收时间
+  string status_summary = 10; // online/offline/unknown
+}
+
+
