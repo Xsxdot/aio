@@ -1,0 +1,82 @@
+app-name: aio
+env: dev  # 环境：dev/test/prod
+host: 127.0.0.1
+port: 9000
+domain: your-domain.com
+
+db:
+  host: localhost
+  port: 3306
+  user: your_db_user
+  password: your_db_password
+  db-name: your_database_name
+
+jwt:
+  secret: 'your_jwt_secret_base64_encoded'
+  admin-secret: 'your_admin_jwt_secret_base64_encoded'
+  expire-time: 1  # Token 过期时间（小时）
+
+redis:
+  mode: single  # single/cluster/sentinel
+  host: 'localhost:6379'
+  password: your_redis_password
+  db: 0
+
+config:
+  encryption-salt: 'your-config-center-encryption-salt'
+
+proxy:
+  enabled: false  # 是否启用SOCKS代理
+  host: 'proxy-server-address'  # 代理服务器地址
+  port: 1080  # 代理服务器端口
+  username: 'proxy_username'  # 代理认证用户名（可选）
+  password: 'proxy_password'  # 代理认证密码（可选）
+
+grpc:
+  address: ':50051'  # gRPC 监听地址
+  enable_reflection: true  # 是否启用反射服务（开发环境建议true）
+  enable_recovery: true  # 是否启用恢复中间件
+  enable_validation: true  # 是否启用参数验证
+  enable_auth: true  # 是否启用鉴权
+  enable_permission: true  # 是否启用权限验证
+  log_level: 'info'  # 日志级别：debug/info/warn/error
+  max_recv_msg_size: 4194304  # 最大接收消息大小（4MB）
+  max_send_msg_size: 4194304  # 最大发送消息大小（4MB）
+  connection_timeout: 30s  # 连接超时
+
+systemd:
+  root_dir: '/etc/systemd/system'  # unit 文件根目录（仅管理此目录下的 *.service）
+  command_timeout: 30s  # systemctl/journalctl 命令超时时间
+
+nginx:
+  root_dir: '/etc/nginx/conf.d'  # 配置文件根目录（仅管理此目录下的 *.conf）
+  validate_command: 'nginx -t'  # 配置校验命令
+  reload_command: 'nginx -s reload'  # 配置重载命令
+  command_timeout: 30s  # 命令执行超时时间
+  file_mode: '0644'  # 配置文件权限
+
+oss:
+  access-key: 'your_aliyun_access_key_id'
+  access-secret: 'your_aliyun_access_key_secret'
+  bucket-name: your-bucket-name
+  # domain: 'https://your-oss-domain.com'  # 自定义域名（可选）
+  region: cn-hangzhou  # OSS 区域
+
+server:
+  bootstrap:
+    - name: 'server-example-1'
+      host: '192.168.1.100'
+      agent_grpc_address: '192.168.1.100:50052'
+      enabled: true
+      tags:
+        env: 'dev'
+        region: 'cn-north'
+      comment: '示例服务器配置'
+      ssh:
+        port: 22
+        username: 'root'
+        auth_method: 'privatekey'  # 认证方式：password/privatekey
+        private_key_file: '/path/to/your/private/key'  # 推荐：使用文件路径
+        # password: 'your_ssh_password'  # 或使用密码（不推荐）
+        comment: 'SSH 凭证配置'
+
