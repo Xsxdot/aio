@@ -1,0 +1,172 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.txt
+coverage.html
+
+# Go build artifacts
+/bin/
+/build/
+/dist/
+main
+xiaozhizhang
+cmd/agent/agent
+
+# Dependency directories
+/vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Environment and configuration files
+.env
+.env.local
+.env.*.local
+*.local.yaml
+*.local.yml
+
+# Keep example configs but ignore actual configs
+resources/dev.yaml
+resources/test.yaml
+resources/prod.yaml
+resources/agent.yaml
+resources/local.yaml
+!resources/*.example
+!resources/*.example.yaml
+
+# Logs
+*.log
+logs/
+/log/
+/logs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+/data/
+
+# Cache and temporary files
+tmp/
+temp/
+.cache/
+*.tmp
+*.swp
+*.swo
+*~
+
+# IDE and Editor files
+# VSCode
+.vscode/
+*.code-workspace
+
+# GoLand / IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Cursor
+.cursor/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.vim
+.vim/
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# SSL certificates and keys (IMPORTANT: never commit these)
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+/ssl/
+/certs/
+/certificates/
+
+# OSS and upload files
+/uploads/
+/public/uploads/
+/static/uploads/
+
+# Docker
+docker-compose.override.yml
+
+# Testing
+testdata/output/
+*.cover
+
+# Profiling
+*.prof
+*.pprof
+
+# Build tools
+/tools/
+
+# Node modules (if any frontend integration)
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Generated files
+*.pb.go
+# But keep the proto generated files in this project
+!system/*/api/proto/*.pb.go
+
+# Air live reload tool
+tmp/
+
+# Delve debugger
+__debug_bin
+
+# Project specific
+example/output/
+example/test/
+factory.yaml
+!factory.yaml.example
+
