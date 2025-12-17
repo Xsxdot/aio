@@ -1,0 +1,140 @@
+### Systemd Agent化 API 测试
+
+@baseUrl = http://localhost:8080
+@adminToken = YOUR_ADMIN_TOKEN_HERE
+@serverId = 1
+
+### 创建 Systemd Service
+POST {{baseUrl}}/admin/servers/{{serverId}}/systemd/services
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "myapp.service",
+  "content": "[Unit]\nDescription=My Application\nAfter=network.target\n\n[Service]\nType=simple\nUser=appuser\nWorkingDirectory=/opt/myapp\nExecStart=/opt/myapp/start.sh\nRestart=always\n\n[Install]\nWantedBy=multi-user.target"
+}
+
+### 列出 Systemd Services
+GET {{baseUrl}}/admin/servers/{{serverId}}/systemd/services?pageNum=1&size=20&includeStatus=true
+Authorization: Bearer {{adminToken}}
+
+### 获取指定 Service
+GET {{baseUrl}}/admin/servers/{{serverId}}/systemd/services/myapp.service
+Authorization: Bearer {{adminToken}}
+
+### 更新 Service
+PUT {{baseUrl}}/admin/servers/{{serverId}}/systemd/services/myapp.service
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "content": "[Unit]\nDescription=My Application (Updated)\nAfter=network.target\n\n[Service]\nType=simple\nUser=appuser\nWorkingDirectory=/opt/myapp\nExecStart=/opt/myapp/start.sh\nRestart=always\nRestartSec=10\n\n[Install]\nWantedBy=multi-user.target"
+}
+
+### 删除 Service
+DELETE {{baseUrl}}/admin/servers/{{serverId}}/systemd/services/myapp.service?force=false
+Authorization: Bearer {{adminToken}}
+
+### 启动服务
+POST {{baseUrl}}/admin/servers/{{serverId}}/systemd/services/myapp.service/start
+Authorization: Bearer {{adminToken}}
+
+### 停止服务
+POST {{baseUrl}}/admin/servers/{{serverId}}/systemd/services/myapp.service/stop
+Authorization: Bearer {{adminToken}}
+
+### 重启服务
+POST {{baseUrl}}/admin/servers/{{serverId}}/systemd/services/myapp.service/restart
+Authorization: Bearer {{adminToken}}
+
+### 重载服务配置
+POST {{baseUrl}}/admin/servers/{{serverId}}/systemd/services/myapp.service/reload
+Authorization: Bearer {{adminToken}}
+
+### 启用服务（开机自启）
+POST {{baseUrl}}/admin/servers/{{serverId}}/systemd/services/myapp.service/enable
+Authorization: Bearer {{adminToken}}
+
+### 禁用服务
+POST {{baseUrl}}/admin/servers/{{serverId}}/systemd/services/myapp.service/disable
+Authorization: Bearer {{adminToken}}
+
+### 获取服务状态
+GET {{baseUrl}}/admin/servers/{{serverId}}/systemd/services/myapp.service/status
+Authorization: Bearer {{adminToken}}
+
+### 获取服务日志
+GET {{baseUrl}}/admin/servers/{{serverId}}/systemd/services/myapp.service/logs?n=200
+Authorization: Bearer {{adminToken}}
+
+### 按参数生成 Service
+POST {{baseUrl}}/admin/servers/{{serverId}}/systemd/services/generate
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "params": {
+    "description": "Node.js Application",
+    "after": ["network.target"],
+    "type": "simple",
+    "user": "nodejs",
+    "workingDirectory": "/opt/nodeapp",
+    "execStart": "/usr/bin/node /opt/nodeapp/server.js",
+    "restart": "always",
+    "restartSec": 5,
+    "environment": {
+      "NODE_ENV": "production",
+      "PORT": "3000"
+    },
+    "wantedBy": ["multi-user.target"]
+  }
+}
+
+### 按参数创建 Service
+POST {{baseUrl}}/admin/servers/{{serverId}}/systemd/services/from-params
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "nodeapp.service",
+  "params": {
+    "description": "Node.js Application",
+    "after": ["network.target"],
+    "type": "simple",
+    "user": "nodejs",
+    "workingDirectory": "/opt/nodeapp",
+    "execStart": "/usr/bin/node /opt/nodeapp/server.js",
+    "restart": "always",
+    "restartSec": 5,
+    "environment": {
+      "NODE_ENV": "production",
+      "PORT": "3000"
+    },
+    "wantedBy": ["multi-user.target"]
+  }
+}
+
+### 按参数更新 Service
+PUT {{baseUrl}}/admin/servers/{{serverId}}/systemd/services/nodeapp.service/from-params
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "params": {
+    "description": "Node.js Application (Updated)",
+    "after": ["network.target"],
+    "type": "simple",
+    "user": "nodejs",
+    "workingDirectory": "/opt/nodeapp",
+    "execStart": "/usr/bin/node /opt/nodeapp/server.js",
+    "restart": "always",
+    "restartSec": 10,
+    "environment": {
+      "NODE_ENV": "production",
+      "PORT": "3000",
+      "LOG_LEVEL": "info"
+    },
+    "wantedBy": ["multi-user.target"]
+  }
+}
+

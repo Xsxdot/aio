@@ -61,10 +61,10 @@ func (s *ConfigService) CreateConfig(ctx context.Context, req *pb.CreateConfigRe
 		return nil, status.Error(codes.Unauthenticated, "未授权的请求")
 	}
 
-	// 转换为内部DTO
+	// 转换为内部DTO（value map 的 key 为属性名）
 	configValue := make(map[string]*model.ConfigValue)
-	for env, val := range req.Value {
-		configValue[env] = &model.ConfigValue{
+	for field, val := range req.Value {
+		configValue[field] = &model.ConfigValue{
 			Value: val.Value,
 			Type:  convertProtoValueType(val.Type),
 		}
@@ -103,10 +103,10 @@ func (s *ConfigService) UpdateConfig(ctx context.Context, req *pb.UpdateConfigRe
 		return nil, convertToGRPCError(err)
 	}
 
-	// 转换为内部DTO
+	// 转换为内部DTO（value map 的 key 为属性名）
 	configValue := make(map[string]*model.ConfigValue)
-	for env, val := range req.Value {
-		configValue[env] = &model.ConfigValue{
+	for field, val := range req.Value {
+		configValue[field] = &model.ConfigValue{
 			Value: val.Value,
 			Type:  convertProtoValueType(val.Type),
 		}
@@ -310,10 +310,10 @@ func convertToProtoConfigResponse(config *model.ConfigItemModel) (*pb.ConfigResp
 		return nil, fmt.Errorf("解析配置值失败: %w", err)
 	}
 
-	// 转换为proto格式
+	// 转换为proto格式（value map 的 key 为属性名）
 	protoValue := make(map[string]*pb.ConfigValue)
-	for env, val := range configValue {
-		protoValue[env] = &pb.ConfigValue{
+	for field, val := range configValue {
+		protoValue[field] = &pb.ConfigValue{
 			Value: val.Value,
 			Type:  convertInternalValueType(val.Type),
 		}
@@ -370,6 +370,3 @@ func convertToGRPCError(err error) error {
 	// 默认返回内部错误
 	return status.Error(codes.Internal, err.Error())
 }
-
-
-

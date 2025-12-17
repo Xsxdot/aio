@@ -5,6 +5,7 @@ import (
 	errorc "xiaozhizhang/pkg/core/err"
 	"xiaozhizhang/pkg/core/logger"
 	"xiaozhizhang/system/ssl/internal/dao"
+	"xiaozhizhang/system/ssl/internal/facade"
 	"xiaozhizhang/system/ssl/internal/service"
 )
 
@@ -25,12 +26,15 @@ type App struct {
 	CertificateSvc  *service.CertificateService
 	DeployTargetSvc *service.DeployTargetService
 
+	// Facades (跨组件依赖)
+	serverFacade facade.IServerFacade
+
 	log *logger.Log
 	err *errorc.ErrorBuilder
 }
 
 // NewApp 创建 SSL 证书应用层实例
-func NewApp() *App {
+func NewApp(serverFacade facade.IServerFacade) *App {
 	log := logger.GetLogger().WithEntryName("SslApp")
 
 	// 初始化 DAOs
@@ -58,6 +62,7 @@ func NewApp() *App {
 		DnsCredSvc:       dnsCredSvc,
 		CertificateSvc:   certSvc,
 		DeployTargetSvc:  deployTargetSvc,
+		serverFacade:     serverFacade,
 		log:              log,
 		err:              errorc.NewErrorBuilder("SslApp"),
 	}

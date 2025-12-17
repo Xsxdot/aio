@@ -1,0 +1,32 @@
+# Agent 守护进程配置示例
+# 复制此文件到 /etc/xiaozhizhang/agent.yaml 并根据实际情况修改
+
+# JWT 配置（用于验证客户端 token）
+jwt:
+  secret: "your-jwt-secret-must-match-main-server"  # 必须与主服务器的 JWT secret 一致
+  expires: 86400  # token 过期时间（秒），默认 24 小时
+
+# Agent 配置
+agent:
+  # gRPC 监听地址
+  address: ":50052"
+  
+  # 命令执行超时（Go duration 格式，如 30s, 1m）
+  timeout: 30s
+  
+  # Nginx 配置
+  nginx:
+    # 配置文件根目录
+    root_dir: "/etc/nginx/conf.d"
+    # 文件权限（八进制字符串）
+    file_mode: "0644"
+    # 校验命令
+    validate_command: "nginx -t"
+    # 重载命令
+    reload_command: "nginx -s reload"
+  
+  # Systemd 配置
+  systemd:
+    # unit 文件目录
+    unit_dir: "/etc/systemd/system"
+

@@ -2,8 +2,8 @@ package model
 
 // ConfigItem 配置项（用于Service层传递）
 type ConfigItem struct {
-	Key      string                  `json:"key"`      // 配置键
-	Value    map[string]*ConfigValue `json:"value"`    // 配置值
+	Key      string                  `json:"key"`      // 配置键（带环境后缀）
+	Value    map[string]*ConfigValue `json:"value"`    // 配置值（map[属性名]*ConfigValue）
 	Version  int64                   `json:"version"`  // 版本号
 	Metadata map[string]string       `json:"metadata"` // 元数据
 }

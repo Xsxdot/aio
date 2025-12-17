@@ -1,0 +1,104 @@
+### 变量定义
+@baseUrl = http://localhost:8080
+@apiPrefix = /api
+
+### 1. 创建短域名
+POST {{baseUrl}}{{apiPrefix}}/admin/short-domains
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "domain": "s.example.com",
+  "isDefault": true,
+  "comment": "测试短域名"
+}
+
+### 2. 创建短链接 - URL类型
+POST {{baseUrl}}{{apiPrefix}}/admin/short-links
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "domainId": 1,
+  "targetType": "url",
+  "targetConfig": {
+    "url": "https://www.example.com"
+  },
+  "comment": "测试短链接",
+  "codeLength": 6
+}
+
+### 3. 创建短链接 - URL Scheme类型
+POST {{baseUrl}}{{apiPrefix}}/admin/short-links
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "domainId": 1,
+  "targetType": "url_scheme",
+  "targetConfig": {
+    "schemeUrl": "myapp://open?page=home",
+    "fallbackUrl": "https://www.example.com/download"
+  },
+  "comment": "App唤起链接",
+  "codeLength": 6
+}
+
+### 4. 创建短链接 - 微信小程序类型
+POST {{baseUrl}}{{apiPrefix}}/admin/short-links
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "domainId": 1,
+  "targetType": "wechat_miniapp",
+  "targetConfig": {
+    "appid": "wx1234567890",
+    "path": "/pages/index/index",
+    "query": "id=123"
+  },
+  "comment": "微信小程序跳转",
+  "codeLength": 6
+}
+
+### 5. 解析短链接（返回JSON，供第三方页面使用）
+GET {{baseUrl}}{{apiPrefix}}/s/abc123/resolve
+
+### 6. 解析短链接（带密码）
+GET {{baseUrl}}{{apiPrefix}}/s/abc123/resolve?password=123456
+
+### 7. 访问短链接（原有接口，返回HTML或302跳转）
+GET {{baseUrl}}{{apiPrefix}}/s/abc123
+
+### 8. 上报跳转成功
+POST {{baseUrl}}{{apiPrefix}}/s/abc123/success
+Content-Type: application/json
+
+{
+  "eventId": "evt_123456",
+  "attrs": {
+    "platform": "ios",
+    "version": "1.0.0"
+  }
+}
+
+### 9. 查询短链接列表
+GET {{baseUrl}}{{apiPrefix}}/admin/short-links?domainId=1&page=1&size=20
+Authorization: Bearer {{adminToken}}
+
+### 10. 获取短链接统计
+GET {{baseUrl}}{{apiPrefix}}/admin/short-links/1/stats?days=30
+Authorization: Bearer {{adminToken}}
+
+### 11. 更新短链接状态
+PUT {{baseUrl}}{{apiPrefix}}/admin/short-links/1/status
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "enabled": false
+}
+
+### 12. 删除短链接
+DELETE {{baseUrl}}{{apiPrefix}}/admin/short-links/1
+Authorization: Bearer {{adminToken}}

@@ -270,10 +270,17 @@ system/<component>/
 
 ### 6. 组件间集成与 Facade
 
-- **[MUST]** 组件之间调用必须通过对方组件的 `api/client` 或统一的 `facade`，禁止直接 import 对方的 `internal` 包。
-- **[MUST]** 如需依赖其他业务组件，在自身的 `internal/facade` 中定义抽象接口，由上层组装根注入具体实现（通常为对方的 `api/client`）。
-- **[MUST]** 不得直接引用其他组件的数据库表、内部 model 或 DAO。
-- **[SHOULD]** 跨组件强关联通过 ID/引用字段和 facade 协议完成，避免隐式耦合。
+- **[MUST]** 禁止直接 import 其他组件的 `internal/*`（包括 `internal/app`、`internal/service`、`internal/dao`、`internal/model` 等）。
+- **[MUST]** 跨组件调用只能发生在“组件边界”：
+  - 方式 A：直接依赖对方组件的稳定门面 `api/client`（适用于依赖方向清晰、不会形成环的场景）。
+  - 方式 B：在**依赖方（调用方）组件**的 `internal/facade` 中定义“我需要对方提供什么能力”的**最小接口**，由上层组装根注入具体实现（通常为对方的 `api/client`），以隔离显式依赖并避免循环依赖。
+- **[MUST]** `internal/facade` 的接口必须“窄且稳定”：
+  - 只暴露调用方真正需要的方法，禁止把对方 Client 整体搬进接口里。
+  - 入参与返回值应优先使用对方的 `api/dto`（或本方定义的 facade DTO），禁止泄漏对方 `internal/model`。
+- **[MUST]** 依赖注入必须发生在组装根（`main.go` / 顶层 `app.App` / 各组件 `Module.NewModule(...)`）：
+  - 组件 `Module` / `internal/app.NewApp(...)` 的构造函数**优先接收 facade 接口类型**而不是具体 `*XxxClient`，从而避免在组件内显式引用对方 client 包导致的耦合/环依赖。
+  - 允许“具体实现隐式实现接口”并直接注入（通常不需要额外 adapter 层）。
+- **[MUST]** 不得直接引用其他组件的数据库表、内部 model 或 DAO；跨组件强关联通过 ID/引用字段 + facade 协议完成，避免隐式耦合。
 
 ---
 

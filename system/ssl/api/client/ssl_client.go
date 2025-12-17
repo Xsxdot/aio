@@ -106,7 +106,7 @@ func (c *SslClient) GetCertificateContent(ctx context.Context, id int64) (*dto.C
 	}, nil
 }
 
-// DeployToLocal 部署证书到本机指定路径
+// DeployToLocal 部署证书到本机指定路径（通过 agent，如果提供了 AgentAddress）
 func (c *SslClient) DeployToLocal(ctx context.Context, req *dto.DeployToLocalReq) error {
 	// 获取证书内容
 	cert, err := c.app.GetCertificate(ctx, uint(req.CertificateID))
@@ -114,6 +114,36 @@ func (c *SslClient) DeployToLocal(ctx context.Context, req *dto.DeployToLocalReq
 		return err
 	}
 
+	// 如果提供了 AgentAddress，通过 agent 部署
+	if req.AgentAddress != "" {
+		import base "xiaozhizhang/base"
+		
+		basePath := filepath.Dir(req.CertPath)
+		fullchainName := filepath.Base(req.CertPath)
+		privkeyName := filepath.Base(req.KeyPath)
+		
+		resp, err := base.AgentClient.DeploySSLCertificate(
+			ctx,
+			req.AgentAddress,
+			basePath,
+			fullchainName,
+			privkeyName,
+			cert.FullchainPem,
+			cert.PrivkeyPem,
+			"0600",
+		)
+		if err != nil {
+			return c.err.New("通过 agent 部署证书失败", err)
+		}
+		
+		if !resp.Success {
+			return c.err.New(resp.Message, nil)
+		}
+		
+		return nil
+	}
+
+	// 否则直接本机部署（向后兼容）
 	// 确保目录存在
 	certDir := filepath.Dir(req.CertPath)
 	keyDir := filepath.Dir(req.KeyPath)

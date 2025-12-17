@@ -40,8 +40,8 @@ message ConfigValue {
 
 // CreateConfigRequest 创建配置请求
 message CreateConfigRequest {
-  string key = 1;  // 配置键
-  map<string, ConfigValue> value = 2;  // 配置值，key为环境名
+  string key = 1;  // 配置键（带环境后缀，如 app.cert.dev）
+  map<string, ConfigValue> value = 2;  // 配置值，key为属性名
   map<string, string> metadata = 3;  // 元数据
   string description = 4;  // 配置描述
   string change_note = 5;  // 变更说明
@@ -49,8 +49,8 @@ message CreateConfigRequest {
 
 // UpdateConfigRequest 更新配置请求
 message UpdateConfigRequest {
-  string key = 1;  // 配置键
-  map<string, ConfigValue> value = 2;  // 配置值
+  string key = 1;  // 配置键（带环境后缀，如 app.cert.dev）
+  map<string, ConfigValue> value = 2;  // 配置值，key为属性名
   map<string, string> metadata = 3;  // 元数据
   string description = 4;  // 配置描述
   string change_note = 5;  // 变更说明
@@ -95,8 +95,8 @@ message UpdateConfigStatusRequest {
 // ConfigResponse 配置响应
 message ConfigResponse {
   int64 id = 1;  // ID
-  string key = 2;  // 配置键
-  map<string, ConfigValue> value = 3;  // 配置值
+  string key = 2;  // 配置键（带环境后缀，如 app.cert.dev）
+  map<string, ConfigValue> value = 3;  // 配置值，key为属性名
   int64 version = 4;  // 版本号
   map<string, string> metadata = 5;  // 元数据
   string description = 6;  // 配置描述
@@ -106,19 +106,19 @@ message ConfigResponse {
 
 // GetConfigRequest 获取配置请求（查询端）
 message GetConfigRequest {
-  string key = 1;  // 配置键
-  string env = 2;  // 环境
+  string key = 1;  // 配置键（可以是带环境后缀的完整key，如 app.cert.dev；也可以是不带环境的key，配合 env 参数使用）
+  string env = 2;  // 环境（如果 key 已带环境后缀，该参数可选）
 }
 
 // GetConfigResponse 获取配置响应（查询端）
 message GetConfigResponse {
-  string json_str = 1;  // JSON字符串格式的配置值
+  string json_str = 1;  // JSON字符串格式的配置值（纯对象，可直接反序列化到业务结构体）
 }
 
 // BatchGetConfigsRequest 批量获取配置请求
 message BatchGetConfigsRequest {
-  repeated string keys = 1;  // 配置键列表
-  string env = 2;  // 环境
+  repeated string keys = 1;  // 配置键列表（可以是带环境后缀的完整key，也可以是不带环境的key，配合 env 参数使用）
+  string env = 2;  // 环境（如果 keys 中已带环境后缀，该参数可选）
 }
 
 // BatchGetConfigsResponse 批量获取配置响应

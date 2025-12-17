@@ -76,7 +76,8 @@ func (s *ConfigItemService) ConvertAndDecrypt(dbModel *model.ConfigItemModel) (*
 	}, nil
 }
 
-// GetConfigValueByEnv 根据环境获取配置值
+// GetConfigValueByEnv 根据环境获取配置值（已废弃，保留用于兼容）
+// Deprecated: 使用 GetConfigAsPlainObject 替代
 func (s *ConfigItemService) GetConfigValueByEnv(ctx context.Context, key string, env string) (*model.ConfigValue, error) {
 	configItem, err := s.FindByKeyWithDecrypt(ctx, key)
 	if err != nil {
@@ -94,6 +95,132 @@ func (s *ConfigItemService) GetConfigValueByEnv(ctx context.Context, key string,
 	}
 
 	return nil, s.err.New("指定环境的配置不存在", nil).WithCode(errorc.ErrorCodeNotFound)
+}
+
+// GetConfigAsPlainObject 根据完整配置键获取配置，返回为纯对象（map[属性名]原始值）
+func (s *ConfigItemService) GetConfigAsPlainObject(ctx context.Context, fullKey string) (map[string]interface{}, error) {
+	configItem, err := s.FindByKeyWithDecrypt(ctx, fullKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return ConvertConfigValuesToPlanObject(configItem.Value)
+}
+
+// ConvertConfigValuesToPlanObject 将 map[属性名]*ConfigValue 转换为 map[string]interface{}
+// 按 type 字段解码为原始值类型
+// 兼容旧数据：如果检测到 values 的 key 全部是环境名（dev/test/prod/staging/global），
+// 则视为旧形态，将其转为 {"value": <解码后的值>} 返回
+func ConvertConfigValuesToPlanObject(values map[string]*model.ConfigValue) (map[string]interface{}, error) {
+	// 检测是否为旧数据形态（所有 key 都是环境名）
+	if isLegacyEnvShape(values) {
+		// 旧形态：取第一个环境的值作为默认值，映射到 "value" 属性
+		for _, cv := range values {
+			decoded, err := decodeConfigValue(cv, "value")
+			if err != nil {
+				return nil, err
+			}
+			return map[string]interface{}{"value": decoded}, nil
+		}
+	}
+
+	result := make(map[string]interface{}, len(values))
+
+	for field, cv := range values {
+		decoded, err := decodeConfigValue(cv, field)
+		if err != nil {
+			return nil, err
+		}
+		result[field] = decoded
+	}
+
+	return result, nil
+}
+
+// isLegacyEnvShape 检测是否为旧数据形态（所有 key 都是环境名）
+func isLegacyEnvShape(values map[string]*model.ConfigValue) bool {
+	if len(values) == 0 {
+		return false
+	}
+
+	validEnvs := map[string]bool{
+		"dev":     true,
+		"test":    true,
+		"prod":    true,
+		"staging": true,
+		"global":  true,
+	}
+
+	// 检查所有 key 是否都是有效的环境名
+	for key := range values {
+		if !validEnvs[key] {
+			return false
+		}
+	}
+
+	return true
+}
+
+// decodeConfigValue 根据 type 解码 ConfigValue 为原始值
+func decodeConfigValue(cv *model.ConfigValue, field string) (interface{}, error) {
+	var decoded interface{}
+	var err error
+
+	switch cv.Type {
+	case model.ValueTypeString, model.ValueTypeEncrypted:
+		// 字符串和加密类型直接返回字符串
+		decoded = cv.Value
+
+	case model.ValueTypeInt:
+		// 解析为整数
+		var intVal int64
+		if err = json.Unmarshal([]byte(cv.Value), &intVal); err != nil {
+			return nil, errorc.New("解析整数配置失败: "+field, err)
+		}
+		decoded = intVal
+
+	case model.ValueTypeFloat:
+		// 解析为浮点数
+		var floatVal float64
+		if err = json.Unmarshal([]byte(cv.Value), &floatVal); err != nil {
+			return nil, errorc.New("解析浮点数配置失败: "+field, err)
+		}
+		decoded = floatVal
+
+	case model.ValueTypeBool:
+		// 解析为布尔值
+		var boolVal bool
+		if err = json.Unmarshal([]byte(cv.Value), &boolVal); err != nil {
+			return nil, errorc.New("解析布尔配置失败: "+field, err)
+		}
+		decoded = boolVal
+
+	case model.ValueTypeObject:
+		// 解析为对象
+		var objVal map[string]interface{}
+		if err = json.Unmarshal([]byte(cv.Value), &objVal); err != nil {
+			return nil, errorc.New("解析对象配置失败: "+field, err)
+		}
+		decoded = objVal
+
+	case model.ValueTypeArray:
+		// 解析为数组
+		var arrVal []interface{}
+		if err = json.Unmarshal([]byte(cv.Value), &arrVal); err != nil {
+			return nil, errorc.New("解析数组配置失败: "+field, err)
+		}
+		decoded = arrVal
+
+	case model.ValueTypeRef:
+		// 引用类型保持为字符串（后续由调用方解析）
+		decoded = cv.Value
+
+	default:
+		// 默认作为字符串
+		decoded = cv.Value
+	}
+
+	return decoded, nil
 }
 
 // CreateWithEncrypt 创建配置（自动加密）

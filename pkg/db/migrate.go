@@ -6,6 +6,7 @@ import (
 	"xiaozhizhang/system/config"
 	"xiaozhizhang/system/registry"
 	"xiaozhizhang/system/server"
+	"xiaozhizhang/system/shorturl"
 	"xiaozhizhang/system/ssl"
 	"xiaozhizhang/system/user"
 
@@ -45,6 +46,11 @@ func AutoMigrate(db *gorm.DB) error {
 
 	// Server 管理组件表迁移
 	if err := server.AutoMigrate(db, log); err != nil {
+		return err
+	}
+
+	// 短网址组件表迁移
+	if err := shorturl.AutoMigrate(db, log); err != nil {
 		return err
 	}
 

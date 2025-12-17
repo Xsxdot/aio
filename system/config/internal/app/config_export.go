@@ -8,6 +8,7 @@ import (
 	errorc "xiaozhizhang/pkg/core/err"
 	"xiaozhizhang/system/config/internal/model"
 	"xiaozhizhang/system/config/internal/model/dto"
+	"xiaozhizhang/system/config/internal/service"
 )
 
 // ExportConfigs 导出配置
@@ -45,18 +46,14 @@ func (a *App) ExportConfigs(ctx context.Context, req *dto.ExportConfigRequest) (
 			}
 		}
 
-		// 如果指定了环境，只导出该环境的配置
+		// 如果指定了环境，根据 key 后缀过滤
 		if req.Environment != "" {
-			if _, ok := values[req.Environment]; ok {
-				// 只保留指定环境的配置
-				filteredValues := map[string]*model.ConfigValue{
-					req.Environment: values[req.Environment],
-				}
-				values = filteredValues
-			} else {
-				// 跳过不包含指定环境的配置
+			_, keyEnv, isEnvSpecific := service.ParseConfigKey(config.Key)
+			if isEnvSpecific && keyEnv != req.Environment {
+				// 跳过不匹配指定环境的配置
 				continue
 			}
+			// 如果是全局配置（不带环境后缀），也导出
 		}
 
 		// 如果指定了目标盐值，需要重新加密

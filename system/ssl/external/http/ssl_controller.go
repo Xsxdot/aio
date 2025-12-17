@@ -278,8 +278,8 @@ func (c *SslController) DeployCertificate(ctx *fiber.Ctx) error {
 	}
 
 	// 异步部署
+	deployCtx := ctx.UserContext()
 	go func() {
-		deployCtx := ctx.UserContext()
 		if err := c.app.DeployCertificateToTargets(deployCtx, uint(id), req.TargetIDs, "manual"); err != nil {
 			c.log.WithErr(err).Error("手动部署证书失败")
 		}
@@ -437,7 +437,7 @@ func (c *SslController) DeleteDeployTarget(ctx *fiber.Ctx) error {
 	return result.Once(ctx, nil, err)
 }
 
-// encryptDeployConfig 加密部署配置中的敏感字段
+// encryptDeployConfig 校验部署配置（不再加密，因为配置改为仅引用式）
 func (c *SslController) encryptDeployConfig(targetType model.DeployTargetType, configJSON string) (string, error) {
 	switch targetType {
 	case model.DeployTargetTypeSSH:
@@ -445,37 +445,28 @@ func (c *SslController) encryptDeployConfig(targetType model.DeployTargetType, c
 		if err := utils.ParseJSON(configJSON, &config); err != nil {
 			return "", err
 		}
-		if config.Password != "" && !c.app.CryptoService.IsEncrypted(config.Password) {
-			encrypted, err := c.app.CryptoService.Encrypt(config.Password)
-			if err != nil {
-				return "", err
-			}
-			config.Password = encrypted
+		// 校验必填字段
+		if config.ServerID <= 0 {
+			return "", c.err.New("SSH 部署配置必须提供 server_id", nil).ValidWithCtx()
 		}
-		if config.PrivateKey != "" && !c.app.CryptoService.IsEncrypted(config.PrivateKey) {
-			encrypted, err := c.app.CryptoService.Encrypt(config.PrivateKey)
-			if err != nil {
-				return "", err
-			}
-			config.PrivateKey = encrypted
+		if config.RemotePath == "" {
+			return "", c.err.New("SSH 部署配置必须提供 remote_path", nil).ValidWithCtx()
 		}
-		return utils.ToJSON(config)
+		return configJSON, nil
 
 	case model.DeployTargetTypeAliyunCAS:
 		var config model.AliyunCASDeployConfig
 		if err := utils.ParseJSON(configJSON, &config); err != nil {
 			return "", err
 		}
-		if config.AccessKeySecret != "" && !c.app.CryptoService.IsEncrypted(config.AccessKeySecret) {
-			encrypted, err := c.app.CryptoService.Encrypt(config.AccessKeySecret)
-			if err != nil {
-				return "", err
-			}
-			config.AccessKeySecret = encrypted
+		// 校验必填字段
+		if config.DnsCredentialID <= 0 {
+			return "", c.err.New("阿里云 CAS 部署配置必须提供 dns_credential_id", nil).ValidWithCtx()
 		}
-		return utils.ToJSON(config)
+		return configJSON, nil
 
 	default:
+		// Local 类型不需要特殊校验
 		return configJSON, nil
 	}
 }

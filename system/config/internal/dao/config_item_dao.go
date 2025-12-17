@@ -31,7 +31,7 @@ func NewConfigItemDao(db *gorm.DB, log *logger.Log) *ConfigItemDao {
 // FindByKey 根据配置键查询
 func (d *ConfigItemDao) FindByKey(ctx context.Context, key string) (*model.ConfigItemModel, error) {
 	var item model.ConfigItemModel
-	err := d.db.WithContext(ctx).Where("key = ?", key).First(&item).Error
+	err := d.db.WithContext(ctx).Where("`key` = ?", key).First(&item).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, d.err.New("配置项不存在", err).WithCode(errorc.ErrorCodeNotFound)
@@ -44,7 +44,7 @@ func (d *ConfigItemDao) FindByKey(ctx context.Context, key string) (*model.Confi
 // FindByKeyLike 根据配置键模糊查询
 func (d *ConfigItemDao) FindByKeyLike(ctx context.Context, keyPattern string) ([]*model.ConfigItemModel, error) {
 	var items []*model.ConfigItemModel
-	err := d.db.WithContext(ctx).Where("key LIKE ?", "%"+keyPattern+"%").Find(&items).Error
+	err := d.db.WithContext(ctx).Where("`key` LIKE ?", "%"+keyPattern+"%").Find(&items).Error
 	if err != nil {
 		return nil, d.err.New("模糊查询配置项失败", err).DB()
 	}
@@ -64,7 +64,7 @@ func (d *ConfigItemDao) FindAll(ctx context.Context) ([]*model.ConfigItemModel, 
 // FindByKeys 根据多个配置键查询
 func (d *ConfigItemDao) FindByKeys(ctx context.Context, keys []string) ([]*model.ConfigItemModel, error) {
 	var items []*model.ConfigItemModel
-	err := d.db.WithContext(ctx).Where("key IN ?", keys).Find(&items).Error
+	err := d.db.WithContext(ctx).Where("`key` IN ?", keys).Find(&items).Error
 	if err != nil {
 		return nil, d.err.New("批量查询配置项失败", err).DB()
 	}
@@ -74,7 +74,7 @@ func (d *ConfigItemDao) FindByKeys(ctx context.Context, keys []string) ([]*model
 // ExistsByKey 检查配置键是否存在
 func (d *ConfigItemDao) ExistsByKey(ctx context.Context, key string) (bool, error) {
 	var count int64
-	err := d.db.WithContext(ctx).Model(&model.ConfigItemModel{}).Where("key = ?", key).Count(&count).Error
+	err := d.db.WithContext(ctx).Model(&model.ConfigItemModel{}).Where("`key` = ?", key).Count(&count).Error
 	if err != nil {
 		return false, d.err.New("检查配置键是否存在失败", err).DB()
 	}

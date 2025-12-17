@@ -134,3 +134,7 @@ func (s *ServerService) UpsertByName(ctx context.Context, server *model.ServerMo
 	return s.dao.UpsertByName(ctx, server)
 }
 
+// FindByName 根据名称查询服务器（用于 bootstrap 初始化）
+func (s *ServerService) FindByName(ctx context.Context, name string) (*model.ServerModel, error) {
+	return s.dao.FindByName(ctx, name)
+}

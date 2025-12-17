@@ -17,6 +17,7 @@ import (
 	"xiaozhizhang/pkg/oss"
 	"xiaozhizhang/pkg/scheduler"
 	"xiaozhizhang/router"
+	agentclient "xiaozhizhang/system/agent/api/client"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -58,6 +59,9 @@ func main() {
 		configures.Logger.Panic(fmt.Sprintf("启动调度器失败: %v", err))
 	}
 
+	// 初始化 Agent 客户端（用于调用远程 agent 守护进程）
+	base.AgentClient = initAgentClient()
+
 	if env == "dev" {
 		// 开发环境下添加数据库保活任务，防止代理超时导致连接断开
 		keepAliveTask := scheduler.NewIntervalTask(
@@ -96,6 +100,11 @@ func main() {
 	// 初始化 bootstrap 服务器（从配置文件加载）
 	if err := appRoot.ServerModule.EnsureBootstrapServers(context.Background()); err != nil {
 		configures.Logger.Panic(fmt.Sprintf("初始化 bootstrap 服务器失败: %v", err))
+	}
+
+	// 初始化 bootstrap 服务器的 SSH 凭证（从配置文件加载）
+	if err := appRoot.ServerModule.EnsureBootstrapServerSSHCredentials(context.Background()); err != nil {
+		configures.Logger.Panic(fmt.Sprintf("初始化 bootstrap 服务器 SSH 凭证失败: %v", err))
 	}
 
 	// 注册 SSL 证书自动续期任务（每天凌晨 2:30 执行）
@@ -187,6 +196,14 @@ func main() {
 			configures.Logger.Panic(fmt.Sprintf("注册服务器管理服务失败: %v", err))
 		}
 
+		// 注册短网址组件的 gRPC 服务
+		if err := grpcServer.RegisterService(appRoot.ShortURLModule.GRPCService); err != nil {
+			configures.Logger.Panic(fmt.Sprintf("注册短网址服务失败: %v", err))
+		}
+
+		// 为短网址的 ReportSuccess 方法添加到跳过鉴权列表
+		grpcServer.EnableAuth([]string{"/shorturl.v1.ShortURLService/ReportSuccess"})
+
 		// 启动 gRPC 服务器
 		if err := grpcServer.Start(); err != nil {
 			configures.Logger.Panic(fmt.Sprintf("启动 gRPC 服务器失败: %v", err))
@@ -238,4 +255,18 @@ func createZapLogger(env string) (*zap.Logger, error) {
 	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
 	return config.Build()
+}
+
+// initAgentClient 初始化 Agent 客户端
+func initAgentClient() *agentclient.AgentClient {
+	// Token 提供者：从 ClientAuth 获取当前有效的 JWT token
+	tokenProvider := func() string {
+		// 这里返回一个系统级 token（由配置或环境变量提供）
+		// 在实际调用时，可以从 context 或请求中获取用户的 token
+		// 目前先返回空，agent client 在使用时会检查 context 中的 token
+		return ""
+	}
+
+	// 默认 30 秒超时
+	return agentclient.NewAgentClient(tokenProvider, 30*time.Second)
 }

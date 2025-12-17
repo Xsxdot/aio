@@ -4,6 +4,7 @@ import (
 	"context"
 	"xiaozhizhang/system/ssl/api/client"
 	"xiaozhizhang/system/ssl/internal/app"
+	"xiaozhizhang/system/ssl/internal/facade"
 )
 
 // Module SSL 证书组件模块门面（对外暴露的根对象）
@@ -16,8 +17,10 @@ type Module struct {
 }
 
 // NewModule 创建 SSL 证书模块实例
-func NewModule() *Module {
-	internalApp := app.NewApp()
+// 通过 facade.IServerFacade 隔离对 server 组件的显式依赖，避免循环依赖风险。
+// 具体实现（如 server/api/client.ServerClient）由组装根在注入时提供。
+func NewModule(serverFacade facade.IServerFacade) *Module {
+	internalApp := app.NewApp(serverFacade)
 	sslClient := client.NewSslClient(internalApp)
 
 	return &Module{

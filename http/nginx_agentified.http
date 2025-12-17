@@ -1,0 +1,91 @@
+### Nginx Agent化 API 测试
+
+@baseUrl = http://localhost:8080
+@adminToken = YOUR_ADMIN_TOKEN_HERE
+@serverId = 1
+
+### 创建 Nginx 配置
+POST {{baseUrl}}/admin/servers/{{serverId}}/nginx/configs
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "example.conf",
+  "content": "server {\n    listen 80;\n    server_name example.com;\n    location / {\n        proxy_pass http://localhost:3000;\n    }\n}"
+}
+
+### 列出 Nginx 配置
+GET {{baseUrl}}/admin/servers/{{serverId}}/nginx/configs?pageNum=1&size=20
+Authorization: Bearer {{adminToken}}
+
+### 获取指定 Nginx 配置
+GET {{baseUrl}}/admin/servers/{{serverId}}/nginx/configs/example.conf
+Authorization: Bearer {{adminToken}}
+
+### 更新 Nginx 配置
+PUT {{baseUrl}}/admin/servers/{{serverId}}/nginx/configs/example.conf
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "content": "server {\n    listen 80;\n    server_name example.com;\n    location / {\n        proxy_pass http://localhost:4000;\n    }\n}"
+}
+
+### 删除 Nginx 配置
+DELETE {{baseUrl}}/admin/servers/{{serverId}}/nginx/configs/example.conf
+Authorization: Bearer {{adminToken}}
+
+### 按参数生成并创建配置
+POST {{baseUrl}}/admin/servers/{{serverId}}/nginx/configs/generate
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "generated.conf",
+  "spec": {
+    "serverName": "app.example.com",
+    "listen": 80,
+    "upstreams": [
+      {
+        "name": "backend",
+        "servers": [
+          {"address": "127.0.0.1:3000", "weight": 1}
+        ]
+      }
+    ],
+    "locations": [
+      {
+        "path": "/",
+        "proxyPass": "http://backend"
+      }
+    ]
+  }
+}
+
+### 按参数更新配置
+PUT {{baseUrl}}/admin/servers/{{serverId}}/nginx/configs/generated.conf/generate
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "spec": {
+    "serverName": "app.example.com",
+    "listen": 80,
+    "upstreams": [
+      {
+        "name": "backend",
+        "servers": [
+          {"address": "127.0.0.1:3000", "weight": 1},
+          {"address": "127.0.0.1:3001", "weight": 1}
+        ]
+      }
+    ],
+    "locations": [
+      {
+        "path": "/",
+        "proxyPass": "http://backend"
+      }
+    ]
+  }
+}
+

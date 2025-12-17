@@ -25,8 +25,13 @@ func AutoMigrate(db *gorm.DB, log *logger.Log) error {
 	}
 	log.Info("server_status 表迁移成功")
 
+	// 迁移 SSH 凭证表
+	if err := db.AutoMigrate(&model.ServerSSHCredential{}); err != nil {
+		log.WithErr(err).Error("迁移 server_ssh_credentials 表失败")
+		return err
+	}
+	log.Info("server_ssh_credentials 表迁移成功")
+
 	log.Info("server 组件表迁移完成")
 	return nil
 }
-
-

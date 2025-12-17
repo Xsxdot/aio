@@ -6,6 +6,7 @@ import (
 	"xiaozhizhang/system/nginx"
 	"xiaozhizhang/system/registry"
 	"xiaozhizhang/system/server"
+	"xiaozhizhang/system/shorturl"
 	"xiaozhizhang/system/ssl"
 	"xiaozhizhang/system/systemd"
 	"xiaozhizhang/system/user"
@@ -43,17 +44,26 @@ type App struct {
 	// ServerModule 服务器管理组件模块
 	// 提供服务器清单管理、状态上报与聚合查询能力
 	ServerModule *server.Module
+	// ShortURLModule 短网址组件模块
+	// 提供短链接生成、跳转、统计能力
+	ShortURLModule *shorturl.Module
 }
 
 // NewApp 创建进程唯一的 App 实例，由 main.go 在启动时调用。
 // 这里可以使用 base 包中的基础设施实例（DB、Logger 等）
 // 注入到各个 system 组件的 Module 或 Client。
 func NewApp() *App {
-	// 先创建基础组件
+	// 先创建基础组件（注意顺序：server 要在 ssl 之前）
 	configModule := config.NewModule()
 	registryModule := registry.NewModule()
 	userModule := user.NewModule()
-	sslModule := ssl.NewModule()
+
+	// 创建 server 组件（ssl 需要依赖它）
+	serverModule := server.NewModule()
+
+	// 创建 ssl 组件，注入 server client
+	sslModule := ssl.NewModule(serverModule.Client)
+
 	nginxModule := nginx.NewModule()
 	systemdModule := systemd.NewModule()
 
@@ -65,8 +75,8 @@ func NewApp() *App {
 		registryModule,
 	)
 
-	// 创建 server 组件
-	serverModule := server.NewModule()
+	// 创建短网址组件
+	shorturlModule := shorturl.NewModule()
 
 	return &App{
 		ConfigModule:      configModule,
@@ -77,5 +87,6 @@ func NewApp() *App {
 		SystemdModule:     systemdModule,
 		ApplicationModule: applicationModule,
 		ServerModule:      serverModule,
+		ShortURLModule:    shorturlModule,
 	}
 }

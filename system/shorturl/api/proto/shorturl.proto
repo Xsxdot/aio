@@ -1,0 +1,108 @@
+syntax = "proto3";
+
+package shorturl.v1;
+
+option go_package = "xiaozhizhang/system/shorturl/api/proto";
+
+// ShortURLService 短网址服务
+service ShortURLService {
+  // CreateShortLink 创建短链接
+  rpc CreateShortLink(CreateShortLinkRequest) returns (CreateShortLinkResponse);
+  
+  // GetShortLink 获取短链接详情
+  rpc GetShortLink(GetShortLinkRequest) returns (ShortLinkInfo);
+  
+  // ListShortLinks 查询短链接列表
+  rpc ListShortLinks(ListShortLinksRequest) returns (ListShortLinksResponse);
+  
+  // Resolve 解析短链接（返回目标配置和建议动作）
+  rpc Resolve(ResolveRequest) returns (ResolveResponse);
+  
+  // ReportSuccess 上报跳转成功（无鉴权）
+  rpc ReportSuccess(ReportSuccessRequest) returns (ReportSuccessResponse);
+}
+
+// CreateShortLinkRequest 创建短链接请求
+message CreateShortLinkRequest {
+  int64 domain_id = 1;
+  string target_type = 2;
+  string target_config_json = 3;
+  int64 expires_at = 4;
+  string password = 5;
+  int64 max_visits = 6;
+  int32 code_length = 7;
+  string custom_code = 8;
+  string comment = 9;
+}
+
+// CreateShortLinkResponse 创建短链接响应
+message CreateShortLinkResponse {
+  int64 id = 1;
+  string code = 2;
+  string short_url = 3;
+}
+
+// GetShortLinkRequest 获取短链接请求
+message GetShortLinkRequest {
+  int64 id = 1;
+}
+
+// ListShortLinksRequest 查询短链接列表请求
+message ListShortLinksRequest {
+  int64 domain_id = 1;
+  int32 page = 2;
+  int32 size = 3;
+}
+
+// ListShortLinksResponse 查询短链接列表响应
+message ListShortLinksResponse {
+  repeated ShortLinkInfo links = 1;
+  int64 total = 2;
+}
+
+// ShortLinkInfo 短链接信息
+message ShortLinkInfo {
+  int64 id = 1;
+  int64 domain_id = 2;
+  string domain = 3;
+  string code = 4;
+  string short_url = 5;
+  string target_type = 6;
+  string target_config_json = 7;
+  int64 expires_at = 8;
+  int64 max_visits = 9;
+  int64 visit_count = 10;
+  int64 success_count = 11;
+  bool has_password = 12;
+  bool enabled = 13;
+  string comment = 14;
+  int64 created_at = 15;
+  int64 updated_at = 16;
+}
+
+// ResolveRequest 解析短链接请求
+message ResolveRequest {
+  string host = 1;
+  string code = 2;
+  string password = 3;
+}
+
+// ResolveResponse 解析短链接响应
+message ResolveResponse {
+  string target_type = 1;
+  string target_config_json = 2;
+  string action = 3; // "redirect" 或 "landing_page"
+}
+
+// ReportSuccessRequest 上报成功请求
+message ReportSuccessRequest {
+  string code = 1;
+  string event_id = 2;
+  string attrs_json = 3;
+}
+
+// ReportSuccessResponse 上报成功响应
+message ReportSuccessResponse {
+  bool success = 1;
+  string message = 2;
+}

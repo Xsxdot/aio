@@ -53,10 +53,11 @@ system/config/
 
 ### 格式规范
 
-配置键格式：`<module>.<submodule>.<env>`
+配置键格式：`<module>.<submodule>.<name>.<env>`
 
 - 示例：`app.cert.dev`、`payment.wechat.prod`
-- **环境后缀可选**：允许 `app.global` 这样的全局配置（不带环境）
+- **环境后缀必须指定**：每个配置项必须带环境后缀（dev/test/prod/staging）或使用 global
+- **Value 存储属性**：同一配置项的多个属性（如 privateKey、publicKey）通过 Value map 存储
 
 ### 验证规则
 
@@ -72,6 +73,13 @@ app.cert.prod             # 生产环境证书配置
 payment.wechat.test       # 测试环境微信支付配置
 system.global             # 全局系统配置（不分环境）
 ```
+
+### 数据结构说明
+
+- **Key**：带环境后缀的完整配置键（如 `app.cert.dev`）
+- **Value**：`map[属性名]ConfigValue` 结构，存储该配置的多个属性
+  - 例如：`{"privateKey": {...}, "publicKey": {...}, "appId": {...}}`
+- **对外查询**：可传入 `key + env` 或完整 key，返回纯对象 JSON（去掉 ConfigValue 包装）
 
 ## API 接口
 
@@ -108,9 +116,17 @@ Authorization: Bearer <admin_token>
 {
   "key": "app.cert.dev",
   "value": {
-    "dev": {
-      "value": "cert_content_here",
+    "privateKey": {
+      "value": "-----BEGIN PRIVATE KEY-----\nMIIE...",
       "type": "encrypted"
+    },
+    "publicKey": {
+      "value": "-----BEGIN PUBLIC KEY-----\nMIIB...",
+      "type": "string"
+    },
+    "appId": {
+      "value": "wx1234567890",
+      "type": "string"
     }
   },
   "metadata": {
@@ -122,6 +138,11 @@ Authorization: Bearer <admin_token>
 }
 ```
 
+**说明**：
+- `key` 必须带环境后缀（如 `.dev`）
+- `value` 是 `map[属性名]ConfigValue` 结构
+- 每个属性有 `value`（值）和 `type`（类型）字段
+
 ### 2. 更新配置
 
 ```bash
@@ -131,14 +152,24 @@ Authorization: Bearer <admin_token>
 
 {
   "value": {
-    "dev": {
-      "value": "new_cert_content",
+    "privateKey": {
+      "value": "-----BEGIN PRIVATE KEY-----\nNEW...",
       "type": "encrypted"
+    },
+    "publicKey": {
+      "value": "-----BEGIN PUBLIC KEY-----\nNEW...",
+      "type": "string"
+    },
+    "appId": {
+      "value": "wx1234567890",
+      "type": "string"
     }
   },
   "changeNote": "更新证书"
 }
 ```
+
+**说明**：value 结构与创建时相同，包含该配置的所有属性
 
 ### 3. 查询配置（对外接口）
 
@@ -152,17 +183,35 @@ Content-Type: application/json
 }
 ```
 
-响应：
+或者直接传入完整 key：
+
+```bash
+POST /api/configs/get
+Content-Type: application/json
+
+{
+  "key": "app.cert.dev",
+  "env": ""
+}
+```
+
+响应（纯对象 JSON，可直接反序列化到业务结构体）：
 
 ```json
 {
   "status": 200,
   "data": {
-    "value": "decrypted_cert_content",
-    "type": "encrypted"
+    "privateKey": "-----BEGIN PRIVATE KEY-----\nMIIE...",
+    "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIB...",
+    "appId": "wx1234567890"
   }
 }
 ```
+
+**说明**：
+- 查询接口返回**纯对象 JSON**，已去掉 ConfigValue 包装
+- 可直接 `json.Unmarshal` 到业务结构体
+- 支持两种传参方式：`key + env` 或完整 key
 
 ### 4. 在代码中使用配置客户端
 
@@ -174,18 +223,31 @@ import (
     "xiaozhizhang/system/config/api/client"
 )
 
+// 定义业务配置结构体
+type CertConfig struct {
+    PrivateKey string `json:"privateKey"`
+    PublicKey  string `json:"publicKey"`
+    AppId      string `json:"appId"`
+}
+
 func example(configClient *client.ConfigClient) {
     ctx := context.Background()
     
-    // 获取配置（JSON 字符串）
-    jsonStr, err := configClient.GetConfigJSON(ctx, "app.cert", "dev")
+    // 方式1：使用 key + env 参数
+    var certConfig CertConfig
+    err := configClient.GetConfig(ctx, "app.cert", "dev", &certConfig)
     if err != nil {
         // 处理错误
     }
     
-    // 获取配置（反序列化到结构体）
-    var certConfig CertConfig
-    err = configClient.GetConfig(ctx, "app.cert", "dev", &certConfig)
+    // 方式2：直接传入完整 key
+    err = configClient.GetConfig(ctx, "app.cert.dev", "", &certConfig)
+    if err != nil {
+        // 处理错误
+    }
+    
+    // 获取配置（JSON 字符串）
+    jsonStr, err := configClient.GetConfigJSON(ctx, "app.cert", "dev")
     if err != nil {
         // 处理错误
     }
@@ -196,8 +258,14 @@ func example(configClient *client.ConfigClient) {
     if err != nil {
         // 处理错误
     }
+    // configs 是 map[string]string，key 为配置键，value 为 JSON 字符串
 }
 ```
+
+**说明**：
+- 返回的 JSON 是**纯对象**，可直接反序列化到业务结构体
+- 不需要关心 ConfigValue 包装和 type 字段
+- 支持 `key + env` 或完整 key 两种方式
 
 ### 5. 导出配置
 
@@ -213,6 +281,11 @@ Authorization: Bearer <admin_token>
 }
 ```
 
+**说明**：
+- `keys`：指定要导出的配置键列表（完整 key，带环境后缀）
+- `environment`：只导出该环境的配置（根据 key 后缀过滤）
+- `targetSalt`：目标加密盐值，用于跨环境迁移
+
 ### 6. 导入配置
 
 ```bash
@@ -227,9 +300,17 @@ Authorization: Bearer <admin_token>
     {
       "key": "app.cert.dev",
       "value": {
-        "dev": {
+        "privateKey": {
           "value": "ENC:xxx",
           "type": "encrypted"
+        },
+        "publicKey": {
+          "value": "-----BEGIN PUBLIC KEY-----...",
+          "type": "string"
+        },
+        "appId": {
+          "value": "wx1234567890",
+          "type": "string"
         }
       },
       "metadata": {},
@@ -239,6 +320,11 @@ Authorization: Bearer <admin_token>
   ]
 }
 ```
+
+**说明**：
+- `key` 必须是带环境后缀的完整键
+- `value` 是 `map[属性名]ConfigValue` 结构
+- 导入时会根据 `sourceSalt` 和当前系统盐值重新加密
 
 ### 7. 回滚配置
 
@@ -261,6 +347,22 @@ Authorization: Bearer <admin_token>
 | `object` | 对象类型 |
 | `array` | 数组类型 |
 | `ref` | 引用其他配置项 |
+
+## 数据模型与向后兼容
+
+### 新数据模型（当前版本）
+
+- **Key**：配置键必须带环境后缀（如 `app.cert.dev`）
+- **Value**：存储为 `map[属性名]ConfigValue`，一个配置项包含多个属性
+  - 例如证书配置包含：privateKey、publicKey、appId 等属性
+- **查询返回**：纯对象 JSON，已解码 type 并去掉 ConfigValue 包装
+
+### 旧数据兼容（自动处理）
+
+系统会自动检测旧数据格式（Value 为 `map[env]ConfigValue`）并进行兼容处理：
+- 检测规则：如果 Value 的所有 key 都是环境名（dev/test/prod/staging/global）
+- 兼容策略：将旧数据转换为 `{"value": <解码后的值>}` 返回
+- 建议：逐步迁移旧数据到新格式
 
 ## 加密说明
 
@@ -299,8 +401,8 @@ config:
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | bigint | 主键 |
-| key | varchar(255) | 配置键（唯一索引） |
-| value | json | 配置值 |
+| key | varchar(255) | 配置键（带环境后缀），唯一索引 |
+| value | json | 配置值（map[属性名]ConfigValue 结构） |
 | version | bigint | 当前版本号 |
 | metadata | json | 元数据 |
 | description | varchar(500) | 配置描述 |

@@ -7,6 +7,7 @@ import (
 	"xiaozhizhang/system/nginx"
 	"xiaozhizhang/system/registry"
 	"xiaozhizhang/system/server"
+	"xiaozhizhang/system/shorturl"
 	"xiaozhizhang/system/ssl"
 	"xiaozhizhang/system/systemd"
 	"xiaozhizhang/system/user"
@@ -54,4 +55,7 @@ func Register(a *app.App, f *fiber.App) {
 
 	// 注册 Server 管理组件路由
 	server.RegisterRoutes(a.ServerModule, api, admin)
+
+	// 注册短网址组件路由
+	shorturl.RegisterRoutes(a.ShortURLModule, api, admin)
 }

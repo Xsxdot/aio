@@ -54,4 +54,3 @@ type CertificateContentDTO struct {
 type FindCertificateReq struct {
 	Domain string `json:"domain" validate:"required"`
 }
-

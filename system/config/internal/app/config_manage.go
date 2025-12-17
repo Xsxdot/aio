@@ -10,6 +10,7 @@ import (
 	"xiaozhizhang/pkg/core/mvc"
 	"xiaozhizhang/system/config/internal/model"
 	"xiaozhizhang/system/config/internal/model/dto"
+	"xiaozhizhang/system/config/internal/service"
 
 	"github.com/go-redis/cache/v9"
 )
@@ -189,16 +190,23 @@ func (a *App) DeleteConfig(ctx context.Context, id int64) error {
 }
 
 // GetConfigByKeyAndEnv 根据配置键和环境获取配置（带缓存）
-func (a *App) GetConfigByKeyAndEnv(ctx context.Context, key string, env string) (*model.ConfigValue, error) {
+// 返回纯对象 map（可直接用于反序列化到业务结构体）
+func (a *App) GetConfigByKeyAndEnv(ctx context.Context, key string, env string) (map[string]interface{}, error) {
+	// 合成完整配置键（兼容直接传入完整 key）
+	fullKey, err := service.ComposeFullKey(key, env)
+	if err != nil {
+		return nil, err
+	}
+
 	cacheKey := fmt.Sprintf("config:%s:%s", key, env)
 
-	var result *model.ConfigValue
-	err := base.Cache.Once(&cache.Item{
+	var result map[string]interface{}
+	err = base.Cache.Once(&cache.Item{
 		Key:   cacheKey,
 		Value: &result,
 		TTL:   5 * time.Minute,
 		Do: func(*cache.Item) (interface{}, error) {
-			return a.ConfigItemService.GetConfigValueByEnv(ctx, key, env)
+			return a.ConfigItemService.GetConfigAsPlainObject(ctx, fullKey)
 		},
 	})
 
@@ -210,13 +218,14 @@ func (a *App) GetConfigByKeyAndEnv(ctx context.Context, key string, env string) 
 }
 
 // GetConfigJSONByKeyAndEnv 根据配置键和环境获取配置的JSON字符串
+// 返回纯对象 JSON（可直接 Unmarshal 到业务结构体）
 func (a *App) GetConfigJSONByKeyAndEnv(ctx context.Context, key string, env string) (string, error) {
-	configValue, err := a.GetConfigByKeyAndEnv(ctx, key, env)
+	plainObject, err := a.GetConfigByKeyAndEnv(ctx, key, env)
 	if err != nil {
 		return "", err
 	}
 
-	jsonBytes, err := json.Marshal(configValue)
+	jsonBytes, err := json.Marshal(plainObject)
 	if err != nil {
 		return "", errorc.New("序列化配置值失败", err)
 	}

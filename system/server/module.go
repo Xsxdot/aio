@@ -40,4 +40,7 @@ func (m *Module) EnsureBootstrapServers(ctx context.Context) error {
 	return m.internalApp.EnsureBootstrapServers(ctx)
 }
 
-
+// EnsureBootstrapServerSSHCredentials 确保 bootstrap 服务器的 SSH 凭证已存在
+func (m *Module) EnsureBootstrapServerSSHCredentials(ctx context.Context) error {
+	return m.internalApp.EnsureBootstrapServerSSHCredentials(ctx)
+}
