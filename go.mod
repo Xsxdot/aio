@@ -34,7 +34,6 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/tidwall/gjson v1.18.0
 	github.com/valyala/fasthttp v1.68.0
-	go.etcd.io/etcd/pkg/v3 v3.6.6
 	go.mongodb.org/mongo-driver v1.17.6
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.46.0

@@ -14,7 +14,7 @@ type DeployHistory struct {
 	StartTime      time.Time    `gorm:"not null" json:"start_time" comment:"部署开始时间"`
 	EndTime        *time.Time   `json:"end_time" comment:"部署结束时间"`
 	ErrorMessage   string       `gorm:"type:text" json:"error_message" comment:"错误信息"`
-	ResultData     string       `gorm:"type:json" json:"result_data" comment:"部署结果数据（JSON，如 CAS CertId）"`
+	ResultData     *string      `gorm:"type:json" json:"result_data" comment:"部署结果数据（JSON，如 CAS CertId）"`
 	TriggerType    string       `gorm:"size:50;not null" json:"trigger_type" comment:"触发方式：manual/auto_renew/auto_issue"`
 }
 

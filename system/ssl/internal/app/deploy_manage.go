@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
 	"github.com/xsxdot/aio/system/ssl/internal/model"
 )
 
@@ -68,14 +69,20 @@ func (a *App) deployCertificateToTarget(ctx context.Context, cert *model.Certifi
 		return a.err.New("解析部署配置失败", err)
 	}
 
-	// 3. 调用部署服务
-	resultData, err := a.DeployService.Deploy(ctx, runtimeTarget, cert.FullchainPem, cert.PrivkeyPem, cert.Domain)
+	// 3. 确定搜索域名：优先使用目标绑定域名，为空时回退到证书域名（兼容旧数据）
+	searchDomain := runtimeTarget.Domain
+	if searchDomain == "" {
+		searchDomain = cert.Domain
+	}
+
+	// 4. 调用部署服务
+	resultData, err := a.DeployService.Deploy(ctx, runtimeTarget, cert.FullchainPem, cert.PrivkeyPem, searchDomain)
 	if err != nil {
 		a.recordDeployHistory(ctx, uint(cert.ID), targetID, model.DeployStatusFailed, startTime, triggerType, err.Error(), "")
 		return a.err.New("部署失败", err)
 	}
 
-	// 4. 记录部署成功
+	// 5. 记录部署成功
 	a.recordDeployHistory(ctx, uint(cert.ID), targetID, model.DeployStatusSuccess, startTime, triggerType, "", resultData)
 
 	return nil
@@ -85,7 +92,7 @@ func (a *App) deployCertificateToTarget(ctx context.Context, cert *model.Certifi
 func (a *App) recordDeployHistory(ctx context.Context, certificateID, deployTargetID uint, status model.DeployStatus, startTime time.Time, triggerType, errorMessage, resultData string) {
 	endTime := time.Now()
 
-	// 处理 ResultData：空字符串转为 nil，避免 JSON 字段报错
+	// 处理 ResultData：空字符串转为 nil（存储为 NULL）
 	var resultDataPtr *string
 	if resultData != "" {
 		resultDataPtr = &resultData
@@ -98,7 +105,7 @@ func (a *App) recordDeployHistory(ctx context.Context, certificateID, deployTarg
 		StartTime:      startTime,
 		EndTime:        &endTime,
 		ErrorMessage:   errorMessage,
-		ResultData:     *resultDataPtr,
+		ResultData:     resultDataPtr,
 		TriggerType:    triggerType,
 	}
 
