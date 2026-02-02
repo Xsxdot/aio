@@ -103,3 +103,4 @@ Authorization: Bearer {{adminToken}}
 DELETE {{baseUrl}}{{apiPrefix}}/admin/short-links/1
 Authorization: Bearer {{adminToken}}
 
+

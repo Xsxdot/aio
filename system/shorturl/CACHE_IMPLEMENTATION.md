@@ -143,3 +143,4 @@ err := base.Cache.Once(&cache.Item{
 3. **缓存预热**: 在系统启动时预加载热门短链接
 4. **统计缓存命中率**: 增加 Prometheus 指标监控
 
+

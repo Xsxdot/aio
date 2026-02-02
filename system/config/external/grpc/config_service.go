@@ -14,7 +14,6 @@ import (
 	internalapp "github.com/xsxdot/aio/system/config/internal/app"
 	"github.com/xsxdot/aio/system/config/internal/model"
 	"github.com/xsxdot/aio/system/config/internal/model/dto"
-	"github.com/xsxdot/aio/system/config/internal/service"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -255,17 +254,10 @@ func (s *ConfigService) GetConfigsByPrefix(ctx context.Context, req *pb.GetConfi
 			}
 		}
 
-		// 转换并解密
-		configItem, err := s.app.ConfigItemService.ConvertAndDecrypt(item)
+		// 使用 GetConfigAsPlainObject 获取配置，该方法会递归解析引用类型（ref）
+		plainObject, err := s.app.ConfigItemService.GetConfigAsPlainObject(ctx, item.Key)
 		if err != nil {
-			s.log.WithErr(err).WithField("key", item.Key).Warn("转换配置失败，跳过")
-			continue
-		}
-
-		// 转换为纯对象
-		plainObject, err := service.ConvertConfigValuesToPlanObject(configItem.Value)
-		if err != nil {
-			s.log.WithErr(err).WithField("key", item.Key).Warn("转换配置值失败，跳过")
+			s.log.WithErr(err).WithField("key", item.Key).Warn("获取配置失败，跳过")
 			continue
 		}
 

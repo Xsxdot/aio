@@ -19,3 +19,4 @@ func (ShortSuccessEvent) TableName() string {
 	return "shorturl_success_events"
 }
 
+

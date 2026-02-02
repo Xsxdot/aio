@@ -26,3 +26,4 @@ func AutoMigrate(db *gorm.DB, log *logger.Log) error {
 	return nil
 }
 
+

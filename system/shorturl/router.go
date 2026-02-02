@@ -17,3 +17,4 @@ func RegisterRoutes(m *Module, api, admin fiber.Router) {
 	apiController.RegisterRoutes(api)
 }
 
+

@@ -64,3 +64,4 @@ func (d *DomainDao) ListEnabled(ctx context.Context) ([]*model.ShortDomain, erro
 	return results, nil
 }
 
+

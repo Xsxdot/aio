@@ -18,3 +18,4 @@ func (ShortDomain) TableName() string {
 	return "shorturl_domains"
 }
 
+

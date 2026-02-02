@@ -24,3 +24,4 @@ func (t TargetType) NeedsLandingPage() bool {
 	return t != TargetTypeURL
 }
 
+
