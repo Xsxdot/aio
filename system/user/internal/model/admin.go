@@ -1,6 +1,6 @@
 package model
 
-import "xiaozhizhang/pkg/core/model/common"
+import "github.com/xsxdot/aio/pkg/core/model/common"
 
 // Admin 管理员数据库模型
 type Admin struct {

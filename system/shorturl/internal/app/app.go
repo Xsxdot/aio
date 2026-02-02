@@ -1,11 +1,11 @@
 package app
 
 import (
-	"xiaozhizhang/base"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/shorturl/internal/dao"
-	"xiaozhizhang/system/shorturl/internal/service"
+	"github.com/xsxdot/aio/base"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/shorturl/internal/dao"
+	"github.com/xsxdot/aio/system/shorturl/internal/service"
 )
 
 // App 短网址组件应用层

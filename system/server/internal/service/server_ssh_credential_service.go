@@ -2,10 +2,10 @@ package service
 
 import (
 	"context"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/server/internal/dao"
-	"xiaozhizhang/system/server/internal/model"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/server/internal/dao"
+	"github.com/xsxdot/aio/system/server/internal/model"
 )
 
 // ServerSSHCredentialService SSH 凭证服务层

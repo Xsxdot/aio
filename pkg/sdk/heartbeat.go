@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	registrypb "xiaozhizhang/system/registry/api/proto"
+	registrypb "github.com/xsxdot/aio/system/registry/api/proto"
 )
 
 // RegistrationHandle 注册句柄

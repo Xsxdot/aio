@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	errorc "xiaozhizhang/pkg/core/err"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
 
 	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/primitive"

@@ -7,7 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"strings"
-	errorc "xiaozhizhang/pkg/core/err"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
 )
 
 const EncryptedPrefix = "ENC:"

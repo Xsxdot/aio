@@ -2,10 +2,10 @@ package server
 
 import (
 	"context"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/server/api/client"
-	grpcservice "xiaozhizhang/system/server/external/grpc"
-	internalapp "xiaozhizhang/system/server/internal/app"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/server/api/client"
+	grpcservice "github.com/xsxdot/aio/system/server/external/grpc"
+	internalapp "github.com/xsxdot/aio/system/server/internal/app"
 )
 
 // Module 服务器组件模块

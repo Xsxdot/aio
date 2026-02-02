@@ -3,8 +3,8 @@ package fiber_handle
 import (
 	"context"
 	"strings"
-	"xiaozhizhang/pkg/core/consts"
-	"xiaozhizhang/pkg/core/tracer"
+	"github.com/xsxdot/aio/pkg/core/consts"
+	"github.com/xsxdot/aio/pkg/core/tracer"
 
 	"github.com/gofiber/fiber/v2"
 )

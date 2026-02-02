@@ -2,8 +2,8 @@ package app
 
 import (
 	"context"
-	"xiaozhizhang/base"
-	"xiaozhizhang/system/server/internal/model"
+	"github.com/xsxdot/aio/base"
+	"github.com/xsxdot/aio/system/server/internal/model"
 )
 
 // EnsureBootstrapServers 确保 bootstrap 服务器已存在（启动时调用）

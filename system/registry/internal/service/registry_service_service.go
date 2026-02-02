@@ -3,11 +3,11 @@ package service
 import (
 	"context"
 
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/pkg/core/mvc"
-	"xiaozhizhang/system/registry/internal/dao"
-	"xiaozhizhang/system/registry/internal/model"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/pkg/core/mvc"
+	"github.com/xsxdot/aio/system/registry/internal/dao"
+	"github.com/xsxdot/aio/system/registry/internal/model"
 
 	"gorm.io/gorm"
 )

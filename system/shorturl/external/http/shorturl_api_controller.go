@@ -1,14 +1,14 @@
 package http
 
 import (
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/pkg/core/result"
-	"xiaozhizhang/pkg/core/util"
-	"xiaozhizhang/system/shorturl/api/dto"
-	internalapp "xiaozhizhang/system/shorturl/internal/app"
-	"xiaozhizhang/system/shorturl/internal/model"
-	"xiaozhizhang/utils"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/pkg/core/result"
+	"github.com/xsxdot/aio/pkg/core/util"
+	"github.com/xsxdot/aio/system/shorturl/api/dto"
+	internalapp "github.com/xsxdot/aio/system/shorturl/internal/app"
+	"github.com/xsxdot/aio/system/shorturl/internal/model"
+	"github.com/xsxdot/aio/utils"
 
 	"github.com/gofiber/fiber/v2"
 )

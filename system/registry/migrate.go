@@ -1,8 +1,8 @@
 package registry
 
 import (
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/registry/internal/model"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/registry/internal/model"
 
 	"gorm.io/gorm"
 )

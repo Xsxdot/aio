@@ -1,8 +1,8 @@
 package shorturl
 
 import (
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/shorturl/internal/model"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/shorturl/internal/model"
 
 	"gorm.io/gorm"
 )

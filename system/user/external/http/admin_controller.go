@@ -2,15 +2,15 @@ package controller
 
 import (
 	"strconv"
-	"xiaozhizhang/base"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/pkg/core/result"
-	"xiaozhizhang/pkg/core/security"
-	"xiaozhizhang/pkg/core/util"
-	"xiaozhizhang/system/user/internal/app"
-	"xiaozhizhang/system/user/internal/model/dto"
-	"xiaozhizhang/utils"
+	"github.com/xsxdot/aio/base"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/pkg/core/result"
+	"github.com/xsxdot/aio/pkg/core/security"
+	"github.com/xsxdot/aio/pkg/core/util"
+	"github.com/xsxdot/aio/system/user/internal/app"
+	"github.com/xsxdot/aio/system/user/internal/model/dto"
+	"github.com/xsxdot/aio/utils"
 
 	"github.com/gofiber/fiber/v2"
 )

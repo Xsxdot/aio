@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/ssl/internal/dao"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/ssl/internal/dao"
 )
 
 // DeployTargetService 部署目标服务

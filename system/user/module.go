@@ -3,11 +3,11 @@ package user
 import (
 	"context"
 	"time"
-	"xiaozhizhang/base"
-	"xiaozhizhang/system/user/api/client"
-	grpcsvc "xiaozhizhang/system/user/external/grpc"
-	"xiaozhizhang/system/user/internal/app"
-	"xiaozhizhang/system/user/internal/service"
+	"github.com/xsxdot/aio/base"
+	"github.com/xsxdot/aio/system/user/api/client"
+	grpcsvc "github.com/xsxdot/aio/system/user/external/grpc"
+	"github.com/xsxdot/aio/system/user/internal/app"
+	"github.com/xsxdot/aio/system/user/internal/service"
 )
 
 // Module 用户组件模块门面（对外暴露的根对象）

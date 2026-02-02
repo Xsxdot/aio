@@ -5,7 +5,7 @@ import (
 	sls "github.com/aliyun/aliyun-log-go-sdk"
 	"github.com/gogo/protobuf/proto"
 	"github.com/sirupsen/logrus"
-	"xiaozhizhang/pkg/core/config"
+	"github.com/xsxdot/aio/pkg/core/config"
 	"time"
 )
 

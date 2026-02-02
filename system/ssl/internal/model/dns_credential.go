@@ -1,7 +1,7 @@
 package model
 
 import (
-	"xiaozhizhang/pkg/core/model/common"
+	"github.com/xsxdot/aio/pkg/core/model/common"
 )
 
 // DnsCredential DNS 服务商凭证模型

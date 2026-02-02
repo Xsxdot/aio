@@ -3,12 +3,12 @@ package grpc
 import (
 	"context"
 	"time"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/server/api/client"
-	pb "xiaozhizhang/system/server/api/proto"
-	internalapp "xiaozhizhang/system/server/internal/app"
-	"xiaozhizhang/system/server/internal/model/dto"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/server/api/client"
+	pb "github.com/xsxdot/aio/system/server/api/proto"
+	internalapp "github.com/xsxdot/aio/system/server/internal/app"
+	"github.com/xsxdot/aio/system/server/internal/model/dto"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

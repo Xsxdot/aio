@@ -2,7 +2,7 @@ package fiber_handle
 
 import (
 	"github.com/gofiber/fiber/v2"
-	errorc "xiaozhizhang/pkg/core/err"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
 )
 
 func InternalHandler() fiber.Handler {

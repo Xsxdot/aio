@@ -2,9 +2,9 @@ package client
 
 import (
 	"context"
-	"xiaozhizhang/system/server/api/dto"
-	"xiaozhizhang/system/server/internal/app"
-	internaldto "xiaozhizhang/system/server/internal/model/dto"
+	"github.com/xsxdot/aio/system/server/api/dto"
+	"github.com/xsxdot/aio/system/server/internal/app"
+	internaldto "github.com/xsxdot/aio/system/server/internal/model/dto"
 )
 
 // ServerClient 服务器组件对外客户端

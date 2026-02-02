@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"github.com/openzipkin/zipkin-go"
 	"github.com/openzipkin/zipkin-go/model"
-	"xiaozhizhang/pkg/core/consts"
+	"github.com/xsxdot/aio/pkg/core/consts"
 )
 
 // ZipkinTracer Zipkin追踪实现

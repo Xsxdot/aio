@@ -2,8 +2,8 @@ package mvc
 
 import (
 	"context"
-	"xiaozhizhang/pkg/core/model/common"
-	"xiaozhizhang/pkg/core/result"
+	"github.com/xsxdot/aio/pkg/core/model/common"
+	"github.com/xsxdot/aio/pkg/core/result"
 
 	"github.com/gofiber/fiber/v2"
 )

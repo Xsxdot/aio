@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"time"
-	"xiaozhizhang/system/ssl/internal/model"
+	"github.com/xsxdot/aio/system/ssl/internal/model"
 )
 
 // DeployCertificateToTargets 部署证书到多个目标

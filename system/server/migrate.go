@@ -1,8 +1,8 @@
 package server
 
 import (
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/server/internal/model"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/server/internal/model"
 
 	"gorm.io/gorm"
 )

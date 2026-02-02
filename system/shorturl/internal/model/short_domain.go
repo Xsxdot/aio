@@ -1,7 +1,7 @@
 package model
 
 import (
-	"xiaozhizhang/pkg/core/model/common"
+	"github.com/xsxdot/aio/pkg/core/model/common"
 )
 
 // ShortDomain 短域名模型

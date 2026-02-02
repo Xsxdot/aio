@@ -1,9 +1,9 @@
 package service
 
 import (
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/ssl/internal/dao"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/ssl/internal/dao"
 )
 
 // CertificateService 证书服务

@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/gofiber/fiber/v2"
 	uuid "github.com/satori/go.uuid"
-	"xiaozhizhang/pkg/core/consts"
+	"github.com/xsxdot/aio/pkg/core/consts"
 )
 
 func Context(c *fiber.Ctx) context.Context {

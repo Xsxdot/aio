@@ -1,10 +1,10 @@
 package config
 
 import (
-	"xiaozhizhang/base"
-	"xiaozhizhang/system/config/api/client"
-	grpcsvc "xiaozhizhang/system/config/external/grpc"
-	"xiaozhizhang/system/config/internal/app"
+	"github.com/xsxdot/aio/base"
+	"github.com/xsxdot/aio/system/config/api/client"
+	grpcsvc "github.com/xsxdot/aio/system/config/external/grpc"
+	"github.com/xsxdot/aio/system/config/internal/app"
 )
 
 // Module 配置中心模块门面（对外暴露的根对象）

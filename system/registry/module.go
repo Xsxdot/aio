@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"xiaozhizhang/base"
-	"xiaozhizhang/pkg/scheduler"
-	"xiaozhizhang/system/registry/api/client"
-	"xiaozhizhang/system/registry/api/dto"
-	grpcsvc "xiaozhizhang/system/registry/external/grpc"
-	"xiaozhizhang/system/registry/internal/app"
+	"github.com/xsxdot/aio/base"
+	"github.com/xsxdot/aio/pkg/scheduler"
+	"github.com/xsxdot/aio/system/registry/api/client"
+	"github.com/xsxdot/aio/system/registry/api/dto"
+	grpcsvc "github.com/xsxdot/aio/system/registry/external/grpc"
+	"github.com/xsxdot/aio/system/registry/internal/app"
 )
 
 // Module 注册中心组件模块门面（对外暴露的根对象）

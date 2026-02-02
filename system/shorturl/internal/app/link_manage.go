@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"time"
-	"xiaozhizhang/base"
-	"xiaozhizhang/system/shorturl/internal/model"
-	"xiaozhizhang/system/shorturl/internal/service"
+	"github.com/xsxdot/aio/base"
+	"github.com/xsxdot/aio/system/shorturl/internal/model"
+	"github.com/xsxdot/aio/system/shorturl/internal/service"
 
 	"github.com/go-redis/cache/v9"
 )

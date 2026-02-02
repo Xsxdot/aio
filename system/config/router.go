@@ -1,7 +1,7 @@
 package config
 
 import (
-	controller "xiaozhizhang/system/config/external/http"
+	controller "github.com/xsxdot/aio/system/config/external/http"
 
 	"github.com/gofiber/fiber/v2"
 )

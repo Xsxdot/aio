@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/pkg/core/mvc"
-	"xiaozhizhang/system/config/internal/dao"
-	"xiaozhizhang/system/config/internal/model"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/pkg/core/mvc"
+	"github.com/xsxdot/aio/system/config/internal/dao"
+	"github.com/xsxdot/aio/system/config/internal/model"
 
 	"gorm.io/gorm"
 )

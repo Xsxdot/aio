@@ -2,9 +2,9 @@ package ssl
 
 import (
 	"context"
-	"xiaozhizhang/system/ssl/api/client"
-	"xiaozhizhang/system/ssl/internal/app"
-	"xiaozhizhang/system/ssl/internal/facade"
+	"github.com/xsxdot/aio/system/ssl/api/client"
+	"github.com/xsxdot/aio/system/ssl/internal/app"
+	"github.com/xsxdot/aio/system/ssl/internal/facade"
 )
 
 // Module SSL 证书组件模块门面（对外暴露的根对象）

@@ -1,8 +1,8 @@
 package user
 
 import (
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/user/internal/model"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/user/internal/model"
 
 	"gorm.io/gorm"
 )

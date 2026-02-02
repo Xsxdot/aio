@@ -7,8 +7,8 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"sync"
-	"xiaozhizhang/pkg/core/config"
-	"xiaozhizhang/pkg/core/consts"
+	"github.com/xsxdot/aio/pkg/core/config"
+	"github.com/xsxdot/aio/pkg/core/consts"
 )
 
 type Log struct {

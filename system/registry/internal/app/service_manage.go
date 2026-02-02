@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/system/registry/api/dto"
-	"xiaozhizhang/system/registry/internal/model"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/system/registry/api/dto"
+	"github.com/xsxdot/aio/system/registry/internal/model"
 )
 
 func (a *App) toServiceDTO(s *model.RegistryService) *dto.ServiceDTO {

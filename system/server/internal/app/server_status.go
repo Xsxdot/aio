@@ -3,9 +3,9 @@ package app
 import (
 	"context"
 	"time"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/system/server/internal/model"
-	"xiaozhizhang/system/server/internal/model/dto"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/system/server/internal/model"
+	"github.com/xsxdot/aio/system/server/internal/model/dto"
 )
 
 // ReportServerStatus 上报服务器状态

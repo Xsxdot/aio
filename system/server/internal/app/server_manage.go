@@ -2,8 +2,8 @@ package app
 
 import (
 	"context"
-	"xiaozhizhang/system/server/internal/model"
-	"xiaozhizhang/system/server/internal/model/dto"
+	"github.com/xsxdot/aio/system/server/internal/model"
+	"github.com/xsxdot/aio/system/server/internal/model/dto"
 )
 
 // CreateServer 创建服务器

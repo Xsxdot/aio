@@ -1,6 +1,6 @@
 package model
 
-import "xiaozhizhang/pkg/core/model/common"
+import "github.com/xsxdot/aio/pkg/core/model/common"
 
 // RegistryService 服务定义（跨环境唯一，持久化真相源）
 type RegistryService struct {

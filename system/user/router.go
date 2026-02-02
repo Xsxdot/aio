@@ -1,7 +1,7 @@
 package user
 
 import (
-	controller "xiaozhizhang/system/user/external/http"
+	controller "github.com/xsxdot/aio/system/user/external/http"
 
 	"github.com/gofiber/fiber/v2"
 )

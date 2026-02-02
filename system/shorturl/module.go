@@ -1,9 +1,9 @@
 package shorturl
 
 import (
-	"xiaozhizhang/pkg/core/logger"
-	grpcservice "xiaozhizhang/system/shorturl/external/grpc"
-	internalapp "xiaozhizhang/system/shorturl/internal/app"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	grpcservice "github.com/xsxdot/aio/system/shorturl/external/grpc"
+	internalapp "github.com/xsxdot/aio/system/shorturl/internal/app"
 )
 
 // Module 短网址组件模块

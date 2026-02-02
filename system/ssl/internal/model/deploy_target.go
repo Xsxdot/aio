@@ -1,7 +1,7 @@
 package model
 
 import (
-	"xiaozhizhang/pkg/core/model/common"
+	"github.com/xsxdot/aio/pkg/core/model/common"
 )
 
 // DeployTarget 部署目标模型

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net"
 	"testing"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/server/internal/model"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/server/internal/model"
 
 	"github.com/stretchr/testify/assert"
 )

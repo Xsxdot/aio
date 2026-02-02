@@ -2,15 +2,15 @@ package http
 
 import (
 	"strconv"
-	"xiaozhizhang/base"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/pkg/core/model/common"
-	"xiaozhizhang/pkg/core/mvc"
-	"xiaozhizhang/pkg/core/result"
-	"xiaozhizhang/system/ssl/internal/app"
-	"xiaozhizhang/system/ssl/internal/model"
-	"xiaozhizhang/utils"
+	"github.com/xsxdot/aio/base"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/pkg/core/model/common"
+	"github.com/xsxdot/aio/pkg/core/mvc"
+	"github.com/xsxdot/aio/pkg/core/result"
+	"github.com/xsxdot/aio/system/ssl/internal/app"
+	"github.com/xsxdot/aio/system/ssl/internal/model"
+	"github.com/xsxdot/aio/utils"
 
 	"github.com/gofiber/fiber/v2"
 )

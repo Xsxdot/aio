@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	registrypb "xiaozhizhang/system/registry/api/proto"
+	registrypb "github.com/xsxdot/aio/system/registry/api/proto"
 
 	"google.golang.org/grpc"
 )

@@ -2,8 +2,8 @@ package oss
 
 import (
 	"context"
-	"xiaozhizhang/pkg/core/config"
-	"xiaozhizhang/pkg/core/logger"
+	"github.com/xsxdot/aio/pkg/core/config"
+	"github.com/xsxdot/aio/pkg/core/logger"
 )
 
 // InitAliyunOSS 初始化阿里云OSS服务

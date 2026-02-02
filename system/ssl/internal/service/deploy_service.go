@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/ssl/internal/model"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/ssl/internal/model"
 
 	cas "github.com/alibabacloud-go/cas-20200407/v2/client"
 	cdn "github.com/alibabacloud-go/cdn-20180510/v4/client"

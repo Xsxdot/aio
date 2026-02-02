@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	userpb "xiaozhizhang/system/user/api/proto"
+	userpb "github.com/xsxdot/aio/system/user/api/proto"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

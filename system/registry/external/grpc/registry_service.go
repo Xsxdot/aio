@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"io"
 
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/registry/api/client"
-	"xiaozhizhang/system/registry/api/dto"
-	pb "xiaozhizhang/system/registry/api/proto"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/registry/api/client"
+	"github.com/xsxdot/aio/system/registry/api/dto"
+	pb "github.com/xsxdot/aio/system/registry/api/proto"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

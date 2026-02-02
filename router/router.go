@@ -1,13 +1,13 @@
 package router
 
 import (
-	"xiaozhizhang/app"
-	"xiaozhizhang/system/config"
-	"xiaozhizhang/system/registry"
-	"xiaozhizhang/system/server"
-	"xiaozhizhang/system/shorturl"
-	"xiaozhizhang/system/ssl"
-	"xiaozhizhang/system/user"
+	"github.com/xsxdot/aio/app"
+	"github.com/xsxdot/aio/system/config"
+	"github.com/xsxdot/aio/system/registry"
+	"github.com/xsxdot/aio/system/server"
+	"github.com/xsxdot/aio/system/shorturl"
+	"github.com/xsxdot/aio/system/ssl"
+	"github.com/xsxdot/aio/system/user"
 
 	"github.com/gofiber/fiber/v2"
 )

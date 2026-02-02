@@ -2,7 +2,7 @@ package mvc
 
 import (
 	"context"
-	errorc "xiaozhizhang/pkg/core/err"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
 
 	"gorm.io/gorm"
 )

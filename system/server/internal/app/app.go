@@ -1,11 +1,11 @@
 package app
 
 import (
-	"xiaozhizhang/base"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/server/internal/dao"
-	"xiaozhizhang/system/server/internal/service"
+	"github.com/xsxdot/aio/base"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/server/internal/dao"
+	"github.com/xsxdot/aio/system/server/internal/service"
 )
 
 // App 服务器组件应用层

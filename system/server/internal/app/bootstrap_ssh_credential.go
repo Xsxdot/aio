@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"xiaozhizhang/base"
-	"xiaozhizhang/pkg/core/config"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/system/server/internal/model"
+	"github.com/xsxdot/aio/base"
+	"github.com/xsxdot/aio/pkg/core/config"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/system/server/internal/model"
 )
 
 // EnsureBootstrapServerSSHCredentials 确保 bootstrap 服务器的 SSH 凭证已存在（启动时调用）

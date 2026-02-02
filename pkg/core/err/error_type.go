@@ -34,7 +34,7 @@ func (e *Error) formatStack() string {
 			continue
 		}
 		// 跳过错误包内部的调用
-		if strings.Contains(line, "xiaozhizhang/pkg/core/err.") || strings.Contains(line, "xiaozhizhang/pkg/core/err/error.go") {
+		if strings.Contains(line, "github.com/xsxdot/aio/pkg/core/err.") || strings.Contains(line, "github.com/xsxdot/aio/pkg/core/err/error.go") {
 			continue
 		}
 		filteredLines = append(filteredLines, line)

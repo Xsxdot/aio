@@ -1,6 +1,6 @@
 package dto
 
-import "xiaozhizhang/system/config/internal/model"
+import "github.com/xsxdot/aio/system/config/internal/model"
 
 // ExportConfigRequest 导出配置请求
 type ExportConfigRequest struct {

@@ -1,6 +1,6 @@
 package dto
 
-import "xiaozhizhang/system/config/internal/model"
+import "github.com/xsxdot/aio/system/config/internal/model"
 
 // CreateConfigRequest 创建配置请求
 type CreateConfigRequest struct {

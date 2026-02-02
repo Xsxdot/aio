@@ -3,9 +3,9 @@ package client
 import (
 	"context"
 
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/system/registry/api/dto"
-	internalapp "xiaozhizhang/system/registry/internal/app"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/system/registry/api/dto"
+	internalapp "github.com/xsxdot/aio/system/registry/internal/app"
 )
 
 // RegistryClient 注册中心对外客户端（进程内调用）

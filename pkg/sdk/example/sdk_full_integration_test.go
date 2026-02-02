@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"xiaozhizhang/pkg/sdk"
+	"github.com/xsxdot/aio/pkg/sdk"
 )
 
 // TestSDK_FullIntegration is a comprehensive integration test that exercises all SDK functionality

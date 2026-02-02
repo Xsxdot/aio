@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/system/ssl/api/dto"
-	"xiaozhizhang/system/ssl/internal/app"
-	"xiaozhizhang/system/ssl/internal/model"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/system/ssl/api/dto"
+	"github.com/xsxdot/aio/system/ssl/internal/app"
+	"github.com/xsxdot/aio/system/ssl/internal/model"
 )
 
 // SslClient SSL 证书组件对外客户端

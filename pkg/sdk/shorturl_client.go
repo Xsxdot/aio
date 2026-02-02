@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	shorturlpb "xiaozhizhang/system/shorturl/api/proto"
+	shorturlpb "github.com/xsxdot/aio/system/shorturl/api/proto"
 
 	"google.golang.org/grpc"
 )

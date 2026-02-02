@@ -2,8 +2,8 @@ package result
 
 import (
 	"github.com/gofiber/fiber/v2"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/util"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/util"
 )
 
 func InternalOK(c *fiber.Ctx, v interface{}) error {

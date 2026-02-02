@@ -2,7 +2,7 @@ package user
 
 import (
 	"fmt"
-	"xiaozhizhang/system/user/internal/service"
+	"github.com/xsxdot/aio/system/user/internal/service"
 )
 
 // TokenParserAdapter JWT Token 解析器适配器

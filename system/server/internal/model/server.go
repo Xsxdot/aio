@@ -1,7 +1,7 @@
 package model
 
 import (
-	"xiaozhizhang/pkg/core/model/common"
+	"github.com/xsxdot/aio/pkg/core/model/common"
 )
 
 // ServerModel 服务器模型

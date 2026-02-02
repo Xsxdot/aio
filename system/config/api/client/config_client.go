@@ -3,8 +3,8 @@ package client
 import (
 	"context"
 	"encoding/json"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/system/config/internal/app"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/system/config/internal/app"
 )
 
 // ConfigClient 配置中心对外客户端

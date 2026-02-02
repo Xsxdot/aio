@@ -3,7 +3,7 @@ package model
 import (
 	"time"
 
-	"xiaozhizhang/pkg/core/model/common"
+	"github.com/xsxdot/aio/pkg/core/model/common"
 )
 
 // RegistryInstance 实例登记记录（持久化 + 在线判断兜底）

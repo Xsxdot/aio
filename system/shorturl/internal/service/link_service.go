@@ -5,11 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"time"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/pkg/core/mvc"
-	"xiaozhizhang/system/shorturl/internal/dao"
-	"xiaozhizhang/system/shorturl/internal/model"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/pkg/core/mvc"
+	"github.com/xsxdot/aio/system/shorturl/internal/dao"
+	"github.com/xsxdot/aio/system/shorturl/internal/model"
 )
 
 // LinkService 短链接业务逻辑层

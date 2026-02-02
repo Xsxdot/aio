@@ -12,9 +12,9 @@ import (
 	"io"
 	"strings"
 	"time"
-	"xiaozhizhang/pkg/core/config"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
+	"github.com/xsxdot/aio/pkg/core/config"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
 
 	"github.com/gofiber/fiber/v2"
 

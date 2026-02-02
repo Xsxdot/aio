@@ -1,12 +1,12 @@
 package base
 
 import (
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/pkg/core/security"
-	"xiaozhizhang/pkg/core/start"
-	"xiaozhizhang/pkg/grpc"
-	"xiaozhizhang/pkg/oss"
-	"xiaozhizhang/pkg/scheduler"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/pkg/core/security"
+	"github.com/xsxdot/aio/pkg/core/start"
+	"github.com/xsxdot/aio/pkg/grpc"
+	"github.com/xsxdot/aio/pkg/oss"
+	"github.com/xsxdot/aio/pkg/scheduler"
 
 	"github.com/go-redis/cache/v9"
 	"github.com/redis/go-redis/v9"

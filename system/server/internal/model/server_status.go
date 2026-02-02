@@ -2,7 +2,7 @@ package model
 
 import (
 	"time"
-	"xiaozhizhang/pkg/core/model/common"
+	"github.com/xsxdot/aio/pkg/core/model/common"
 )
 
 // ServerStatusModel 服务器状态模型

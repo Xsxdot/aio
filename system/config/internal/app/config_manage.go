@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-	"xiaozhizhang/base"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/mvc"
-	"xiaozhizhang/system/config/internal/model"
-	"xiaozhizhang/system/config/internal/model/dto"
-	"xiaozhizhang/system/config/internal/service"
+	"github.com/xsxdot/aio/base"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/mvc"
+	"github.com/xsxdot/aio/system/config/internal/model"
+	"github.com/xsxdot/aio/system/config/internal/model/dto"
+	"github.com/xsxdot/aio/system/config/internal/service"
 
 	"github.com/go-redis/cache/v9"
 )

@@ -1,8 +1,8 @@
 package ssl
 
 import (
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/ssl/internal/model"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/ssl/internal/model"
 
 	"gorm.io/gorm"
 )

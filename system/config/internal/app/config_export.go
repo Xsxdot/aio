@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"time"
-	"xiaozhizhang/base"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/system/config/internal/model"
-	"xiaozhizhang/system/config/internal/model/dto"
-	"xiaozhizhang/system/config/internal/service"
+	"github.com/xsxdot/aio/base"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/system/config/internal/model"
+	"github.com/xsxdot/aio/system/config/internal/model/dto"
+	"github.com/xsxdot/aio/system/config/internal/service"
 )
 
 // ExportConfigs 导出配置

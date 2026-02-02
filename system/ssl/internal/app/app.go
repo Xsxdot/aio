@@ -1,12 +1,12 @@
 package app
 
 import (
-	"xiaozhizhang/base"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/ssl/internal/dao"
-	"xiaozhizhang/system/ssl/internal/facade"
-	"xiaozhizhang/system/ssl/internal/service"
+	"github.com/xsxdot/aio/base"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/ssl/internal/dao"
+	"github.com/xsxdot/aio/system/ssl/internal/facade"
+	"github.com/xsxdot/aio/system/ssl/internal/service"
 )
 
 // App SSL 证书组件应用层

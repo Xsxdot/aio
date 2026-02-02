@@ -3,7 +3,7 @@ package sdk
 import (
 	"context"
 
-	configpb "xiaozhizhang/system/config/api/proto"
+	configpb "github.com/xsxdot/aio/system/config/api/proto"
 
 	"google.golang.org/grpc"
 )

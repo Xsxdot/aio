@@ -2,7 +2,7 @@ package model
 
 import (
 	"time"
-	"xiaozhizhang/pkg/core/model/common"
+	"github.com/xsxdot/aio/pkg/core/model/common"
 )
 
 // ClientCredential 客户端凭证数据库模型（独立 key/secret，用于 API 调用鉴权）

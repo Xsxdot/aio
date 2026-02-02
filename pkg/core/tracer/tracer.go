@@ -3,7 +3,7 @@ package tracer
 import (
 	"context"
 	uuid "github.com/satori/go.uuid"
-	"xiaozhizhang/pkg/core/consts"
+	"github.com/xsxdot/aio/pkg/core/consts"
 )
 
 // Tracer 定义通用的追踪接口

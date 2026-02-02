@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 	"time"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/shorturl/internal/dao"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/aio/system/shorturl/internal/dao"
 )
 
 // StatsService 统计服务

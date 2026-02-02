@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	errorc "xiaozhizhang/pkg/core/err"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
 
 	"github.com/gofiber/fiber/v2"
 )

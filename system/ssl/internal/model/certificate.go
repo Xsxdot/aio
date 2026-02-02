@@ -2,7 +2,7 @@ package model
 
 import (
 	"time"
-	"xiaozhizhang/pkg/core/model/common"
+	"github.com/xsxdot/aio/pkg/core/model/common"
 )
 
 // Certificate SSL 证书模型

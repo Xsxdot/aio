@@ -3,10 +3,10 @@ package client
 import (
 	"context"
 	"encoding/json"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/system/user/api/dto"
-	"xiaozhizhang/system/user/internal/app"
-	"xiaozhizhang/system/user/internal/model"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/system/user/api/dto"
+	"github.com/xsxdot/aio/system/user/internal/app"
+	"github.com/xsxdot/aio/system/user/internal/model"
 )
 
 // UserClient 用户组件对外客户端（供其他组件调用）

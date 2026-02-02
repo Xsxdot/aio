@@ -2,7 +2,7 @@ package model
 
 import (
 	"time"
-	"xiaozhizhang/pkg/core/model/common"
+	"github.com/xsxdot/aio/pkg/core/model/common"
 )
 
 // DeployHistory 部署历史记录模型

@@ -3,10 +3,10 @@ package app
 import (
 	"context"
 	"time"
-	"xiaozhizhang/base"
-	"xiaozhizhang/pkg/core/mvc"
-	"xiaozhizhang/system/ssl/internal/model"
-	"xiaozhizhang/system/ssl/internal/service"
+	"github.com/xsxdot/aio/base"
+	"github.com/xsxdot/aio/pkg/core/mvc"
+	"github.com/xsxdot/aio/system/ssl/internal/model"
+	"github.com/xsxdot/aio/system/ssl/internal/service"
 )
 
 // IssueCertificateRequest 证书签发请求

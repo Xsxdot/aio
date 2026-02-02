@@ -1,7 +1,7 @@
 package registry
 
 import (
-	controller "xiaozhizhang/system/registry/external/http"
+	controller "github.com/xsxdot/aio/system/registry/external/http"
 
 	"github.com/gofiber/fiber/v2"
 )

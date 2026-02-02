@@ -1,6 +1,6 @@
 package model
 
-import "xiaozhizhang/pkg/core/model/common"
+import "github.com/xsxdot/aio/pkg/core/model/common"
 
 // ConfigHistoryModel 配置历史版本数据库模型
 type ConfigHistoryModel struct {

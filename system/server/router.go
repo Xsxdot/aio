@@ -1,7 +1,7 @@
 package server
 
 import (
-	controller "xiaozhizhang/system/server/external/http"
+	controller "github.com/xsxdot/aio/system/server/external/http"
 
 	"github.com/gofiber/fiber/v2"
 )

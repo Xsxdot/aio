@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"xiaozhizhang/system/server/internal/model"
+	"github.com/xsxdot/aio/system/server/internal/model"
 )
 
 // UpsertServerSSHCredential 更新或插入 SSH 凭证

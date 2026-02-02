@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"xiaozhizhang/pkg/core/consts"
+	"github.com/xsxdot/aio/pkg/core/consts"
 
 	"github.com/sirupsen/logrus"
 

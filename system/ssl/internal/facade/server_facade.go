@@ -2,7 +2,7 @@ package facade
 
 import (
 	"context"
-	serverdto "xiaozhizhang/system/server/api/dto"
+	serverdto "github.com/xsxdot/aio/system/server/api/dto"
 )
 
 // IServerFacade server 组件对 SSL 组件提供的外观接口

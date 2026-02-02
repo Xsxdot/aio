@@ -1,7 +1,7 @@
 package ssl
 
 import (
-	controller "xiaozhizhang/system/ssl/external/http"
+	controller "github.com/xsxdot/aio/system/ssl/external/http"
 
 	"github.com/gofiber/fiber/v2"
 )

@@ -2,13 +2,13 @@ package http
 
 import (
 	"strconv"
-	"xiaozhizhang/base"
-	errorc "xiaozhizhang/pkg/core/err"
-	"xiaozhizhang/pkg/core/result"
-	internalapp "xiaozhizhang/system/server/internal/app"
-	"xiaozhizhang/system/server/internal/model"
-	"xiaozhizhang/system/server/internal/model/dto"
-	"xiaozhizhang/utils"
+	"github.com/xsxdot/aio/base"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
+	"github.com/xsxdot/aio/pkg/core/result"
+	internalapp "github.com/xsxdot/aio/system/server/internal/app"
+	"github.com/xsxdot/aio/system/server/internal/model"
+	"github.com/xsxdot/aio/system/server/internal/model/dto"
+	"github.com/xsxdot/aio/utils"
 
 	"github.com/gofiber/fiber/v2"
 )

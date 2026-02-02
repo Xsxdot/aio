@@ -3,7 +3,7 @@ package logger
 import (
 	"fmt"
 	"strings"
-	errorc "xiaozhizhang/pkg/core/err"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"time"
 
 	"github.com/gofiber/fiber/v2"

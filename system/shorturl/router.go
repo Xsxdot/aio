@@ -1,7 +1,7 @@
 package shorturl
 
 import (
-	controller "xiaozhizhang/system/shorturl/external/http"
+	controller "github.com/xsxdot/aio/system/shorturl/external/http"
 
 	"github.com/gofiber/fiber/v2"
 )

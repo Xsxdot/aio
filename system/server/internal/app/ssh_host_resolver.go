@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 	"time"
-	"xiaozhizhang/system/server/internal/model"
+	"github.com/xsxdot/aio/system/server/internal/model"
 )
 
 // DialContextFunc 用于 TCP 连接探测的函数类型（便于单元测试注入）
