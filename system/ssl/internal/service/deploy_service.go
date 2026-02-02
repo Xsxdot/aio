@@ -77,85 +77,8 @@ func (s *DeployService) Deploy(ctx context.Context, target *model.DeployTarget, 
 	}
 }
 
-// deployToLocal 部署到本机文件（通过 agent）
+// deployToLocal 部署到本机文件
 func (s *DeployService) deployToLocal(ctx context.Context, target *model.DeployTarget, fullchainPem, privkeyPem, domainsJSON string) (string, error) {
-	// 1. 解析配置
-	var config model.LocalDeployConfig
-	if err := json.Unmarshal([]byte(target.Config), &config); err != nil {
-		return "", s.err.New("解析本机部署配置失败", err)
-	}
-
-	// 2. 获取 agent 地址（需要从 target 或配置中获取 serverID）
-	// 注意：这里需要在 DeployTarget 模型中添加 ServerID 字段，或者通过其他方式指定目标服务器
-	// 暂时使用一个临时方案：如果配置中有 AgentAddress，直接使用；否则报错
-	agentAddr := config.AgentAddress
-	if agentAddr == "" {
-		// 回退到直接本机部署（保持向后兼容）
-		return s.deployToLocalDirect(ctx, target, fullchainPem, privkeyPem, domainsJSON)
-	}
-
-	// 3. 通过 agent 部署证书
-	import base "xiaozhizhang/base"
-	
-	resp, err := base.AgentClient.DeploySSLCertificate(
-		ctx,
-		agentAddr,
-		config.BasePath,
-		config.FullchainName,
-		config.PrivkeyName,
-		fullchainPem,
-		privkeyPem,
-		config.FileMode,
-	)
-	if err != nil {
-		return "", s.err.New("通过 agent 部署证书失败", err)
-	}
-
-	if !resp.Success {
-		return "", s.err.New(resp.Message, nil)
-	}
-
-	// 4. 执行重载命令（可选）
-	reloadOutput := ""
-	if config.ReloadCommand != "" {
-		s.log.WithField("command", config.ReloadCommand).Info("执行重载命令")
-		
-		// 解析重载命令类型（nginx/systemd）
-		serviceType := "nginx" // 默认
-		serviceName := ""
-		
-		// 如果命令包含 systemctl，则认为是 systemd
-		if strings.Contains(config.ReloadCommand, "systemctl") {
-			serviceType = "systemd"
-			// 从命令中提取服务名
-			// 例如: systemctl reload myapp
-			parts := strings.Fields(config.ReloadCommand)
-			if len(parts) >= 3 {
-				serviceName = parts[2]
-			}
-		}
-		
-		reloadResp, err := base.AgentClient.ReloadService(ctx, agentAddr, serviceType, serviceName)
-		if err != nil {
-			s.log.WithErr(err).Warn("执行重载命令失败")
-			reloadOutput = fmt.Sprintf("执行失败: %v", err)
-		} else {
-			reloadOutput = reloadResp.Output
-		}
-	}
-
-	// 5. 返回结果
-	result := map[string]interface{}{
-		"fullchain_path": resp.FullchainPath,
-		"privkey_path":   resp.PrivkeyPath,
-		"reload_output":  reloadOutput,
-	}
-	resultJSON, _ := json.Marshal(result)
-	return string(resultJSON), nil
-}
-
-// deployToLocalDirect 直接本机部署（不通过 agent，用于向后兼容）
-func (s *DeployService) deployToLocalDirect(ctx context.Context, target *model.DeployTarget, fullchainPem, privkeyPem, domainsJSON string) (string, error) {
 	// 1. 解析配置
 	var config model.LocalDeployConfig
 	if err := json.Unmarshal([]byte(target.Config), &config); err != nil {
@@ -320,23 +243,12 @@ func (s *DeployService) deployToAliyunCAS(ctx context.Context, target *model.Dep
 
 	// 注意：配置已由 App 层解密，无需再次解密
 
-	// 2. 解析域名
-	// 证书的 Domain 字段（domainsJSON）可能是通配符（*.example.com）
-	// target.Domain 是部署目标关联的具体域名（如 oss.example.com）
-	certDomain := strings.TrimSpace(domainsJSON)
-	if certDomain == "" {
-		return "", s.err.New("证书域名不能为空", nil).ValidWithCtx()
+	// 2. 解析域名（单域名字符串）
+	domain := strings.TrimSpace(domainsJSON)
+	if domain == "" {
+		return "", s.err.New("域名不能为空", nil).ValidWithCtx()
 	}
-
-	// 使用部署目标的 Domain 作为实际部署的域名（用于查询 CDN/DCDN/OSS）
-	// 如果 target.Domain 为空，则回退到证书域名
-	deployDomain := strings.TrimSpace(target.Domain)
-	if deployDomain == "" {
-		deployDomain = certDomain
-	}
-
-	// 用于云产品查询的域名列表（使用具体域名，不能是通配符）
-	domains := []string{deployDomain}
+	domains := []string{domain}
 
 	// 3. 创建 OpenAPI 配置（用于多个服务客户端）
 	openAPIConfig := &openapi.Config{
@@ -351,16 +263,14 @@ func (s *DeployService) deployToAliyunCAS(ctx context.Context, target *model.Dep
 	}
 
 	// 4. 上传证书到 CAS
-	// 注意：阿里云 CAS 使用全局 endpoint，不支持区域化
-	openAPIConfig.Endpoint = tea.String("cas.aliyuncs.com")
+	openAPIConfig.Endpoint = tea.String(fmt.Sprintf("cas.%s.aliyuncs.com", region))
 	casClient, err := cas.NewClient(openAPIConfig)
 	if err != nil {
 		return "", s.err.New("创建阿里云 CAS 客户端失败", err)
 	}
 
 	// 生成唯一证书名（避免重名）
-	// 使用证书域名（可能是通配符）作为证书名称基础
-	certName := s.generateUniqueCertName(certDomain)
+	certName := s.generateUniqueCertName(domains[0])
 
 	uploadReq := &cas.UploadUserCertificateRequest{
 		Name: tea.String(certName),
@@ -383,8 +293,7 @@ func (s *DeployService) deployToAliyunCAS(ctx context.Context, target *model.Dep
 		"cert_id":        certId,
 		"cert_name":      certName,
 		"region":         region,
-		"cert_domain":    certDomain,   // 证书域名（可能是通配符）
-		"deploy_domain":  deployDomain, // 实际部署域名（具体域名）
+		"domains":        domains,
 		"deployed_to":    []string{},
 		"deploy_results": []map[string]interface{}{},
 	}
@@ -555,13 +464,7 @@ func (s *DeployService) deployToCDN(config *openapi.Config, domains []string, ce
 
 	// 遍历域名，查询 CDN 配置并部署证书
 	for _, domain := range domains {
-		// 跳过通配符域名，CDN 需要具体域名
-		if strings.HasPrefix(domain, "*.") {
-			s.log.WithField("domain", domain).Debug("跳过通配符域名，CDN 不支持通配符查询")
-			continue
-		}
-
-		s.log.WithField("domain", domain).Debug("检查 CDN 域名")
+		s.log.WithField("domain", domain).Info("检查 CDN 域名")
 
 		// 查询域名配置
 		describeReq := &cdn.DescribeCdnDomainDetailRequest{
@@ -569,7 +472,7 @@ func (s *DeployService) deployToCDN(config *openapi.Config, domains []string, ce
 		}
 		describeResp, err := cdnClient.DescribeCdnDomainDetail(describeReq)
 		if err != nil {
-			s.log.WithErr(err).WithField("domain", domain).Debug("查询 CDN 域名失败，可能域名不存在")
+			s.log.WithErr(err).WithField("domain", domain).Warn("查询 CDN 域名失败，可能域名不存在")
 			continue
 		}
 
@@ -627,13 +530,7 @@ func (s *DeployService) deployToDCDN(config *openapi.Config, domains []string, c
 
 	// 遍历域名，查询 DCDN 配置并部署证书
 	for _, domain := range domains {
-		// 跳过通配符域名，DCDN 需要具体域名
-		if strings.HasPrefix(domain, "*.") {
-			s.log.WithField("domain", domain).Debug("跳过通配符域名，DCDN 不支持通配符查询")
-			continue
-		}
-
-		s.log.WithField("domain", domain).Debug("检查 DCDN 域名")
+		s.log.WithField("domain", domain).Info("检查 DCDN 域名")
 
 		// 查询域名配置
 		describeReq := &dcdn.DescribeDcdnDomainDetailRequest{
@@ -641,7 +538,7 @@ func (s *DeployService) deployToDCDN(config *openapi.Config, domains []string, c
 		}
 		describeResp, err := dcdnClient.DescribeDcdnDomainDetail(describeReq)
 		if err != nil {
-			s.log.WithErr(err).WithField("domain", domain).Debug("查询 DCDN 域名失败，可能域名不存在")
+			s.log.WithErr(err).WithField("domain", domain).Warn("查询 DCDN 域名失败，可能域名不存在")
 			continue
 		}
 
@@ -689,13 +586,13 @@ func (s *DeployService) deployToDCDN(config *openapi.Config, domains []string, c
 func (s *DeployService) deployToOSS(accessKeyID, accessKeySecret, region string, domains []string, fullchainPem, privkeyPem string) []map[string]interface{} {
 	results := []map[string]interface{}{}
 
-	// 构建默认 OSS endpoint（用于列举 Bucket）
+	// 构建 OSS endpoint
 	endpoint := fmt.Sprintf("oss-%s.aliyuncs.com", region)
 	if region == "" {
 		endpoint = "oss-cn-hangzhou.aliyuncs.com"
 	}
 
-	// 创建 OSS 客户端（用于列举 Bucket）
+	// 创建 OSS 客户端
 	client, err := oss.New(endpoint, accessKeyID, accessKeySecret)
 	if err != nil {
 		s.log.WithErr(err).Error("创建 OSS 客户端失败")
@@ -713,22 +610,10 @@ func (s *DeployService) deployToOSS(accessKeyID, accessKeySecret, region string,
 
 		// 遍历每个 Bucket，检查自定义域名
 		for _, bucket := range listResult.Buckets {
-			s.log.WithFields(map[string]interface{}{
-				"bucket":   bucket.Name,
-				"location": bucket.Location,
-			}).Debug("检查 OSS Bucket")
-
-			// 根据 Bucket 所在区域创建对应的客户端
-			bucketRegion := strings.TrimPrefix(bucket.Location, "oss-")
-			bucketEndpoint := fmt.Sprintf("oss-%s.aliyuncs.com", bucketRegion)
-			bucketClient, err := oss.New(bucketEndpoint, accessKeyID, accessKeySecret)
-			if err != nil {
-				s.log.WithErr(err).WithField("bucket", bucket.Name).Warn("创建 Bucket 客户端失败")
-				continue
-			}
+			s.log.WithField("bucket", bucket.Name).Debug("检查 OSS Bucket")
 
 			// 获取 Bucket 的自定义域名列表（返回 XML 字符串）
-			cnameXML, err := bucketClient.GetBucketCname(bucket.Name)
+			cnameXML, err := client.GetBucketCname(bucket.Name)
 			if err != nil {
 				s.log.WithErr(err).WithField("bucket", bucket.Name).Debug("获取 Bucket CNAME 失败")
 				continue
@@ -749,8 +634,8 @@ func (s *DeployService) deployToOSS(accessKeyID, accessKeySecret, region string,
 						"domain": cnameInfo.Domain,
 					}).Info("发现匹配的 OSS 自定义域名，开始部署证书")
 
-					// 部署证书（使用 bucketClient）
-					err := s.deployOSSCertificate(bucketClient, bucket.Name, cnameInfo.Domain, fullchainPem, privkeyPem)
+					// 部署证书
+					err := s.deployOSSCertificate(client, bucket.Name, cnameInfo.Domain, fullchainPem, privkeyPem)
 					if err != nil {
 						s.log.WithErr(err).WithFields(map[string]interface{}{
 							"bucket": bucket.Name,

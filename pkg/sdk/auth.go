@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,11 +29,21 @@ type AuthClient struct {
 
 // newAuthClient 创建鉴权客户端
 func newAuthClient(client *Client) (*AuthClient, error) {
-	// 建立不带鉴权的连接（用于获取 token）
-	conn, err := grpc.Dial(
-		client.config.RegistryAddr,
+	// 构建 dial target（支持集群）
+	target := buildRegistryDialTarget(client.config.RegistryAddr)
+	
+	// 准备 dial options
+	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	}
+	
+	// 如果是集群模式（static:/// scheme），启用 round_robin 负载均衡
+	if strings.HasPrefix(target, "static:///") {
+		opts = append(opts, grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`))
+	}
+	
+	// 建立不带鉴权的连接（用于获取 token）
+	conn, err := grpc.Dial(target, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial for auth: %w", err)
 	}

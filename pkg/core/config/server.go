@@ -9,6 +9,8 @@ type ServerConfig struct {
 type BootstrapServer struct {
 	Name             string                  `yaml:"name"`
 	Host             string                  `yaml:"host"`
+	IntranetHost     string                  `yaml:"intranet_host"`
+	ExtranetHost     string                  `yaml:"extranet_host"`
 	AgentGrpcAddress string                  `yaml:"agent_grpc_address"`
 	Enabled          bool                    `yaml:"enabled"`
 	Tags             map[string]string       `yaml:"tags"`

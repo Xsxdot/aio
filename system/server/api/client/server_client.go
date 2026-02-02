@@ -31,6 +31,7 @@ func (c *ServerClient) GetServerStatusByID(ctx context.Context, serverID int64) 
 
 // GetServerSSHConfigByID 获取服务器的 SSH 连接配置（已解密）
 // 返回 host + SSH 凭证信息，供 SSL 组件部署证书时使用
+// Host 字段会优先选择内网地址（如果可达），否则回退到外网地址
 func (c *ServerClient) GetServerSSHConfigByID(ctx context.Context, serverID int64) (*dto.ServerSSHConfig, error) {
 	// 获取服务器基本信息
 	server, err := c.app.GetServer(ctx, serverID)
@@ -44,9 +45,15 @@ func (c *ServerClient) GetServerSSHConfigByID(ctx context.Context, serverID int6
 		return nil, err
 	}
 
+	// 解析最佳连接地址（优先内网，回退外网）
+	resolvedHost, err := c.app.ResolveSSHHost(ctx, server, credential.Port)
+	if err != nil {
+		return nil, err
+	}
+
 	// 组装返回
 	return &dto.ServerSSHConfig{
-		Host:       server.Host,
+		Host:       resolvedHost,
 		Port:       credential.Port,
 		Username:   credential.Username,
 		AuthMethod: credential.AuthMethod,

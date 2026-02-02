@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v3.11.1
-// source: system/registry/api/proto/registry.proto
+// source: registry.proto
 
 package proto
 
@@ -24,6 +24,7 @@ const (
 	RegistryService_HeartbeatStream_FullMethodName    = "/xiaozhizhang.registry.v1.RegistryService/HeartbeatStream"
 	RegistryService_ListServices_FullMethodName       = "/xiaozhizhang.registry.v1.RegistryService/ListServices"
 	RegistryService_GetServiceByID_FullMethodName     = "/xiaozhizhang.registry.v1.RegistryService/GetServiceByID"
+	RegistryService_EnsureService_FullMethodName      = "/xiaozhizhang.registry.v1.RegistryService/EnsureService"
 )
 
 // RegistryServiceClient is the client API for RegistryService service.
@@ -42,6 +43,8 @@ type RegistryServiceClient interface {
 	ListServices(ctx context.Context, in *ListServicesRequest, opts ...grpc.CallOption) (*ListServicesResponse, error)
 	// GetServiceByID 根据 ID 获取服务详情（包含在线实例）
 	GetServiceByID(ctx context.Context, in *GetServiceByIDRequest, opts ...grpc.CallOption) (*GetServiceByIDResponse, error)
+	// EnsureService 确保服务定义存在（不存在则创建，存在则返回）
+	EnsureService(ctx context.Context, in *EnsureServiceRequest, opts ...grpc.CallOption) (*EnsureServiceResponse, error)
 }
 
 type registryServiceClient struct {
@@ -105,6 +108,16 @@ func (c *registryServiceClient) GetServiceByID(ctx context.Context, in *GetServi
 	return out, nil
 }
 
+func (c *registryServiceClient) EnsureService(ctx context.Context, in *EnsureServiceRequest, opts ...grpc.CallOption) (*EnsureServiceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EnsureServiceResponse)
+	err := c.cc.Invoke(ctx, RegistryService_EnsureService_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RegistryServiceServer is the server API for RegistryService service.
 // All implementations must embed UnimplementedRegistryServiceServer
 // for forward compatibility.
@@ -121,6 +134,8 @@ type RegistryServiceServer interface {
 	ListServices(context.Context, *ListServicesRequest) (*ListServicesResponse, error)
 	// GetServiceByID 根据 ID 获取服务详情（包含在线实例）
 	GetServiceByID(context.Context, *GetServiceByIDRequest) (*GetServiceByIDResponse, error)
+	// EnsureService 确保服务定义存在（不存在则创建，存在则返回）
+	EnsureService(context.Context, *EnsureServiceRequest) (*EnsureServiceResponse, error)
 	mustEmbedUnimplementedRegistryServiceServer()
 }
 
@@ -145,6 +160,9 @@ func (UnimplementedRegistryServiceServer) ListServices(context.Context, *ListSer
 }
 func (UnimplementedRegistryServiceServer) GetServiceByID(context.Context, *GetServiceByIDRequest) (*GetServiceByIDResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetServiceByID not implemented")
+}
+func (UnimplementedRegistryServiceServer) EnsureService(context.Context, *EnsureServiceRequest) (*EnsureServiceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EnsureService not implemented")
 }
 func (UnimplementedRegistryServiceServer) mustEmbedUnimplementedRegistryServiceServer() {}
 func (UnimplementedRegistryServiceServer) testEmbeddedByValue()                         {}
@@ -246,6 +264,24 @@ func _RegistryService_GetServiceByID_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RegistryService_EnsureService_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnsureServiceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegistryServiceServer).EnsureService(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RegistryService_EnsureService_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegistryServiceServer).EnsureService(ctx, req.(*EnsureServiceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RegistryService_ServiceDesc is the grpc.ServiceDesc for RegistryService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -269,6 +305,10 @@ var RegistryService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetServiceByID",
 			Handler:    _RegistryService_GetServiceByID_Handler,
 		},
+		{
+			MethodName: "EnsureService",
+			Handler:    _RegistryService_EnsureService_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -278,5 +318,5 @@ var RegistryService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "system/registry/api/proto/registry.proto",
+	Metadata: "registry.proto",
 }

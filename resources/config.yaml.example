@@ -1,3 +1,6 @@
+# 配置来源：file（从本地 YAML 文件读取） 或 config-center（从配置中心读取）
+config-source: file
+
 app-name: aio
 env: dev  # 环境：dev/test/prod
 host: 127.0.0.1
@@ -55,6 +58,15 @@ nginx:
   command_timeout: 30s  # 命令执行超时时间
   file_mode: '0644'  # 配置文件权限
 
+application:
+  storage_mode: 'local'  # 存储模式：local 或 oss
+  local_artifact_dir: '/opt/apps/artifacts'  # 本地存储模式下的产物存储目录
+  oss_prefix: 'application/artifacts'  # OSS 存储模式下的 key 前缀
+  release_dir: '/opt/apps/releases'  # 应用发布目录（解压后的文件存放位置）
+  keep_releases: 5  # 保留的版本数量
+  upload_max_bytes: 536870912  # 上传文件大小限制（字节），512MB
+  agent_install_root: '/opt/xiaozhizhang/apps'  # Agent 侧的应用安装根目录
+
 oss:
   access-key: 'your_aliyun_access_key_id'
   access-secret: 'your_aliyun_access_key_secret'
@@ -79,4 +91,40 @@ server:
         private_key_file: '/path/to/your/private/key'  # 推荐：使用文件路径
         # password: 'your_ssh_password'  # 或使用密码（不推荐）
         comment: 'SSH 凭证配置'
+
+# SDK 客户端配置（用于服务间调用、服务发现、配置拉取等）
+sdk:
+  # 注册中心 gRPC 地址（必填）
+  # 支持单地址：  "localhost:50051"
+  # 或集群地址：  "registry1:50051,registry2:50051,registry3:50051"
+  # 集群模式自动启用 round-robin 负载均衡和故障转移
+  registry_addr: "localhost:50051"
+  client_key: "your-client-key"  # 客户端认证密钥（必填）
+  client_secret: "your-client-secret"  # 客户端认证密文（必填）
+  default_timeout: 30s  # 默认超时时间（可选，默认 30s）
+  disable_auth: false  # 是否禁用自动鉴权（可选，默认 false）
+  
+  # 启动配置前缀（当 config-source=config-center 时必填）
+  # 用于从配置中心拉取启动配置
+  # 示例：bootstrap_config_prefix: "aio.xiaozhizhang.web"
+  # 详见下方"配置中心模式"说明
+  bootstrap_config_prefix: "aio.xiaozhizhang.web"
+  
+  # 自动注册配置（可选，如果需要将本服务注册到注册中心则配置此项）
+  # 使用 EnsureService + RegisterInstance 完整注册流程，无需预先创建服务
+  register:
+    # ========== 服务配置 ==========
+    project: "your-project"  # 项目名称（必填）
+    name: "your-service-name"  # 服务名称（必填）
+    owner: "team-name"  # 服务负责人/团队（必填）
+    description: "Service description"  # 服务描述（可选，为空则自动生成）
+    spec_json: "{}"  # 服务规格 JSON（可选，默认 {}）
+    
+    # ========== 实例配置 ==========
+    instance_key: ""  # 实例唯一标识（可选，为空则自动生成：{app-name}-{host}-{timestamp}）
+    env: ""  # 环境（可选，为空则使用全局 env 配置）
+    host: ""  # 主机地址（可选，为空则使用全局 host 配置）
+    endpoint: ""  # 服务端点（可选，为空则自动生成：http://{host}:{port}）
+    meta_json: "{}"  # 元数据 JSON（可选，用于存储额外的实例信息）
+    ttl_seconds: 60  # TTL 秒数（可选，默认 60，心跳间隔为 TTL/3）
 

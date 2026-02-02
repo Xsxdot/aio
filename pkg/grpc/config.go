@@ -86,7 +86,7 @@ func DefaultConfig() *Config {
 func DefaultAuthConfig() *AuthConfig {
 	return &AuthConfig{
 		SkipMethods: []string{
-			"/auth.v1.AuthService/ClientAuth",                                // 客户端认证不需要鉴权
+			"/xiaozhizhang.user.v1.ClientAuthService/AuthenticateClient",     // 客户端认证不需要鉴权
 			"/grpc.health.v1.Health/Check",                                   // 健康检查不需要鉴权
 			"/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo", // 反射服务不需要鉴权
 		},

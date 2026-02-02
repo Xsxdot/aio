@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	errorc "xiaozhizhang/pkg/core/err"
 	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/pkg/core/security"
+	pkggrpc "xiaozhizhang/pkg/grpc"
 	"xiaozhizhang/system/config/api/client"
 	pb "xiaozhizhang/system/config/api/proto"
 	internalapp "xiaozhizhang/system/config/internal/app"
 	"xiaozhizhang/system/config/internal/model"
 	"xiaozhizhang/system/config/internal/model/dto"
+	"xiaozhizhang/system/config/internal/service"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -55,10 +58,10 @@ func (s *ConfigService) RegisterService(server *grpc.Server) error {
 
 // CreateConfig 创建配置
 func (s *ConfigService) CreateConfig(ctx context.Context, req *pb.CreateConfigRequest) (*pb.ConfigResponse, error) {
-	// 获取操作者信息
-	adminClaims, err := security.GetAdminClaimsByCtx(ctx)
+	// 获取操作者信息（从 gRPC 中间件注入的 authInfo）
+	operator, operatorID, err := s.getOperatorInfo(ctx)
 	if err != nil {
-		return nil, status.Error(codes.Unauthenticated, "未授权的请求")
+		return nil, err
 	}
 
 	// 转换为内部DTO（value map 的 key 为属性名）
@@ -79,7 +82,7 @@ func (s *ConfigService) CreateConfig(ctx context.Context, req *pb.CreateConfigRe
 	}
 
 	// 调用app层创建配置
-	if err := s.app.CreateConfig(ctx, createReq, adminClaims.Account, adminClaims.ID); err != nil {
+	if err := s.app.CreateConfig(ctx, createReq, operator, operatorID); err != nil {
 		s.log.WithErr(err).WithField("key", req.Key).Error("创建配置失败")
 		return nil, convertToGRPCError(err)
 	}
@@ -90,10 +93,10 @@ func (s *ConfigService) CreateConfig(ctx context.Context, req *pb.CreateConfigRe
 
 // UpdateConfig 更新配置
 func (s *ConfigService) UpdateConfig(ctx context.Context, req *pb.UpdateConfigRequest) (*pb.ConfigResponse, error) {
-	// 获取操作者信息
-	adminClaims, err := security.GetAdminClaimsByCtx(ctx)
+	// 获取操作者信息（从 gRPC 中间件注入的 authInfo）
+	operator, operatorID, err := s.getOperatorInfo(ctx)
 	if err != nil {
-		return nil, status.Error(codes.Unauthenticated, "未授权的请求")
+		return nil, err
 	}
 
 	// 先查询配置ID
@@ -120,7 +123,7 @@ func (s *ConfigService) UpdateConfig(ctx context.Context, req *pb.UpdateConfigRe
 	}
 
 	// 调用app层更新配置
-	if err := s.app.UpdateConfig(ctx, configItem.ID, updateReq, adminClaims.Account, adminClaims.ID); err != nil {
+	if err := s.app.UpdateConfig(ctx, configItem.ID, updateReq, operator, operatorID); err != nil {
 		s.log.WithErr(err).WithField("key", req.Key).Error("更新配置失败")
 		return nil, convertToGRPCError(err)
 	}
@@ -131,12 +134,6 @@ func (s *ConfigService) UpdateConfig(ctx context.Context, req *pb.UpdateConfigRe
 
 // DeleteConfig 删除配置
 func (s *ConfigService) DeleteConfig(ctx context.Context, req *pb.DeleteConfigRequest) (*pb.DeleteConfigResponse, error) {
-	// 获取操作者信息
-	_, err := security.GetAdminClaimsByCtx(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Unauthenticated, "未授权的请求")
-	}
-
 	// 先查询配置ID
 	configItem, err := s.app.ConfigItemService.FindByKey(ctx, req.Key)
 	if err != nil {
@@ -158,11 +155,6 @@ func (s *ConfigService) DeleteConfig(ctx context.Context, req *pb.DeleteConfigRe
 
 // GetConfigForAdmin 获取配置（管理端）
 func (s *ConfigService) GetConfigForAdmin(ctx context.Context, req *pb.GetConfigForAdminRequest) (*pb.ConfigResponse, error) {
-	// 获取操作者信息
-	_, err := security.GetAdminClaimsByCtx(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Unauthenticated, "未授权的请求")
-	}
 
 	// 查询配置
 	configItem, err := s.app.ConfigItemService.FindByKey(ctx, req.Key)
@@ -177,12 +169,6 @@ func (s *ConfigService) GetConfigForAdmin(ctx context.Context, req *pb.GetConfig
 
 // ListConfigsForAdmin 列表查询（管理端）
 func (s *ConfigService) ListConfigsForAdmin(ctx context.Context, req *pb.ListConfigsForAdminRequest) (*pb.ListConfigsForAdminResponse, error) {
-	// 获取操作者信息
-	_, err := security.GetAdminClaimsByCtx(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Unauthenticated, "未授权的请求")
-	}
-
 	// 构建查询请求
 	queryReq := &dto.QueryConfigRequest{
 		Key:     req.Key,
@@ -216,11 +202,6 @@ func (s *ConfigService) ListConfigsForAdmin(ctx context.Context, req *pb.ListCon
 
 // UpdateConfigStatus 更新配置状态
 func (s *ConfigService) UpdateConfigStatus(ctx context.Context, req *pb.UpdateConfigStatusRequest) (*pb.ConfigResponse, error) {
-	// 获取操作者信息
-	_, err := security.GetAdminClaimsByCtx(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Unauthenticated, "未授权的请求")
-	}
 
 	// 注意：当前模型中没有状态字段，这个接口暂时返回未实现
 	return nil, status.Error(codes.Unimplemented, "配置状态更新功能暂未实现")
@@ -250,6 +231,55 @@ func (s *ConfigService) BatchGetConfigs(ctx context.Context, req *pb.BatchGetCon
 	}
 
 	return &pb.BatchGetConfigsResponse{
+		Configs: configs,
+	}, nil
+}
+
+// GetConfigsByPrefix 按前缀获取配置
+func (s *ConfigService) GetConfigsByPrefix(ctx context.Context, req *pb.GetConfigsByPrefixRequest) (*pb.GetConfigsByPrefixResponse, error) {
+	// 查询前缀匹配的配置
+	configItems, err := s.app.ConfigItemService.FindByKeyPrefix(ctx, req.Prefix)
+	if err != nil {
+		s.log.WithErr(err).WithField("prefix", req.Prefix).Error("按前缀查询配置失败")
+		return nil, convertToGRPCError(err)
+	}
+
+	configs := make(map[string]string)
+	for _, item := range configItems {
+		// 过滤环境：如果指定了env，只返回匹配的配置
+		if req.Env != "" {
+			// 检查key是否以 .{env} 结尾
+			expectedSuffix := "." + req.Env
+			if !strings.HasSuffix(item.Key, expectedSuffix) {
+				continue
+			}
+		}
+
+		// 转换并解密
+		configItem, err := s.app.ConfigItemService.ConvertAndDecrypt(item)
+		if err != nil {
+			s.log.WithErr(err).WithField("key", item.Key).Warn("转换配置失败，跳过")
+			continue
+		}
+
+		// 转换为纯对象
+		plainObject, err := service.ConvertConfigValuesToPlanObject(configItem.Value)
+		if err != nil {
+			s.log.WithErr(err).WithField("key", item.Key).Warn("转换配置值失败，跳过")
+			continue
+		}
+
+		// 序列化为JSON
+		jsonBytes, err := json.Marshal(plainObject)
+		if err != nil {
+			s.log.WithErr(err).WithField("key", item.Key).Warn("序列化配置失败，跳过")
+			continue
+		}
+
+		configs[item.Key] = string(jsonBytes)
+	}
+
+	return &pb.GetConfigsByPrefixResponse{
 		Configs: configs,
 	}, nil
 }
@@ -337,6 +367,31 @@ func convertToProtoConfigResponse(config *model.ConfigItemModel) (*pb.ConfigResp
 		CreatedAt:   config.CreatedAt.Format("2006-01-02 15:04:05"),
 		UpdatedAt:   config.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}, nil
+}
+
+// getOperatorInfo 从上下文获取操作者信息（client token）
+func (s *ConfigService) getOperatorInfo(ctx context.Context) (operator string, operatorID int64, err error) {
+	// 从 gRPC 中间件注入的 authInfo 中获取信息
+	authInfo, ok := ctx.Value("authInfo").(*pkggrpc.AuthInfo)
+	if !ok || authInfo == nil {
+		s.log.Warn("未找到认证信息")
+		return "", 0, status.Error(codes.Unauthenticated, "未授权的请求")
+	}
+
+	// operator 优先使用 Name（clientKey），fallback 到 SubjectID
+	operator = authInfo.Name
+	if operator == "" {
+		operator = authInfo.SubjectID
+	}
+
+	// operatorID 从 SubjectID 解析（clientID 字符串转 int64）
+	operatorID, parseErr := strconv.ParseInt(authInfo.SubjectID, 10, 64)
+	if parseErr != nil {
+		s.log.WithErr(parseErr).WithField("subject_id", authInfo.SubjectID).Warn("解析 SubjectID 失败，使用 0")
+		operatorID = 0
+	}
+
+	return operator, operatorID, nil
 }
 
 // convertToGRPCError 转换业务错误为gRPC错误

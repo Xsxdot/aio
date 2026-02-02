@@ -82,3 +82,4 @@ func (s *ShortLink) SyncURLsFromTargetConfig() {
 		}
 	}
 }
+

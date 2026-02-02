@@ -19,3 +19,4 @@ type ShortVisit struct {
 func (ShortVisit) TableName() string {
 	return "shorturl_visits"
 }
+

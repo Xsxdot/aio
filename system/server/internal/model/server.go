@@ -8,7 +8,9 @@ import (
 type ServerModel struct {
 	common.Model
 	Name             string      `gorm:"type:varchar(100);not null;uniqueIndex;comment:服务器名称" json:"name" comment:"服务器名称"`
-	Host             string      `gorm:"type:varchar(255);not null;comment:服务器地址" json:"host" comment:"服务器地址"`
+	Host             string      `gorm:"type:varchar(255);not null;comment:服务器地址（兼容字段，与外网地址保持一致）" json:"host" comment:"服务器地址"`
+	IntranetHost     string      `gorm:"type:varchar(255);comment:内网地址" json:"intranetHost" comment:"内网地址"`
+	ExtranetHost     string      `gorm:"type:varchar(255);comment:外网地址" json:"extranetHost" comment:"外网地址"`
 	AgentGrpcAddress string      `gorm:"type:varchar(255);comment:Agent gRPC 地址（预留）" json:"agentGrpcAddress" comment:"Agent gRPC 地址"`
 	Enabled          bool        `gorm:"type:tinyint(1);not null;default:1;comment:是否启用" json:"enabled" comment:"是否启用"`
 	Tags             common.JSON `gorm:"serializer:json;comment:标签（JSON）" json:"tags" comment:"标签"`

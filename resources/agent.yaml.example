@@ -8,8 +8,8 @@ jwt:
 
 # Agent 配置
 agent:
-  # gRPC 监听地址
-  address: ":50052"
+  # gRPC 监听地址（默认仅监听 localhost，如需远程访问请配置 TLS）
+  address: "127.0.0.1:50052"
   
   # 命令执行超时（Go duration 格式，如 30s, 1m）
   timeout: 30s
@@ -29,4 +29,24 @@ agent:
   systemd:
     # unit 文件目录
     unit_dir: "/etc/systemd/system"
+  
+  # 安装任务配置
+  install:
+    # 安装根目录
+    install_root: "/opt/xiaozhizhang/apps"
+    # Bundle 存储目录
+    bundle_dir: "/opt/xiaozhizhang/bundles"
+    # 保留版本数
+    keep_releases: 5
+    # 最大 Bundle 大小（字节，默认 1GB）
+    max_bundle_size: 1073741824
+    # 最大超时时间（Go duration 格式）
+    max_timeout: 30m
+    # 允许的模板 ID（空表示全部允许，生产环境建议配置白名单）
+    allowed_templates: []
+    # allowed_templates:
+    #   - install_binary
+    #   - deploy_config
+    #   - cleanup_old_releases
+    #   - health_check
 

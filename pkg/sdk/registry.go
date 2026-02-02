@@ -188,3 +188,69 @@ type RegisterInstanceResponse struct {
 	InstanceKey string
 	ExpiresAt   int64
 }
+
+// EnsureServiceRequest 确保服务定义存在请求
+type EnsureServiceRequest struct {
+	Project     string
+	Name        string
+	Owner       string
+	Description string
+	SpecJSON    string
+}
+
+// EnsureServiceResponse 确保服务定义存在响应
+type EnsureServiceResponse struct {
+	Service ServiceDescriptor
+	Created bool
+}
+
+// EnsureService 确保服务定义存在（不存在则创建，存在则返回）
+func (rc *RegistryClient) EnsureService(ctx context.Context, req *EnsureServiceRequest) (*EnsureServiceResponse, error) {
+	grpcReq := &registrypb.EnsureServiceRequest{
+		Project:     req.Project,
+		Name:        req.Name,
+		Owner:       req.Owner,
+		Description: req.Description,
+		SpecJson:    req.SpecJSON,
+	}
+
+	resp, err := rc.service.EnsureService(ctx, grpcReq)
+	if err != nil {
+		return nil, WrapError(err, "ensure service failed")
+	}
+
+	if resp.Service == nil {
+		return nil, fmt.Errorf("service is nil in response")
+	}
+
+	svc := resp.Service
+	desc := ServiceDescriptor{
+		ID:          svc.Id,
+		Project:     svc.Project,
+		Name:        svc.Name,
+		Owner:       svc.Owner,
+		Description: svc.Description,
+		Instances:   []InstanceEndpoint{}, // EnsureService 不返回实例列表
+	}
+
+	return &EnsureServiceResponse{
+		Service: desc,
+		Created: resp.Created,
+	}, nil
+}
+
+// RegisterSelfWithEnsureService 一键注册：先确保服务存在，再注册实例并启动心跳
+// 这是完整的自注册闭环，调用方无需提前知道 service_id
+func (rc *RegistryClient) RegisterSelfWithEnsureService(ctx context.Context, svcReq *EnsureServiceRequest, instReq *RegisterInstanceRequest) (*RegistrationHandle, error) {
+	// 1. 确保服务存在
+	ensureResp, err := rc.EnsureService(ctx, svcReq)
+	if err != nil {
+		return nil, fmt.Errorf("ensure service failed: %w", err)
+	}
+
+	// 2. 将服务 ID 写入实例注册请求
+	instReq.ServiceID = ensureResp.Service.ID
+
+	// 3. 调用现有的 RegisterSelf（会自动启动心跳）
+	return rc.RegisterSelf(ctx, instReq)
+}

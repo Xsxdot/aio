@@ -9,9 +9,6 @@ AIO 平台的 Go 语言 gRPC SDK，提供服务发现、鉴权、注册等功能
 - **负载均衡**：内置 round-robin 负载均衡策略
 - **故障转移**：自动检测失败实例并进行短期熔断
 - **服务注册**：支持注册自身到注册中心并保持心跳
-- **配置中心**：查询配置（GetConfig/BatchGetConfigs）
-- **短网址服务**：创建、查询、解析短链接，自动处理 JSON 序列化
-- **应用部署**：流式上传产物、触发部署、查询部署状态
 - **并发安全**：所有客户端操作都是并发安全的
 
 ## 安装
@@ -36,9 +33,12 @@ import (
 )
 
 func main() {
-    // 创建 SDK 客户端
+    // 创建 SDK 客户端（支持单地址或集群地址）
     client, err := sdk.New(sdk.Config{
+        // 单地址模式
         RegistryAddr: "localhost:50051",
+        // 或集群模式（逗号分隔，自动 round-robin 负载均衡）
+        // RegistryAddr: "registry1:50051,registry2:50051,registry3:50051",
         ClientKey:    "your-client-key",
         ClientSecret: "your-client-secret",
     })
@@ -125,109 +125,6 @@ if err != nil {
 defer handle.Stop()
 ```
 
-### 配置中心
-
-```go
-// 获取单个配置
-ctx := context.Background()
-jsonStr, err := client.ConfigClient.GetConfigJSON(ctx, "database.config", "dev")
-if err != nil {
-    panic(err)
-}
-fmt.Println("Config:", jsonStr)
-
-// 批量获取配置
-configs, err := client.ConfigClient.BatchGetConfigs(ctx, 
-    []string{"database.config", "redis.config"}, 
-    "dev",
-)
-if err != nil {
-    panic(err)
-}
-for key, value := range configs {
-    fmt.Printf("%s: %s\n", key, value)
-}
-```
-
-### 短网址服务
-
-```go
-ctx := context.Background()
-
-// 创建短链接
-resp, err := client.ShortURL.CreateShortLink(ctx, &sdk.CreateShortLinkRequest{
-    DomainID:   1,
-    TargetType: "url",
-    TargetConfig: map[string]interface{}{
-        "url": "https://example.com/long-url",
-    },
-    Comment: "示例短链接",
-})
-if err != nil {
-    panic(err)
-}
-fmt.Printf("短链接: %s\n", resp.ShortURL)
-
-// 解析短链接
-resolveResp, err := client.ShortURL.Resolve(ctx, "short.domain.com", resp.Code, "")
-if err != nil {
-    panic(err)
-}
-fmt.Printf("目标类型: %s\n", resolveResp.TargetType)
-fmt.Printf("建议动作: %s\n", resolveResp.Action)
-
-// 上报成功
-err = client.ShortURL.ReportSuccess(ctx, resp.Code, "event-123", map[string]interface{}{
-    "source": "sdk-example",
-})
-```
-
-### 应用部署
-
-```go
-ctx := context.Background()
-
-// 上传产物（流式）
-file, _ := os.Open("artifact.tar.gz")
-defer file.Close()
-
-uploadResp, err := client.Application.UploadArtifactFromReader(ctx,
-    &applicationpb.ArtifactMeta{
-        ApplicationId: 1,
-        FileName:     "app-v1.0.0.tar.gz",
-        ArtifactType: "backend",
-        Size:         1024000,
-        Sha256:       "abc123...",
-        ContentType:  "application/gzip",
-    },
-    file,
-    512*1024, // 512KB 分块
-)
-if err != nil {
-    panic(err)
-}
-fmt.Printf("产物 ID: %d\n", uploadResp.ArtifactID)
-
-// 触发部署
-deployResp, err := client.Application.Deploy(ctx, &sdk.DeployRequest{
-    ApplicationID:     1,
-    Version:          "v1.0.0",
-    BackendArtifactID: uploadResp.ArtifactID,
-    Operator:         "sdk-user",
-})
-if err != nil {
-    panic(err)
-}
-fmt.Printf("部署 ID: %d, 状态: %s\n", deployResp.DeploymentID, deployResp.Status)
-
-// 查询部署状态
-deployInfo, err := client.Application.GetDeployment(ctx, deployResp.DeploymentID)
-if err != nil {
-    panic(err)
-}
-fmt.Printf("部署状态: %s\n", deployInfo.Status)
-```
-
 ## API 文档
 
 ### Client
@@ -236,12 +133,9 @@ fmt.Printf("部署状态: %s\n", deployInfo.Status)
 
 ```go
 type Client struct {
-    Auth         *AuthClient         // 鉴权客户端
-    Registry     *RegistryClient     // 注册中心客户端
-    Discovery    *DiscoveryClient    // 服务发现客户端
-    ConfigClient *ConfigClient       // 配置中心客户端
-    ShortURL     *ShortURLClient     // 短网址客户端
-    Application  *ApplicationClient  // 应用部署客户端
+    Auth      *AuthClient      // 鉴权客户端
+    Registry  *RegistryClient  // 注册中心客户端
+    Discovery *DiscoveryClient // 服务发现客户端
 }
 
 func New(config Config) (*Client, error)
@@ -300,73 +194,6 @@ func (dc *DiscoveryClient) Pick(project, serviceName, env string) (*InstanceEndp
 func (dc *DiscoveryClient) RefreshService(ctx context.Context, project, serviceName, env string) error
 ```
 
-### ConfigClient
-
-配置中心查询客户端（只读接口）。
-
-```go
-type ConfigClient struct { ... }
-
-// 获取单个配置（返回 JSON 字符串）
-func (c *ConfigClient) GetConfigJSON(ctx context.Context, key, env string) (string, error)
-
-// 批量获取配置
-func (c *ConfigClient) BatchGetConfigs(ctx context.Context, keys []string, env string) (map[string]string, error)
-```
-
-**注意**：管理端接口（创建/更新/删除配置）需要 admin token，SDK 的 client-credentials 认证不支持，请使用 HTTP Admin API。
-
-### ShortURLClient
-
-短网址服务客户端。
-
-```go
-type ShortURLClient struct { ... }
-
-// 创建短链接
-func (c *ShortURLClient) CreateShortLink(ctx context.Context, req *CreateShortLinkRequest) (*CreateShortLinkResponse, error)
-
-// 获取短链接详情
-func (c *ShortURLClient) GetShortLink(ctx context.Context, id int64) (*ShortLinkInfo, error)
-
-// 查询短链接列表
-func (c *ShortURLClient) ListShortLinks(ctx context.Context, domainID int64, page, size int32) ([]*ShortLinkInfo, int64, error)
-
-// 解析短链接（返回目标配置和建议动作）
-func (c *ShortURLClient) Resolve(ctx context.Context, host, code, password string) (*ResolveResponse, error)
-
-// 上报跳转成功（无鉴权）
-func (c *ShortURLClient) ReportSuccess(ctx context.Context, code, eventID string, attrs map[string]interface{}) error
-```
-
-**特性**：自动处理 JSON 序列化/反序列化，`TargetConfig` 和 `Attrs` 直接使用 `map[string]interface{}`。
-
-### ApplicationClient
-
-应用部署客户端。
-
-```go
-type ApplicationClient struct { ... }
-
-// 触发部署
-func (c *ApplicationClient) Deploy(ctx context.Context, req *DeployRequest) (*DeployResponse, error)
-
-// 获取部署状态
-func (c *ApplicationClient) GetDeployment(ctx context.Context, deploymentID int64) (*DeploymentInfo, error)
-
-// 流式上传产物（易用封装）
-func (c *ApplicationClient) UploadArtifactFromReader(
-    ctx context.Context,
-    meta *applicationpb.ArtifactMeta,
-    r io.Reader,
-    chunkSize int,
-) (*UploadArtifactResponse, error)
-```
-
-**特性**：
-- `UploadArtifactFromReader` 自动处理流式上传，默认 512KB 分块
-- 支持从任何 `io.Reader` 上传（文件、网络流、内存等）
-
 ### RegistrationHandle
 
 服务注册句柄，用于管理心跳和注销。
@@ -380,13 +207,12 @@ func (h *RegistrationHandle) Stop() error
 
 ## 配置
 
-**重要说明**：`RegistryAddr` 实际上是 **AIO 平台的 gRPC 服务地址**（统一对外服务地址），所有 gRPC 服务（Registry、Config、ShortURL、Application 等）都在这个地址上提供服务。
-
 ```go
 type Config struct {
-    // RegistryAddr AIO 平台 gRPC 服务地址（必填）
-    // 例如：localhost:50051 或 aio.example.com:50051
-    // 所有服务（registry/config/shorturl/application）都在此地址上
+    // 注册中心地址（必填）
+    // 支持单地址：  "host:port"
+    // 或集群地址：  "host1:port1,host2:port2,host3:port3"
+    // 集群模式自动启用 round-robin 负载均衡和故障转移
     RegistryAddr string
     
     // 客户端认证密钥（必填）
@@ -401,6 +227,27 @@ type Config struct {
     // 禁用自动鉴权（可选，默认 false）
     DisableAuth bool
 }
+```
+
+### 集群模式说明
+
+当 `RegistryAddr` 包含多个地址（逗号分隔）时，SDK 会自动：
+
+1. **启用 round-robin 负载均衡**：在多个注册中心节点间均匀分配请求
+2. **自动故障转移**：当某个节点不可用时，自动切换到其他健康节点
+3. **连接复用**：底层 gRPC 连接会自动管理和复用
+
+示例：
+
+```go
+// 单节点（向后兼容）
+RegistryAddr: "registry.example.com:50051"
+
+// 高可用集群（推荐生产环境）
+RegistryAddr: "registry1:50051,registry2:50051,registry3:50051"
+
+// 支持空格
+RegistryAddr: "registry1:50051, registry2:50051, registry3:50051"
 ```
 
 ## 错误处理
@@ -422,9 +269,61 @@ if sdk.IsUnavailable(err) {
 }
 ```
 
-## 示例
+## 集成测试
 
-完整的示例程序请参考 [`example/main.go`](./example/main.go)。
+SDK 提供了完整的集成测试，覆盖所有功能（Auth、Registry、Discovery、Config CRUD、ShortURL、RegisterSelf with Heartbeat）。
+
+### 运行集成测试
+
+集成测试需要连接真实的服务环境，因此需要通过环境变量进行配置：
+
+**必需的环境变量：**
+
+```bash
+SDK_INTEGRATION=1                      # 显式启用集成测试
+REGISTRY_ADDR=localhost:50051          # 注册中心地址（支持集群：host1:50051,host2:50051）
+CLIENT_KEY=your-client-key             # 客户端密钥
+CLIENT_SECRET=your-client-secret       # 客户端密文
+SDK_TEST_SERVICE_ID=1                  # 用于 RegisterSelf 测试的 serviceId
+SDK_TEST_SHORTURL_DOMAIN_ID=1          # 用于短链接测试的 domainId
+```
+
+**可选的环境变量：**
+
+```bash
+SDK_TEST_PROJECT=aio                   # 默认 "aio"
+SDK_TEST_ENV=dev                       # 默认 "dev"
+SDK_TEST_SERVICE_NAME=your-service     # 指定用于 Pick 测试的服务名
+SDK_TEST_SHORTURL_HOST=short.example.com  # 指定用于 Resolve 测试的 host
+```
+
+**运行测试：**
+
+```bash
+# 设置环境变量并运行
+SDK_INTEGRATION=1 \
+  REGISTRY_ADDR=localhost:50051 \
+  CLIENT_KEY=your-key \
+  CLIENT_SECRET=your-secret \
+  SDK_TEST_SERVICE_ID=1 \
+  SDK_TEST_SHORTURL_DOMAIN_ID=1 \
+  go test ./pkg/sdk/example -run TestSDK_FullIntegration -v
+```
+
+**测试覆盖：**
+
+1. **Auth**：获取并验证 token
+2. **Registry.ListServices**：拉取服务列表
+3. **Discovery.Pick**：负载均衡选择实例（3 轮 round-robin）
+4. **RegisterSelf + Heartbeat + Stop**：注册实例、等待心跳、优雅注销
+5. **Config CRUD**：创建 → 读取 → 更新 → 再次读取 → 删除
+6. **ShortURL**：创建短链 → 解析 → 上报成功
+
+**注意事项：**
+
+- 集成测试会真实写入数据（配置、短链、注册中心实例），但会自动清理
+- 需要测试环境的相应权限（Config 管理端可能需要 admin 权限）
+- 如果未设置 `SDK_INTEGRATION=1` 或缺少必需环境变量，测试将自动跳过（`t.Skip`）
 
 ## 最佳实践
 
@@ -450,8 +349,9 @@ if sdk.IsUnavailable(err) {
 ## 限制
 
 - 目前只支持不安全的 gRPC 连接（生产环境需要添加 TLS 支持）
-- 负载均衡策略仅支持 round-robin
+- 注册中心集群负载均衡策略为 round-robin（下游服务发现也是 round-robin）
 - 服务缓存刷新为固定 30 秒
+- 集群地址为静态配置（不支持动态服务发现，如需动态发现请使用 DNS）
 
 ## License
 

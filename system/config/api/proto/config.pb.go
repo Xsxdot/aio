@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        v3.11.1
-// source: system/config/api/proto/config.proto
+// source: config.proto
 
 package proto
 
@@ -73,11 +73,11 @@ func (x ValueType) String() string {
 }
 
 func (ValueType) Descriptor() protoreflect.EnumDescriptor {
-	return file_system_config_api_proto_config_proto_enumTypes[0].Descriptor()
+	return file_config_proto_enumTypes[0].Descriptor()
 }
 
 func (ValueType) Type() protoreflect.EnumType {
-	return &file_system_config_api_proto_config_proto_enumTypes[0]
+	return &file_config_proto_enumTypes[0]
 }
 
 func (x ValueType) Number() protoreflect.EnumNumber {
@@ -86,7 +86,7 @@ func (x ValueType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ValueType.Descriptor instead.
 func (ValueType) EnumDescriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{0}
+	return file_config_proto_rawDescGZIP(), []int{0}
 }
 
 // ConfigValue 配置值
@@ -100,7 +100,7 @@ type ConfigValue struct {
 
 func (x *ConfigValue) Reset() {
 	*x = ConfigValue{}
-	mi := &file_system_config_api_proto_config_proto_msgTypes[0]
+	mi := &file_config_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -112,7 +112,7 @@ func (x *ConfigValue) String() string {
 func (*ConfigValue) ProtoMessage() {}
 
 func (x *ConfigValue) ProtoReflect() protoreflect.Message {
-	mi := &file_system_config_api_proto_config_proto_msgTypes[0]
+	mi := &file_config_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -125,7 +125,7 @@ func (x *ConfigValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigValue.ProtoReflect.Descriptor instead.
 func (*ConfigValue) Descriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{0}
+	return file_config_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *ConfigValue) GetValue() string {
@@ -145,8 +145,8 @@ func (x *ConfigValue) GetType() ValueType {
 // CreateConfigRequest 创建配置请求
 type CreateConfigRequest struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Key           string                  `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`                                                                                     // 配置键
-	Value         map[string]*ConfigValue `protobuf:"bytes,2,rep,name=value,proto3" json:"value,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`       // 配置值，key为环境名
+	Key           string                  `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`                                                                                     // 配置键（带环境后缀，如 app.cert.dev）
+	Value         map[string]*ConfigValue `protobuf:"bytes,2,rep,name=value,proto3" json:"value,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`       // 配置值，key为属性名
 	Metadata      map[string]string       `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 元数据
 	Description   string                  `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`                                                                     // 配置描述
 	ChangeNote    string                  `protobuf:"bytes,5,opt,name=change_note,json=changeNote,proto3" json:"change_note,omitempty"`                                                     // 变更说明
@@ -156,7 +156,7 @@ type CreateConfigRequest struct {
 
 func (x *CreateConfigRequest) Reset() {
 	*x = CreateConfigRequest{}
-	mi := &file_system_config_api_proto_config_proto_msgTypes[1]
+	mi := &file_config_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -168,7 +168,7 @@ func (x *CreateConfigRequest) String() string {
 func (*CreateConfigRequest) ProtoMessage() {}
 
 func (x *CreateConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_system_config_api_proto_config_proto_msgTypes[1]
+	mi := &file_config_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -181,7 +181,7 @@ func (x *CreateConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateConfigRequest.ProtoReflect.Descriptor instead.
 func (*CreateConfigRequest) Descriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{1}
+	return file_config_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *CreateConfigRequest) GetKey() string {
@@ -222,8 +222,8 @@ func (x *CreateConfigRequest) GetChangeNote() string {
 // UpdateConfigRequest 更新配置请求
 type UpdateConfigRequest struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Key           string                  `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`                                                                                     // 配置键
-	Value         map[string]*ConfigValue `protobuf:"bytes,2,rep,name=value,proto3" json:"value,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`       // 配置值
+	Key           string                  `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`                                                                                     // 配置键（带环境后缀，如 app.cert.dev）
+	Value         map[string]*ConfigValue `protobuf:"bytes,2,rep,name=value,proto3" json:"value,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`       // 配置值，key为属性名
 	Metadata      map[string]string       `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 元数据
 	Description   string                  `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`                                                                     // 配置描述
 	ChangeNote    string                  `protobuf:"bytes,5,opt,name=change_note,json=changeNote,proto3" json:"change_note,omitempty"`                                                     // 变更说明
@@ -233,7 +233,7 @@ type UpdateConfigRequest struct {
 
 func (x *UpdateConfigRequest) Reset() {
 	*x = UpdateConfigRequest{}
-	mi := &file_system_config_api_proto_config_proto_msgTypes[2]
+	mi := &file_config_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -245,7 +245,7 @@ func (x *UpdateConfigRequest) String() string {
 func (*UpdateConfigRequest) ProtoMessage() {}
 
 func (x *UpdateConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_system_config_api_proto_config_proto_msgTypes[2]
+	mi := &file_config_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -258,7 +258,7 @@ func (x *UpdateConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateConfigRequest.ProtoReflect.Descriptor instead.
 func (*UpdateConfigRequest) Descriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{2}
+	return file_config_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *UpdateConfigRequest) GetKey() string {
@@ -306,7 +306,7 @@ type DeleteConfigRequest struct {
 
 func (x *DeleteConfigRequest) Reset() {
 	*x = DeleteConfigRequest{}
-	mi := &file_system_config_api_proto_config_proto_msgTypes[3]
+	mi := &file_config_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -318,7 +318,7 @@ func (x *DeleteConfigRequest) String() string {
 func (*DeleteConfigRequest) ProtoMessage() {}
 
 func (x *DeleteConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_system_config_api_proto_config_proto_msgTypes[3]
+	mi := &file_config_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -331,7 +331,7 @@ func (x *DeleteConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteConfigRequest.ProtoReflect.Descriptor instead.
 func (*DeleteConfigRequest) Descriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{3}
+	return file_config_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *DeleteConfigRequest) GetKey() string {
@@ -352,7 +352,7 @@ type DeleteConfigResponse struct {
 
 func (x *DeleteConfigResponse) Reset() {
 	*x = DeleteConfigResponse{}
-	mi := &file_system_config_api_proto_config_proto_msgTypes[4]
+	mi := &file_config_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -364,7 +364,7 @@ func (x *DeleteConfigResponse) String() string {
 func (*DeleteConfigResponse) ProtoMessage() {}
 
 func (x *DeleteConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_system_config_api_proto_config_proto_msgTypes[4]
+	mi := &file_config_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -377,7 +377,7 @@ func (x *DeleteConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteConfigResponse.ProtoReflect.Descriptor instead.
 func (*DeleteConfigResponse) Descriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{4}
+	return file_config_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *DeleteConfigResponse) GetSuccess() bool {
@@ -404,7 +404,7 @@ type GetConfigForAdminRequest struct {
 
 func (x *GetConfigForAdminRequest) Reset() {
 	*x = GetConfigForAdminRequest{}
-	mi := &file_system_config_api_proto_config_proto_msgTypes[5]
+	mi := &file_config_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -416,7 +416,7 @@ func (x *GetConfigForAdminRequest) String() string {
 func (*GetConfigForAdminRequest) ProtoMessage() {}
 
 func (x *GetConfigForAdminRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_system_config_api_proto_config_proto_msgTypes[5]
+	mi := &file_config_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -429,7 +429,7 @@ func (x *GetConfigForAdminRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigForAdminRequest.ProtoReflect.Descriptor instead.
 func (*GetConfigForAdminRequest) Descriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{5}
+	return file_config_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetConfigForAdminRequest) GetKey() string {
@@ -452,7 +452,7 @@ type ListConfigsForAdminRequest struct {
 
 func (x *ListConfigsForAdminRequest) Reset() {
 	*x = ListConfigsForAdminRequest{}
-	mi := &file_system_config_api_proto_config_proto_msgTypes[6]
+	mi := &file_config_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -464,7 +464,7 @@ func (x *ListConfigsForAdminRequest) String() string {
 func (*ListConfigsForAdminRequest) ProtoMessage() {}
 
 func (x *ListConfigsForAdminRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_system_config_api_proto_config_proto_msgTypes[6]
+	mi := &file_config_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -477,7 +477,7 @@ func (x *ListConfigsForAdminRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListConfigsForAdminRequest.ProtoReflect.Descriptor instead.
 func (*ListConfigsForAdminRequest) Descriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{6}
+	return file_config_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListConfigsForAdminRequest) GetKey() string {
@@ -519,7 +519,7 @@ type ListConfigsForAdminResponse struct {
 
 func (x *ListConfigsForAdminResponse) Reset() {
 	*x = ListConfigsForAdminResponse{}
-	mi := &file_system_config_api_proto_config_proto_msgTypes[7]
+	mi := &file_config_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -531,7 +531,7 @@ func (x *ListConfigsForAdminResponse) String() string {
 func (*ListConfigsForAdminResponse) ProtoMessage() {}
 
 func (x *ListConfigsForAdminResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_system_config_api_proto_config_proto_msgTypes[7]
+	mi := &file_config_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -544,7 +544,7 @@ func (x *ListConfigsForAdminResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListConfigsForAdminResponse.ProtoReflect.Descriptor instead.
 func (*ListConfigsForAdminResponse) Descriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{7}
+	return file_config_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListConfigsForAdminResponse) GetContent() []*ConfigResponse {
@@ -572,7 +572,7 @@ type UpdateConfigStatusRequest struct {
 
 func (x *UpdateConfigStatusRequest) Reset() {
 	*x = UpdateConfigStatusRequest{}
-	mi := &file_system_config_api_proto_config_proto_msgTypes[8]
+	mi := &file_config_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -584,7 +584,7 @@ func (x *UpdateConfigStatusRequest) String() string {
 func (*UpdateConfigStatusRequest) ProtoMessage() {}
 
 func (x *UpdateConfigStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_system_config_api_proto_config_proto_msgTypes[8]
+	mi := &file_config_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -597,7 +597,7 @@ func (x *UpdateConfigStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateConfigStatusRequest.ProtoReflect.Descriptor instead.
 func (*UpdateConfigStatusRequest) Descriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{8}
+	return file_config_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UpdateConfigStatusRequest) GetKey() string {
@@ -618,8 +618,8 @@ func (x *UpdateConfigStatusRequest) GetStatus() string {
 type ConfigResponse struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
 	Id            int64                   `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`                                                                                      // ID
-	Key           string                  `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`                                                                                     // 配置键
-	Value         map[string]*ConfigValue `protobuf:"bytes,3,rep,name=value,proto3" json:"value,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`       // 配置值
+	Key           string                  `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`                                                                                     // 配置键（带环境后缀，如 app.cert.dev）
+	Value         map[string]*ConfigValue `protobuf:"bytes,3,rep,name=value,proto3" json:"value,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`       // 配置值，key为属性名
 	Version       int64                   `protobuf:"varint,4,opt,name=version,proto3" json:"version,omitempty"`                                                                            // 版本号
 	Metadata      map[string]string       `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 元数据
 	Description   string                  `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`                                                                     // 配置描述
@@ -631,7 +631,7 @@ type ConfigResponse struct {
 
 func (x *ConfigResponse) Reset() {
 	*x = ConfigResponse{}
-	mi := &file_system_config_api_proto_config_proto_msgTypes[9]
+	mi := &file_config_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -643,7 +643,7 @@ func (x *ConfigResponse) String() string {
 func (*ConfigResponse) ProtoMessage() {}
 
 func (x *ConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_system_config_api_proto_config_proto_msgTypes[9]
+	mi := &file_config_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -656,7 +656,7 @@ func (x *ConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigResponse.ProtoReflect.Descriptor instead.
 func (*ConfigResponse) Descriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{9}
+	return file_config_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ConfigResponse) GetId() int64 {
@@ -718,15 +718,15 @@ func (x *ConfigResponse) GetUpdatedAt() string {
 // GetConfigRequest 获取配置请求（查询端）
 type GetConfigRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"` // 配置键
-	Env           string                 `protobuf:"bytes,2,opt,name=env,proto3" json:"env,omitempty"` // 环境
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"` // 配置键（可以是带环境后缀的完整key，如 app.cert.dev；也可以是不带环境的key，配合 env 参数使用）
+	Env           string                 `protobuf:"bytes,2,opt,name=env,proto3" json:"env,omitempty"` // 环境（如果 key 已带环境后缀，该参数可选）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetConfigRequest) Reset() {
 	*x = GetConfigRequest{}
-	mi := &file_system_config_api_proto_config_proto_msgTypes[10]
+	mi := &file_config_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -738,7 +738,7 @@ func (x *GetConfigRequest) String() string {
 func (*GetConfigRequest) ProtoMessage() {}
 
 func (x *GetConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_system_config_api_proto_config_proto_msgTypes[10]
+	mi := &file_config_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -751,7 +751,7 @@ func (x *GetConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigRequest.ProtoReflect.Descriptor instead.
 func (*GetConfigRequest) Descriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{10}
+	return file_config_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetConfigRequest) GetKey() string {
@@ -771,14 +771,14 @@ func (x *GetConfigRequest) GetEnv() string {
 // GetConfigResponse 获取配置响应（查询端）
 type GetConfigResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	JsonStr       string                 `protobuf:"bytes,1,opt,name=json_str,json=jsonStr,proto3" json:"json_str,omitempty"` // JSON字符串格式的配置值
+	JsonStr       string                 `protobuf:"bytes,1,opt,name=json_str,json=jsonStr,proto3" json:"json_str,omitempty"` // JSON字符串格式的配置值（纯对象，可直接反序列化到业务结构体）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetConfigResponse) Reset() {
 	*x = GetConfigResponse{}
-	mi := &file_system_config_api_proto_config_proto_msgTypes[11]
+	mi := &file_config_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -790,7 +790,7 @@ func (x *GetConfigResponse) String() string {
 func (*GetConfigResponse) ProtoMessage() {}
 
 func (x *GetConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_system_config_api_proto_config_proto_msgTypes[11]
+	mi := &file_config_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -803,7 +803,7 @@ func (x *GetConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigResponse.ProtoReflect.Descriptor instead.
 func (*GetConfigResponse) Descriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{11}
+	return file_config_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetConfigResponse) GetJsonStr() string {
@@ -816,15 +816,15 @@ func (x *GetConfigResponse) GetJsonStr() string {
 // BatchGetConfigsRequest 批量获取配置请求
 type BatchGetConfigsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Keys          []string               `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"` // 配置键列表
-	Env           string                 `protobuf:"bytes,2,opt,name=env,proto3" json:"env,omitempty"`   // 环境
+	Keys          []string               `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"` // 配置键列表（可以是带环境后缀的完整key，也可以是不带环境的key，配合 env 参数使用）
+	Env           string                 `protobuf:"bytes,2,opt,name=env,proto3" json:"env,omitempty"`   // 环境（如果 keys 中已带环境后缀，该参数可选）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *BatchGetConfigsRequest) Reset() {
 	*x = BatchGetConfigsRequest{}
-	mi := &file_system_config_api_proto_config_proto_msgTypes[12]
+	mi := &file_config_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -836,7 +836,7 @@ func (x *BatchGetConfigsRequest) String() string {
 func (*BatchGetConfigsRequest) ProtoMessage() {}
 
 func (x *BatchGetConfigsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_system_config_api_proto_config_proto_msgTypes[12]
+	mi := &file_config_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -849,7 +849,7 @@ func (x *BatchGetConfigsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchGetConfigsRequest.ProtoReflect.Descriptor instead.
 func (*BatchGetConfigsRequest) Descriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{12}
+	return file_config_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *BatchGetConfigsRequest) GetKeys() []string {
@@ -876,7 +876,7 @@ type BatchGetConfigsResponse struct {
 
 func (x *BatchGetConfigsResponse) Reset() {
 	*x = BatchGetConfigsResponse{}
-	mi := &file_system_config_api_proto_config_proto_msgTypes[13]
+	mi := &file_config_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -888,7 +888,7 @@ func (x *BatchGetConfigsResponse) String() string {
 func (*BatchGetConfigsResponse) ProtoMessage() {}
 
 func (x *BatchGetConfigsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_system_config_api_proto_config_proto_msgTypes[13]
+	mi := &file_config_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -901,7 +901,7 @@ func (x *BatchGetConfigsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchGetConfigsResponse.ProtoReflect.Descriptor instead.
 func (*BatchGetConfigsResponse) Descriptor() ([]byte, []int) {
-	return file_system_config_api_proto_config_proto_rawDescGZIP(), []int{13}
+	return file_config_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *BatchGetConfigsResponse) GetConfigs() map[string]string {
@@ -911,11 +911,109 @@ func (x *BatchGetConfigsResponse) GetConfigs() map[string]string {
 	return nil
 }
 
-var File_system_config_api_proto_config_proto protoreflect.FileDescriptor
+// GetConfigsByPrefixRequest 按前缀获取配置请求
+type GetConfigsByPrefixRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Prefix        string                 `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"` // 配置键前缀
+	Env           string                 `protobuf:"bytes,2,opt,name=env,proto3" json:"env,omitempty"`       // 环境（如 dev, prod, test）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
 
-const file_system_config_api_proto_config_proto_rawDesc = "" +
+func (x *GetConfigsByPrefixRequest) Reset() {
+	*x = GetConfigsByPrefixRequest{}
+	mi := &file_config_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConfigsByPrefixRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConfigsByPrefixRequest) ProtoMessage() {}
+
+func (x *GetConfigsByPrefixRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_config_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConfigsByPrefixRequest.ProtoReflect.Descriptor instead.
+func (*GetConfigsByPrefixRequest) Descriptor() ([]byte, []int) {
+	return file_config_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *GetConfigsByPrefixRequest) GetPrefix() string {
+	if x != nil {
+		return x.Prefix
+	}
+	return ""
+}
+
+func (x *GetConfigsByPrefixRequest) GetEnv() string {
+	if x != nil {
+		return x.Env
+	}
+	return ""
+}
+
+// GetConfigsByPrefixResponse 按前缀获取配置响应
+type GetConfigsByPrefixResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Configs       map[string]string      `protobuf:"bytes,1,rep,name=configs,proto3" json:"configs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 配置映射，key为完整配置键（含环境后缀），value为JSON字符串
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetConfigsByPrefixResponse) Reset() {
+	*x = GetConfigsByPrefixResponse{}
+	mi := &file_config_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConfigsByPrefixResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConfigsByPrefixResponse) ProtoMessage() {}
+
+func (x *GetConfigsByPrefixResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_config_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConfigsByPrefixResponse.ProtoReflect.Descriptor instead.
+func (*GetConfigsByPrefixResponse) Descriptor() ([]byte, []int) {
+	return file_config_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetConfigsByPrefixResponse) GetConfigs() map[string]string {
+	if x != nil {
+		return x.Configs
+	}
+	return nil
+}
+
+var File_config_proto protoreflect.FileDescriptor
+
+const file_config_proto_rawDesc = "" +
 	"\n" +
-	"$system/config/api/proto/config.proto\x12\x16xiaozhizhang.config.v1\"Z\n" +
+	"\fconfig.proto\x12\x16xiaozhizhang.config.v1\"Z\n" +
 	"\vConfigValue\x12\x14\n" +
 	"\x05value\x18\x01 \x01(\tR\x05value\x125\n" +
 	"\x04type\x18\x02 \x01(\x0e2!.xiaozhizhang.config.v1.ValueTypeR\x04type\"\xab\x03\n" +
@@ -995,6 +1093,14 @@ const file_system_config_api_proto_config_proto_rawDesc = "" +
 	"\aconfigs\x18\x01 \x03(\v2<.xiaozhizhang.config.v1.BatchGetConfigsResponse.ConfigsEntryR\aconfigs\x1a:\n" +
 	"\fConfigsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"E\n" +
+	"\x19GetConfigsByPrefixRequest\x12\x16\n" +
+	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x12\x10\n" +
+	"\x03env\x18\x02 \x01(\tR\x03env\"\xb3\x01\n" +
+	"\x1aGetConfigsByPrefixResponse\x12Y\n" +
+	"\aconfigs\x18\x01 \x03(\v2?.xiaozhizhang.config.v1.GetConfigsByPrefixResponse.ConfigsEntryR\aconfigs\x1a:\n" +
+	"\fConfigsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xd8\x01\n" +
 	"\tValueType\x12\x1a\n" +
 	"\x16VALUE_TYPE_UNSPECIFIED\x10\x00\x12\x15\n" +
@@ -1005,7 +1111,7 @@ const file_system_config_api_proto_config_proto_rawDesc = "" +
 	"\x0eVALUE_TYPE_REF\x10\x05\x12\x15\n" +
 	"\x11VALUE_TYPE_OBJECT\x10\x06\x12\x14\n" +
 	"\x10VALUE_TYPE_ARRAY\x10\a\x12\x18\n" +
-	"\x14VALUE_TYPE_ENCRYPTED\x10\b2\xfa\x06\n" +
+	"\x14VALUE_TYPE_ENCRYPTED\x10\b2\xf7\a\n" +
 	"\rConfigService\x12c\n" +
 	"\fCreateConfig\x12+.xiaozhizhang.config.v1.CreateConfigRequest\x1a&.xiaozhizhang.config.v1.ConfigResponse\x12c\n" +
 	"\fUpdateConfig\x12+.xiaozhizhang.config.v1.UpdateConfigRequest\x1a&.xiaozhizhang.config.v1.ConfigResponse\x12i\n" +
@@ -1014,23 +1120,24 @@ const file_system_config_api_proto_config_proto_rawDesc = "" +
 	"\x13ListConfigsForAdmin\x122.xiaozhizhang.config.v1.ListConfigsForAdminRequest\x1a3.xiaozhizhang.config.v1.ListConfigsForAdminResponse\x12o\n" +
 	"\x12UpdateConfigStatus\x121.xiaozhizhang.config.v1.UpdateConfigStatusRequest\x1a&.xiaozhizhang.config.v1.ConfigResponse\x12`\n" +
 	"\tGetConfig\x12(.xiaozhizhang.config.v1.GetConfigRequest\x1a).xiaozhizhang.config.v1.GetConfigResponse\x12r\n" +
-	"\x0fBatchGetConfigs\x12..xiaozhizhang.config.v1.BatchGetConfigsRequest\x1a/.xiaozhizhang.config.v1.BatchGetConfigsResponseB,Z*xiaozhizhang/system/config/api/proto;protob\x06proto3"
+	"\x0fBatchGetConfigs\x12..xiaozhizhang.config.v1.BatchGetConfigsRequest\x1a/.xiaozhizhang.config.v1.BatchGetConfigsResponse\x12{\n" +
+	"\x12GetConfigsByPrefix\x121.xiaozhizhang.config.v1.GetConfigsByPrefixRequest\x1a2.xiaozhizhang.config.v1.GetConfigsByPrefixResponseB,Z*xiaozhizhang/system/config/api/proto;protob\x06proto3"
 
 var (
-	file_system_config_api_proto_config_proto_rawDescOnce sync.Once
-	file_system_config_api_proto_config_proto_rawDescData []byte
+	file_config_proto_rawDescOnce sync.Once
+	file_config_proto_rawDescData []byte
 )
 
-func file_system_config_api_proto_config_proto_rawDescGZIP() []byte {
-	file_system_config_api_proto_config_proto_rawDescOnce.Do(func() {
-		file_system_config_api_proto_config_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_system_config_api_proto_config_proto_rawDesc), len(file_system_config_api_proto_config_proto_rawDesc)))
+func file_config_proto_rawDescGZIP() []byte {
+	file_config_proto_rawDescOnce.Do(func() {
+		file_config_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_config_proto_rawDesc), len(file_config_proto_rawDesc)))
 	})
-	return file_system_config_api_proto_config_proto_rawDescData
+	return file_config_proto_rawDescData
 }
 
-var file_system_config_api_proto_config_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_system_config_api_proto_config_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
-var file_system_config_api_proto_config_proto_goTypes = []any{
+var file_config_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_config_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_config_proto_goTypes = []any{
 	(ValueType)(0),                      // 0: xiaozhizhang.config.v1.ValueType
 	(*ConfigValue)(nil),                 // 1: xiaozhizhang.config.v1.ConfigValue
 	(*CreateConfigRequest)(nil),         // 2: xiaozhizhang.config.v1.CreateConfigRequest
@@ -1046,71 +1153,77 @@ var file_system_config_api_proto_config_proto_goTypes = []any{
 	(*GetConfigResponse)(nil),           // 12: xiaozhizhang.config.v1.GetConfigResponse
 	(*BatchGetConfigsRequest)(nil),      // 13: xiaozhizhang.config.v1.BatchGetConfigsRequest
 	(*BatchGetConfigsResponse)(nil),     // 14: xiaozhizhang.config.v1.BatchGetConfigsResponse
-	nil,                                 // 15: xiaozhizhang.config.v1.CreateConfigRequest.ValueEntry
-	nil,                                 // 16: xiaozhizhang.config.v1.CreateConfigRequest.MetadataEntry
-	nil,                                 // 17: xiaozhizhang.config.v1.UpdateConfigRequest.ValueEntry
-	nil,                                 // 18: xiaozhizhang.config.v1.UpdateConfigRequest.MetadataEntry
-	nil,                                 // 19: xiaozhizhang.config.v1.ConfigResponse.ValueEntry
-	nil,                                 // 20: xiaozhizhang.config.v1.ConfigResponse.MetadataEntry
-	nil,                                 // 21: xiaozhizhang.config.v1.BatchGetConfigsResponse.ConfigsEntry
+	(*GetConfigsByPrefixRequest)(nil),   // 15: xiaozhizhang.config.v1.GetConfigsByPrefixRequest
+	(*GetConfigsByPrefixResponse)(nil),  // 16: xiaozhizhang.config.v1.GetConfigsByPrefixResponse
+	nil,                                 // 17: xiaozhizhang.config.v1.CreateConfigRequest.ValueEntry
+	nil,                                 // 18: xiaozhizhang.config.v1.CreateConfigRequest.MetadataEntry
+	nil,                                 // 19: xiaozhizhang.config.v1.UpdateConfigRequest.ValueEntry
+	nil,                                 // 20: xiaozhizhang.config.v1.UpdateConfigRequest.MetadataEntry
+	nil,                                 // 21: xiaozhizhang.config.v1.ConfigResponse.ValueEntry
+	nil,                                 // 22: xiaozhizhang.config.v1.ConfigResponse.MetadataEntry
+	nil,                                 // 23: xiaozhizhang.config.v1.BatchGetConfigsResponse.ConfigsEntry
+	nil,                                 // 24: xiaozhizhang.config.v1.GetConfigsByPrefixResponse.ConfigsEntry
 }
-var file_system_config_api_proto_config_proto_depIdxs = []int32{
+var file_config_proto_depIdxs = []int32{
 	0,  // 0: xiaozhizhang.config.v1.ConfigValue.type:type_name -> xiaozhizhang.config.v1.ValueType
-	15, // 1: xiaozhizhang.config.v1.CreateConfigRequest.value:type_name -> xiaozhizhang.config.v1.CreateConfigRequest.ValueEntry
-	16, // 2: xiaozhizhang.config.v1.CreateConfigRequest.metadata:type_name -> xiaozhizhang.config.v1.CreateConfigRequest.MetadataEntry
-	17, // 3: xiaozhizhang.config.v1.UpdateConfigRequest.value:type_name -> xiaozhizhang.config.v1.UpdateConfigRequest.ValueEntry
-	18, // 4: xiaozhizhang.config.v1.UpdateConfigRequest.metadata:type_name -> xiaozhizhang.config.v1.UpdateConfigRequest.MetadataEntry
+	17, // 1: xiaozhizhang.config.v1.CreateConfigRequest.value:type_name -> xiaozhizhang.config.v1.CreateConfigRequest.ValueEntry
+	18, // 2: xiaozhizhang.config.v1.CreateConfigRequest.metadata:type_name -> xiaozhizhang.config.v1.CreateConfigRequest.MetadataEntry
+	19, // 3: xiaozhizhang.config.v1.UpdateConfigRequest.value:type_name -> xiaozhizhang.config.v1.UpdateConfigRequest.ValueEntry
+	20, // 4: xiaozhizhang.config.v1.UpdateConfigRequest.metadata:type_name -> xiaozhizhang.config.v1.UpdateConfigRequest.MetadataEntry
 	10, // 5: xiaozhizhang.config.v1.ListConfigsForAdminResponse.content:type_name -> xiaozhizhang.config.v1.ConfigResponse
-	19, // 6: xiaozhizhang.config.v1.ConfigResponse.value:type_name -> xiaozhizhang.config.v1.ConfigResponse.ValueEntry
-	20, // 7: xiaozhizhang.config.v1.ConfigResponse.metadata:type_name -> xiaozhizhang.config.v1.ConfigResponse.MetadataEntry
-	21, // 8: xiaozhizhang.config.v1.BatchGetConfigsResponse.configs:type_name -> xiaozhizhang.config.v1.BatchGetConfigsResponse.ConfigsEntry
-	1,  // 9: xiaozhizhang.config.v1.CreateConfigRequest.ValueEntry.value:type_name -> xiaozhizhang.config.v1.ConfigValue
-	1,  // 10: xiaozhizhang.config.v1.UpdateConfigRequest.ValueEntry.value:type_name -> xiaozhizhang.config.v1.ConfigValue
-	1,  // 11: xiaozhizhang.config.v1.ConfigResponse.ValueEntry.value:type_name -> xiaozhizhang.config.v1.ConfigValue
-	2,  // 12: xiaozhizhang.config.v1.ConfigService.CreateConfig:input_type -> xiaozhizhang.config.v1.CreateConfigRequest
-	3,  // 13: xiaozhizhang.config.v1.ConfigService.UpdateConfig:input_type -> xiaozhizhang.config.v1.UpdateConfigRequest
-	4,  // 14: xiaozhizhang.config.v1.ConfigService.DeleteConfig:input_type -> xiaozhizhang.config.v1.DeleteConfigRequest
-	6,  // 15: xiaozhizhang.config.v1.ConfigService.GetConfigForAdmin:input_type -> xiaozhizhang.config.v1.GetConfigForAdminRequest
-	7,  // 16: xiaozhizhang.config.v1.ConfigService.ListConfigsForAdmin:input_type -> xiaozhizhang.config.v1.ListConfigsForAdminRequest
-	9,  // 17: xiaozhizhang.config.v1.ConfigService.UpdateConfigStatus:input_type -> xiaozhizhang.config.v1.UpdateConfigStatusRequest
-	11, // 18: xiaozhizhang.config.v1.ConfigService.GetConfig:input_type -> xiaozhizhang.config.v1.GetConfigRequest
-	13, // 19: xiaozhizhang.config.v1.ConfigService.BatchGetConfigs:input_type -> xiaozhizhang.config.v1.BatchGetConfigsRequest
-	10, // 20: xiaozhizhang.config.v1.ConfigService.CreateConfig:output_type -> xiaozhizhang.config.v1.ConfigResponse
-	10, // 21: xiaozhizhang.config.v1.ConfigService.UpdateConfig:output_type -> xiaozhizhang.config.v1.ConfigResponse
-	5,  // 22: xiaozhizhang.config.v1.ConfigService.DeleteConfig:output_type -> xiaozhizhang.config.v1.DeleteConfigResponse
-	10, // 23: xiaozhizhang.config.v1.ConfigService.GetConfigForAdmin:output_type -> xiaozhizhang.config.v1.ConfigResponse
-	8,  // 24: xiaozhizhang.config.v1.ConfigService.ListConfigsForAdmin:output_type -> xiaozhizhang.config.v1.ListConfigsForAdminResponse
-	10, // 25: xiaozhizhang.config.v1.ConfigService.UpdateConfigStatus:output_type -> xiaozhizhang.config.v1.ConfigResponse
-	12, // 26: xiaozhizhang.config.v1.ConfigService.GetConfig:output_type -> xiaozhizhang.config.v1.GetConfigResponse
-	14, // 27: xiaozhizhang.config.v1.ConfigService.BatchGetConfigs:output_type -> xiaozhizhang.config.v1.BatchGetConfigsResponse
-	20, // [20:28] is the sub-list for method output_type
-	12, // [12:20] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	21, // 6: xiaozhizhang.config.v1.ConfigResponse.value:type_name -> xiaozhizhang.config.v1.ConfigResponse.ValueEntry
+	22, // 7: xiaozhizhang.config.v1.ConfigResponse.metadata:type_name -> xiaozhizhang.config.v1.ConfigResponse.MetadataEntry
+	23, // 8: xiaozhizhang.config.v1.BatchGetConfigsResponse.configs:type_name -> xiaozhizhang.config.v1.BatchGetConfigsResponse.ConfigsEntry
+	24, // 9: xiaozhizhang.config.v1.GetConfigsByPrefixResponse.configs:type_name -> xiaozhizhang.config.v1.GetConfigsByPrefixResponse.ConfigsEntry
+	1,  // 10: xiaozhizhang.config.v1.CreateConfigRequest.ValueEntry.value:type_name -> xiaozhizhang.config.v1.ConfigValue
+	1,  // 11: xiaozhizhang.config.v1.UpdateConfigRequest.ValueEntry.value:type_name -> xiaozhizhang.config.v1.ConfigValue
+	1,  // 12: xiaozhizhang.config.v1.ConfigResponse.ValueEntry.value:type_name -> xiaozhizhang.config.v1.ConfigValue
+	2,  // 13: xiaozhizhang.config.v1.ConfigService.CreateConfig:input_type -> xiaozhizhang.config.v1.CreateConfigRequest
+	3,  // 14: xiaozhizhang.config.v1.ConfigService.UpdateConfig:input_type -> xiaozhizhang.config.v1.UpdateConfigRequest
+	4,  // 15: xiaozhizhang.config.v1.ConfigService.DeleteConfig:input_type -> xiaozhizhang.config.v1.DeleteConfigRequest
+	6,  // 16: xiaozhizhang.config.v1.ConfigService.GetConfigForAdmin:input_type -> xiaozhizhang.config.v1.GetConfigForAdminRequest
+	7,  // 17: xiaozhizhang.config.v1.ConfigService.ListConfigsForAdmin:input_type -> xiaozhizhang.config.v1.ListConfigsForAdminRequest
+	9,  // 18: xiaozhizhang.config.v1.ConfigService.UpdateConfigStatus:input_type -> xiaozhizhang.config.v1.UpdateConfigStatusRequest
+	11, // 19: xiaozhizhang.config.v1.ConfigService.GetConfig:input_type -> xiaozhizhang.config.v1.GetConfigRequest
+	13, // 20: xiaozhizhang.config.v1.ConfigService.BatchGetConfigs:input_type -> xiaozhizhang.config.v1.BatchGetConfigsRequest
+	15, // 21: xiaozhizhang.config.v1.ConfigService.GetConfigsByPrefix:input_type -> xiaozhizhang.config.v1.GetConfigsByPrefixRequest
+	10, // 22: xiaozhizhang.config.v1.ConfigService.CreateConfig:output_type -> xiaozhizhang.config.v1.ConfigResponse
+	10, // 23: xiaozhizhang.config.v1.ConfigService.UpdateConfig:output_type -> xiaozhizhang.config.v1.ConfigResponse
+	5,  // 24: xiaozhizhang.config.v1.ConfigService.DeleteConfig:output_type -> xiaozhizhang.config.v1.DeleteConfigResponse
+	10, // 25: xiaozhizhang.config.v1.ConfigService.GetConfigForAdmin:output_type -> xiaozhizhang.config.v1.ConfigResponse
+	8,  // 26: xiaozhizhang.config.v1.ConfigService.ListConfigsForAdmin:output_type -> xiaozhizhang.config.v1.ListConfigsForAdminResponse
+	10, // 27: xiaozhizhang.config.v1.ConfigService.UpdateConfigStatus:output_type -> xiaozhizhang.config.v1.ConfigResponse
+	12, // 28: xiaozhizhang.config.v1.ConfigService.GetConfig:output_type -> xiaozhizhang.config.v1.GetConfigResponse
+	14, // 29: xiaozhizhang.config.v1.ConfigService.BatchGetConfigs:output_type -> xiaozhizhang.config.v1.BatchGetConfigsResponse
+	16, // 30: xiaozhizhang.config.v1.ConfigService.GetConfigsByPrefix:output_type -> xiaozhizhang.config.v1.GetConfigsByPrefixResponse
+	22, // [22:31] is the sub-list for method output_type
+	13, // [13:22] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
-func init() { file_system_config_api_proto_config_proto_init() }
-func file_system_config_api_proto_config_proto_init() {
-	if File_system_config_api_proto_config_proto != nil {
+func init() { file_config_proto_init() }
+func file_config_proto_init() {
+	if File_config_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_system_config_api_proto_config_proto_rawDesc), len(file_system_config_api_proto_config_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_config_proto_rawDesc), len(file_config_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   21,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_system_config_api_proto_config_proto_goTypes,
-		DependencyIndexes: file_system_config_api_proto_config_proto_depIdxs,
-		EnumInfos:         file_system_config_api_proto_config_proto_enumTypes,
-		MessageInfos:      file_system_config_api_proto_config_proto_msgTypes,
+		GoTypes:           file_config_proto_goTypes,
+		DependencyIndexes: file_config_proto_depIdxs,
+		EnumInfos:         file_config_proto_enumTypes,
+		MessageInfos:      file_config_proto_msgTypes,
 	}.Build()
-	File_system_config_api_proto_config_proto = out.File
-	file_system_config_api_proto_config_proto_goTypes = nil
-	file_system_config_api_proto_config_proto_depIdxs = nil
+	File_config_proto = out.File
+	file_config_proto_goTypes = nil
+	file_config_proto_depIdxs = nil
 }

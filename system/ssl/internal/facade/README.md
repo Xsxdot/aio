@@ -157,3 +157,4 @@ func TestDeploySSH(t *testing.T) {
 - **ssl/module.go** 负责将具体类型注入到 app
 - **facade 包** 只定义接口，不包含任何实现
 - **保持简洁**：不需要的适配器就不要加
+

@@ -226,6 +226,56 @@ func (s *RegistryService) GetServiceByID(ctx context.Context, req *pb.GetService
 	}, nil
 }
 
+// EnsureService 确保服务定义存在（不存在则创建，存在则返回）
+func (s *RegistryService) EnsureService(ctx context.Context, req *pb.EnsureServiceRequest) (*pb.EnsureServiceResponse, error) {
+	// 参数校验
+	if req.Project == "" {
+		return nil, status.Error(codes.InvalidArgument, "project 不能为空")
+	}
+	if req.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "name 不能为空")
+	}
+
+	// 解析 spec_json
+	spec := parseMetaJSON(req.SpecJson)
+
+	// 转换为 DTO
+	dtoReq := &dto.CreateServiceReq{
+		Project:     req.Project,
+		Name:        req.Name,
+		Owner:       req.Owner,
+		Description: req.Description,
+		Spec:        spec,
+	}
+
+	// 调用 client.EnsureService
+	svcDTO, created, err := s.client.EnsureService(ctx, dtoReq)
+	if err != nil {
+		s.log.WithErr(err).
+			WithField("project", req.Project).
+			WithField("name", req.Name).
+			Error("确保服务存在失败")
+		return nil, convertToGRPCError(err)
+	}
+
+	// 转换为 proto Service
+	pbService := &pb.Service{
+		Id:          svcDTO.ID,
+		Project:     svcDTO.Project,
+		Name:        svcDTO.Name,
+		Owner:       svcDTO.Owner,
+		Description: svcDTO.Description,
+		SpecJson:    toJSONString(svcDTO.Spec),
+		CreatedAt:   svcDTO.CreatedAt.Unix(),
+		UpdatedAt:   svcDTO.UpdatedAt.Unix(),
+	}
+
+	return &pb.EnsureServiceResponse{
+		Service: pbService,
+		Created: created,
+	}, nil
+}
+
 // =============== 辅助函数 ===============
 
 // parseMetaJSON 解析 meta JSON 字符串
@@ -331,4 +381,3 @@ func convertToGRPCError(err error) error {
 	// 默认返回内部错误
 	return status.Error(codes.Internal, err.Error())
 }
-

@@ -2,14 +2,11 @@ package router
 
 import (
 	"xiaozhizhang/app"
-	"xiaozhizhang/system/application"
 	"xiaozhizhang/system/config"
-	"xiaozhizhang/system/nginx"
 	"xiaozhizhang/system/registry"
 	"xiaozhizhang/system/server"
 	"xiaozhizhang/system/shorturl"
 	"xiaozhizhang/system/ssl"
-	"xiaozhizhang/system/systemd"
 	"xiaozhizhang/system/user"
 
 	"github.com/gofiber/fiber/v2"
@@ -43,15 +40,6 @@ func Register(a *app.App, f *fiber.App) {
 
 	// 注册 SSL 证书组件路由
 	ssl.RegisterRoutes(a.SslModule, api, admin)
-
-	// 注册 Nginx 管理组件路由
-	nginx.RegisterRoutes(a.NginxModule, api, admin)
-
-	// 注册 Systemd 管理组件路由
-	systemd.RegisterRoutes(a.SystemdModule, api, admin)
-
-	// 注册 Application 部署组件路由
-	application.RegisterRoutes(a.ApplicationModule, api, admin)
 
 	// 注册 Server 管理组件路由
 	server.RegisterRoutes(a.ServerModule, api, admin)

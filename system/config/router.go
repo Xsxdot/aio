@@ -13,7 +13,4 @@ func RegisterRoutes(m *Module, api, admin fiber.Router) {
 	adminController := controller.NewConfigController(m.internalApp)
 	adminController.RegisterRoutes(admin)
 
-	// 对外查询接口（依赖 api/client）
-	apiController := controller.NewConfigAPIController(m.Client)
-	apiController.RegisterRoutes(api)
 }

@@ -90,3 +90,4 @@ func (d *SuccessEventDao) ExistsByEventID(ctx context.Context, eventID string) (
 	}
 	return count > 0, nil
 }
+

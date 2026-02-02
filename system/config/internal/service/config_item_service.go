@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	errorc "xiaozhizhang/pkg/core/err"
 	"xiaozhizhang/pkg/core/logger"
 	"xiaozhizhang/pkg/core/mvc"
@@ -99,12 +100,78 @@ func (s *ConfigItemService) GetConfigValueByEnv(ctx context.Context, key string,
 
 // GetConfigAsPlainObject 根据完整配置键获取配置，返回为纯对象（map[属性名]原始值）
 func (s *ConfigItemService) GetConfigAsPlainObject(ctx context.Context, fullKey string) (map[string]interface{}, error) {
+	return s.getConfigAsPlainObjectWithRefChain(ctx, fullKey, make(map[string]bool))
+}
+
+// getConfigAsPlainObjectWithRefChain 递归解析配置引用（带循环检测）
+func (s *ConfigItemService) getConfigAsPlainObjectWithRefChain(ctx context.Context, fullKey string, refChain map[string]bool) (map[string]interface{}, error) {
+	// 检测循环引用
+	if refChain[fullKey] {
+		return nil, s.err.New("检测到循环引用: "+fullKey, nil).ValidWithCtx()
+	}
+	refChain[fullKey] = true
+
 	configItem, err := s.FindByKeyWithDecrypt(ctx, fullKey)
 	if err != nil {
 		return nil, err
 	}
 
-	return ConvertConfigValuesToPlanObject(configItem.Value)
+	result, err := ConvertConfigValuesToPlanObject(configItem.Value)
+	if err != nil {
+		return nil, err
+	}
+
+	// 处理引用类型，递归解析
+	for field := range result {
+		// 检查原始 ConfigValue 的类型
+		if configValue, ok := configItem.Value[field]; ok && configValue.Type == model.ValueTypeRef {
+			// ref 类型的 value 格式为 "配置键.字段名"，例如 "app.cert.a.12"
+			refValue := configValue.Value
+
+			// 查找最后一个 "." 的位置
+			lastDotIndex := strings.LastIndex(refValue, ".")
+			if lastDotIndex == -1 {
+				// 如果没有 "."，说明引用的是整个配置对象
+				// 为每个引用路径创建独立的 refChain 副本，避免误判循环引用
+				newRefChain := copyRefChain(refChain)
+				refConfig, err := s.getConfigAsPlainObjectWithRefChain(ctx, refValue, newRefChain)
+				if err != nil {
+					return nil, s.err.New("获取引用配置失败: "+refValue, err)
+				}
+				result[field] = refConfig
+			} else {
+				// 分离配置键和字段名
+				refKey := refValue[:lastDotIndex]         // "app.cert.a"
+				refFieldName := refValue[lastDotIndex+1:] // "12"
+
+				// 为每个引用路径创建独立的 refChain 副本，避免误判循环引用
+				newRefChain := copyRefChain(refChain)
+				// 递归获取引用的配置
+				refConfig, err := s.getConfigAsPlainObjectWithRefChain(ctx, refKey, newRefChain)
+				if err != nil {
+					return nil, s.err.New("获取引用配置失败: "+refKey, err)
+				}
+
+				// 获取指定字段的值
+				if refFieldValue, ok := refConfig[refFieldName]; ok {
+					result[field] = refFieldValue
+				} else {
+					return nil, s.err.New("引用的字段不存在: "+refFieldName+" in "+refKey, nil).ValidWithCtx()
+				}
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// copyRefChain 复制引用链 map，避免不同引用路径互相影响
+func copyRefChain(original map[string]bool) map[string]bool {
+	copied := make(map[string]bool, len(original))
+	for k, v := range original {
+		copied[k] = v
+	}
+	return copied
 }
 
 // ConvertConfigValuesToPlanObject 将 map[属性名]*ConfigValue 转换为 map[string]interface{}
@@ -303,6 +370,16 @@ func (s *ConfigItemService) UpdateWithEncrypt(ctx context.Context, id int64, con
 // FindByKeyLike 根据配置键模糊查询
 func (s *ConfigItemService) FindByKeyLike(ctx context.Context, keyPattern string) ([]*model.ConfigItemModel, error) {
 	return s.dao.FindByKeyLike(ctx, keyPattern)
+}
+
+// FindByKeyPrefix 根据配置键前缀查询
+func (s *ConfigItemService) FindByKeyPrefix(ctx context.Context, prefix string) ([]*model.ConfigItemModel, error) {
+	return s.dao.FindByKeyPrefix(ctx, prefix)
+}
+
+// FindPageByKeyLike 根据配置键模糊查询（分页）
+func (s *ConfigItemService) FindPageByKeyLike(ctx context.Context, page *mvc.Page, keyPattern string) ([]*model.ConfigItemModel, int64, error) {
+	return s.dao.FindPageByKeyLike(ctx, page, keyPattern)
 }
 
 // FindAll 查询所有配置项

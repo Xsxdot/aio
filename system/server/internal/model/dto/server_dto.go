@@ -6,6 +6,8 @@ import "time"
 type CreateServerRequest struct {
 	Name             string            `json:"name" validate:"required,max=100"`
 	Host             string            `json:"host" validate:"required,max=255"`
+	IntranetHost     string            `json:"intranetHost" validate:"omitempty,max=255"`
+	ExtranetHost     string            `json:"extranetHost" validate:"omitempty,max=255"`
 	AgentGrpcAddress string            `json:"agentGrpcAddress" validate:"max=255"`
 	Enabled          bool              `json:"enabled"`
 	Tags             map[string]string `json:"tags"`
@@ -16,6 +18,8 @@ type CreateServerRequest struct {
 type UpdateServerRequest struct {
 	Name             *string            `json:"name" validate:"omitempty,max=100"`
 	Host             *string            `json:"host" validate:"omitempty,max=255"`
+	IntranetHost     *string            `json:"intranetHost" validate:"omitempty,max=255"`
+	ExtranetHost     *string            `json:"extranetHost" validate:"omitempty,max=255"`
 	AgentGrpcAddress *string            `json:"agentGrpcAddress" validate:"omitempty,max=255"`
 	Enabled          *bool              `json:"enabled"`
 	Tags             map[string]string  `json:"tags"`
@@ -59,6 +63,8 @@ type ServerStatusInfo struct {
 	ID               int64             `json:"id"`
 	Name             string            `json:"name"`
 	Host             string            `json:"host"`
+	IntranetHost     string            `json:"intranetHost"`
+	ExtranetHost     string            `json:"extranetHost"`
 	AgentGrpcAddress string            `json:"agentGrpcAddress"`
 	Enabled          bool              `json:"enabled"`
 	Tags             map[string]string `json:"tags"`

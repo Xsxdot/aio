@@ -20,6 +20,9 @@ service RegistryService {
   
   // GetServiceByID 根据 ID 获取服务详情（包含在线实例）
   rpc GetServiceByID(GetServiceByIDRequest) returns (GetServiceByIDResponse);
+  
+  // EnsureService 确保服务定义存在（不存在则创建，存在则返回）
+  rpc EnsureService(EnsureServiceRequest) returns (EnsureServiceResponse);
 }
 
 // ===== 实例注册 =====
@@ -92,6 +95,23 @@ message GetServiceByIDRequest {
 // GetServiceByIDResponse 获取服务详情响应
 message GetServiceByIDResponse {
   ServiceWithInstances service = 1;          // 服务详情（包含在线实例）
+}
+
+// ===== 服务确保/创建 =====
+
+// EnsureServiceRequest 确保服务定义存在请求
+message EnsureServiceRequest {
+  string project = 1;                        // 项目名（必填）
+  string name = 2;                           // 服务名（必填）
+  string owner = 3;                          // 负责人（可选）
+  string description = 4;                    // 描述（可选）
+  string spec_json = 5;                      // 服务规格（JSON 字符串，可选）
+}
+
+// EnsureServiceResponse 确保服务定义存在响应
+message EnsureServiceResponse {
+  Service service = 1;                       // 服务定义
+  bool created = 2;                          // 是否新创建（true=新创建，false=已存在）
 }
 
 // ===== 通用消息 =====

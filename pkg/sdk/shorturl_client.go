@@ -24,8 +24,8 @@ func newShortURLClient(conn *grpc.ClientConn) *ShortURLClient {
 // CreateShortLinkRequest 创建短链接请求（SDK 简化版）
 type CreateShortLinkRequest struct {
 	DomainID     int64
-	TargetType   string
-	TargetConfig map[string]interface{} // 自动转 JSON
+	TargetType   string                 // 跳转类型，支持："URL"（普通URL跳转）、"URL_SCHEME"（URL Scheme如weixin://）
+	TargetConfig map[string]interface{} // 自动转 JSON，对于URL类型需包含"url"字段，对于URL_SCHEME需包含"url"或"schemeUrl"字段
 	ExpiresAt    int64                  // unix 时间戳（可选）
 	Password     string                 // 密码（可选）
 	MaxVisits    int64                  // 最大访问次数（可选）
@@ -75,22 +75,22 @@ func (c *ShortURLClient) CreateShortLink(ctx context.Context, req *CreateShortLi
 
 // ShortLinkInfo 短链接信息
 type ShortLinkInfo struct {
-	ID               int64
-	DomainID         int64
-	Domain           string
-	Code             string
-	ShortURL         string
-	TargetType       string
-	TargetConfig     map[string]interface{} // 自动解析 JSON
-	ExpiresAt        int64
-	MaxVisits        int64
-	VisitCount       int64
-	SuccessCount     int64
-	HasPassword      bool
-	Enabled          bool
-	Comment          string
-	CreatedAt        int64
-	UpdatedAt        int64
+	ID           int64
+	DomainID     int64
+	Domain       string
+	Code         string
+	ShortURL     string
+	TargetType   string
+	TargetConfig map[string]interface{} // 自动解析 JSON
+	ExpiresAt    int64
+	MaxVisits    int64
+	VisitCount   int64
+	SuccessCount int64
+	HasPassword  bool
+	Enabled      bool
+	Comment      string
+	CreatedAt    int64
+	UpdatedAt    int64
 }
 
 // GetShortLink 获取短链接详情
@@ -220,4 +220,3 @@ func (c *ShortURLClient) convertShortLinkInfo(pbInfo *shorturlpb.ShortLinkInfo) 
 		UpdatedAt:    pbInfo.UpdatedAt,
 	}
 }
-

@@ -393,3 +393,4 @@ func (a *App) invalidateDomainCache(ctx context.Context, host string) {
 		a.log.WithErr(err).WithField("cache_key", cacheKey).Warn("清除域名缓存失败")
 	}
 }
+

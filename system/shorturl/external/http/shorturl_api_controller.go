@@ -150,3 +150,4 @@ func (c *ShortURLAPIController) ReportSuccess(ctx *fiber.Ctx) error {
 
 	return result.OK(ctx, fiber.Map{"message": "上报成功"})
 }
+

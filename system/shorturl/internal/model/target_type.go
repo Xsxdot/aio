@@ -23,3 +23,4 @@ func (t TargetType) IsValid() bool {
 func (t TargetType) NeedsLandingPage() bool {
 	return t != TargetTypeURL
 }
+

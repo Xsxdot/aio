@@ -25,3 +25,4 @@ func NewDomainService(daoInstance *dao.DomainDao, log *logger.Log) *DomainServic
 		err:          errorc.NewErrorBuilder("DomainService"),
 	}
 }
+

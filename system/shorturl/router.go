@@ -16,3 +16,4 @@ func RegisterRoutes(m *Module, api, admin fiber.Router) {
 	apiController := controller.NewShortURLAPIController(m.internalApp)
 	apiController.RegisterRoutes(api)
 }
+

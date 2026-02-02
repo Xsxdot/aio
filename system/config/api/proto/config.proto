@@ -17,6 +17,7 @@ service ConfigService {
   // 查询端接口（公开或需要user权限）
   rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
   rpc BatchGetConfigs(BatchGetConfigsRequest) returns (BatchGetConfigsResponse);
+  rpc GetConfigsByPrefix(GetConfigsByPrefixRequest) returns (GetConfigsByPrefixResponse);
 }
 
 // ValueType 配置值类型
@@ -124,6 +125,17 @@ message BatchGetConfigsRequest {
 // BatchGetConfigsResponse 批量获取配置响应
 message BatchGetConfigsResponse {
   map<string, string> configs = 1;  // 配置映射，key为配置键，value为JSON字符串
+}
+
+// GetConfigsByPrefixRequest 按前缀获取配置请求
+message GetConfigsByPrefixRequest {
+  string prefix = 1;  // 配置键前缀
+  string env = 2;  // 环境（如 dev, prod, test）
+}
+
+// GetConfigsByPrefixResponse 按前缀获取配置响应
+message GetConfigsByPrefixResponse {
+  map<string, string> configs = 1;  // 配置映射，key为完整配置键（含环境后缀），value为JSON字符串
 }
 
 

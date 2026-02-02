@@ -102,3 +102,4 @@ Authorization: Bearer {{adminToken}}
 ### 12. 删除短链接
 DELETE {{baseUrl}}{{apiPrefix}}/admin/short-links/1
 Authorization: Bearer {{adminToken}}
+

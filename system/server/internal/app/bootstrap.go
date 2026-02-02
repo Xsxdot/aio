@@ -6,16 +6,6 @@ import (
 	"xiaozhizhang/system/server/internal/model"
 )
 
-// BootstrapServer bootstrap 服务器配置项
-type BootstrapServer struct {
-	Name             string            `yaml:"name"`
-	Host             string            `yaml:"host"`
-	AgentGrpcAddress string            `yaml:"agent_grpc_address"`
-	Enabled          bool              `yaml:"enabled"`
-	Tags             map[string]string `yaml:"tags"`
-	Comment          string            `yaml:"comment"`
-}
-
 // EnsureBootstrapServers 确保 bootstrap 服务器已存在（启动时调用）
 func (a *App) EnsureBootstrapServers(ctx context.Context) error {
 	// 从配置中读取 bootstrap 服务器列表
@@ -29,9 +19,17 @@ func (a *App) EnsureBootstrapServers(ctx context.Context) error {
 
 	// 逐个 upsert
 	for _, bs := range bootstrapServers {
+		// 兼容策略：extranetHost 优先使用 bs.ExtranetHost，否则使用 bs.Host
+		extranetHost := bs.ExtranetHost
+		if extranetHost == "" {
+			extranetHost = bs.Host
+		}
+
 		server := &model.ServerModel{
 			Name:             bs.Name,
-			Host:             bs.Host,
+			Host:             extranetHost,        // 兼容字段，与外网地址保持一致
+			IntranetHost:     bs.IntranetHost,
+			ExtranetHost:     extranetHost,
 			AgentGrpcAddress: bs.AgentGrpcAddress,
 			Enabled:          bs.Enabled,
 			Comment:          bs.Comment,

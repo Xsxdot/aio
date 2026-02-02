@@ -98,7 +98,7 @@ func (a *App) recordDeployHistory(ctx context.Context, certificateID, deployTarg
 		StartTime:      startTime,
 		EndTime:        &endTime,
 		ErrorMessage:   errorMessage,
-		ResultData:     resultDataPtr,
+		ResultData:     *resultDataPtr,
 		TriggerType:    triggerType,
 	}
 

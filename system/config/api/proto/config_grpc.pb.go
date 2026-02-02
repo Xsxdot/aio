@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v3.11.1
-// source: system/config/api/proto/config.proto
+// source: config.proto
 
 package proto
 
@@ -27,6 +27,7 @@ const (
 	ConfigService_UpdateConfigStatus_FullMethodName  = "/xiaozhizhang.config.v1.ConfigService/UpdateConfigStatus"
 	ConfigService_GetConfig_FullMethodName           = "/xiaozhizhang.config.v1.ConfigService/GetConfig"
 	ConfigService_BatchGetConfigs_FullMethodName     = "/xiaozhizhang.config.v1.ConfigService/BatchGetConfigs"
+	ConfigService_GetConfigsByPrefix_FullMethodName  = "/xiaozhizhang.config.v1.ConfigService/GetConfigsByPrefix"
 )
 
 // ConfigServiceClient is the client API for ConfigService service.
@@ -45,6 +46,7 @@ type ConfigServiceClient interface {
 	// 查询端接口（公开或需要user权限）
 	GetConfig(ctx context.Context, in *GetConfigRequest, opts ...grpc.CallOption) (*GetConfigResponse, error)
 	BatchGetConfigs(ctx context.Context, in *BatchGetConfigsRequest, opts ...grpc.CallOption) (*BatchGetConfigsResponse, error)
+	GetConfigsByPrefix(ctx context.Context, in *GetConfigsByPrefixRequest, opts ...grpc.CallOption) (*GetConfigsByPrefixResponse, error)
 }
 
 type configServiceClient struct {
@@ -135,6 +137,16 @@ func (c *configServiceClient) BatchGetConfigs(ctx context.Context, in *BatchGetC
 	return out, nil
 }
 
+func (c *configServiceClient) GetConfigsByPrefix(ctx context.Context, in *GetConfigsByPrefixRequest, opts ...grpc.CallOption) (*GetConfigsByPrefixResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetConfigsByPrefixResponse)
+	err := c.cc.Invoke(ctx, ConfigService_GetConfigsByPrefix_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ConfigServiceServer is the server API for ConfigService service.
 // All implementations must embed UnimplementedConfigServiceServer
 // for forward compatibility.
@@ -151,6 +163,7 @@ type ConfigServiceServer interface {
 	// 查询端接口（公开或需要user权限）
 	GetConfig(context.Context, *GetConfigRequest) (*GetConfigResponse, error)
 	BatchGetConfigs(context.Context, *BatchGetConfigsRequest) (*BatchGetConfigsResponse, error)
+	GetConfigsByPrefix(context.Context, *GetConfigsByPrefixRequest) (*GetConfigsByPrefixResponse, error)
 	mustEmbedUnimplementedConfigServiceServer()
 }
 
@@ -184,6 +197,9 @@ func (UnimplementedConfigServiceServer) GetConfig(context.Context, *GetConfigReq
 }
 func (UnimplementedConfigServiceServer) BatchGetConfigs(context.Context, *BatchGetConfigsRequest) (*BatchGetConfigsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method BatchGetConfigs not implemented")
+}
+func (UnimplementedConfigServiceServer) GetConfigsByPrefix(context.Context, *GetConfigsByPrefixRequest) (*GetConfigsByPrefixResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetConfigsByPrefix not implemented")
 }
 func (UnimplementedConfigServiceServer) mustEmbedUnimplementedConfigServiceServer() {}
 func (UnimplementedConfigServiceServer) testEmbeddedByValue()                       {}
@@ -350,6 +366,24 @@ func _ConfigService_BatchGetConfigs_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ConfigService_GetConfigsByPrefix_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetConfigsByPrefixRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConfigServiceServer).GetConfigsByPrefix(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConfigService_GetConfigsByPrefix_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConfigServiceServer).GetConfigsByPrefix(ctx, req.(*GetConfigsByPrefixRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ConfigService_ServiceDesc is the grpc.ServiceDesc for ConfigService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -389,7 +423,11 @@ var ConfigService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "BatchGetConfigs",
 			Handler:    _ConfigService_BatchGetConfigs_Handler,
 		},
+		{
+			MethodName: "GetConfigsByPrefix",
+			Handler:    _ConfigService_GetConfigsByPrefix_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "system/config/api/proto/config.proto",
+	Metadata: "config.proto",
 }

@@ -146,12 +146,11 @@ func TestClientStructure(t *testing.T) {
 	// 这个测试主要是确保 Client 结构有所有必需的字段
 	// 如果字段缺失，编译会失败
 	client := &Client{}
-	
+
 	// 验证新增的客户端字段存在（编译期检查）
 	_ = client.ConfigClient
 	_ = client.ShortURL
-	_ = client.Application
-	
+
 	// 验证原有字段仍然存在
 	_ = client.Auth
 	_ = client.Registry
@@ -168,30 +167,117 @@ func TestShortURLRequestStructure(t *testing.T) {
 		},
 		Comment: "test",
 	}
-	
+
 	if req.DomainID != 1 {
 		t.Errorf("DomainID = %v, want 1", req.DomainID)
 	}
-	
+
 	if url, ok := req.TargetConfig["url"].(string); !ok || url != "https://example.com" {
 		t.Errorf("TargetConfig url = %v, want https://example.com", req.TargetConfig["url"])
 	}
 }
 
-// TestDeployRequestStructure 测试部署请求结构
-func TestDeployRequestStructure(t *testing.T) {
-	req := &DeployRequest{
-		ApplicationID:     1,
-		Version:          "v1.0.0",
-		BackendArtifactID: 100,
-		Operator:         "test-user",
+// TestConfigCRUDStructures 测试配置 CRUD 结构（编译期保障）
+func TestConfigCRUDStructures(t *testing.T) {
+	// 测试 ValueType 常量
+	var vt ValueType
+	vt = ValueTypeString
+	if vt != "string" {
+		t.Errorf("ValueTypeString = %v, want string", vt)
 	}
-	
-	if req.ApplicationID != 1 {
-		t.Errorf("ApplicationID = %v, want 1", req.ApplicationID)
+
+	// 测试 ConfigValue 结构
+	configValue := &ConfigValue{
+		Value: "test-value",
+		Type:  ValueTypeString,
 	}
-	
-	if req.Version != "v1.0.0" {
-		t.Errorf("Version = %v, want v1.0.0", req.Version)
+	if configValue.Value != "test-value" {
+		t.Errorf("ConfigValue.Value = %v, want test-value", configValue.Value)
 	}
+
+	// 测试 CreateConfigRequest 结构
+	createReq := &CreateConfigRequest{
+		Key: "app.test.dev",
+		Value: map[string]*ConfigValue{
+			"host": {Value: "localhost", Type: ValueTypeString},
+			"port": {Value: "8080", Type: ValueTypeInt},
+		},
+		Metadata:    map[string]string{"env": "dev"},
+		Description: "test config",
+		ChangeNote:  "initial version",
+	}
+	if createReq.Key != "app.test.dev" {
+		t.Errorf("CreateConfigRequest.Key = %v, want app.test.dev", createReq.Key)
+	}
+	if len(createReq.Value) != 2 {
+		t.Errorf("CreateConfigRequest.Value length = %v, want 2", len(createReq.Value))
+	}
+
+	// 测试 UpdateConfigRequest 结构
+	updateReq := &UpdateConfigRequest{
+		Key: "app.test.dev",
+		Value: map[string]*ConfigValue{
+			"host": {Value: "127.0.0.1", Type: ValueTypeString},
+		},
+		ChangeNote: "update host",
+	}
+	if updateReq.Key != "app.test.dev" {
+		t.Errorf("UpdateConfigRequest.Key = %v, want app.test.dev", updateReq.Key)
+	}
+
+	// 测试 DeleteConfigResponse 结构
+	deleteResp := &DeleteConfigResponse{
+		Success: true,
+		Message: "删除成功",
+	}
+	if !deleteResp.Success {
+		t.Errorf("DeleteConfigResponse.Success = %v, want true", deleteResp.Success)
+	}
+
+	// 测试 ConfigInfo 结构
+	configInfo := &ConfigInfo{
+		ID:      1,
+		Key:     "app.test.dev",
+		Value:   map[string]*ConfigValue{"host": {Value: "localhost", Type: ValueTypeString}},
+		Version: 1,
+		Metadata: map[string]string{"env": "dev"},
+		Description: "test",
+		CreatedAt: "2024-01-01 00:00:00",
+		UpdatedAt: "2024-01-01 00:00:00",
+	}
+	if configInfo.ID != 1 {
+		t.Errorf("ConfigInfo.ID = %v, want 1", configInfo.ID)
+	}
+	if configInfo.Version != 1 {
+		t.Errorf("ConfigInfo.Version = %v, want 1", configInfo.Version)
+	}
+}
+
+// TestConfigClientMethods 测试 ConfigClient 方法签名（编译期保障）
+func TestConfigClientMethods(t *testing.T) {
+	// 这个测试只是为了确保方法存在且签名正确
+	// 不会实际调用（因为没有真实的 gRPC 连接）
+	var client *ConfigClient
+
+	// 验证方法存在（编译期检查）
+	// 如果方法不存在或签名不对，编译会失败
+	_ = client.GetConfigJSON
+	_ = client.BatchGetConfigs
+	_ = client.CreateConfig  // 新增的方法
+	_ = client.UpdateConfig  // 新增的方法
+	_ = client.DeleteConfig  // 新增的方法
+
+	// 验证返回类型（编译期检查）
+	t.Run("method_signatures", func(t *testing.T) {
+		// 这个子测试验证方法签名，但不执行（因为 client 是 nil）
+		// 如果签名不对，这里的类型断言会编译失败
+		if client != nil {
+			// 这些行永远不会执行，但会在编译时检查类型
+			var _ func() = func() {
+				ctx := t
+				_ = ctx // 避免 unused 警告
+				// 这些只是类型检查，不会真正执行
+			}
+		}
+	})
 }

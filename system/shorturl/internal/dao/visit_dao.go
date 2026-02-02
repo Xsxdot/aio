@@ -76,3 +76,4 @@ func (d *VisitDao) CountByLinkIDAndDateRange(ctx context.Context, linkID int64, 
 	}
 	return countMap, nil
 }
+

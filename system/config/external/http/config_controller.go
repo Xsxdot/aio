@@ -46,6 +46,9 @@ func (ctrl *ConfigController) RegisterRoutes(admin fiber.Router) {
 	configRouter.Get("/:id/history", base.AdminAuth.RequireAdminAuth("admin:config:read"), ctrl.GetHistory)
 	configRouter.Post("/:id/rollback/:version", base.AdminAuth.RequireAdminAuth("admin:config:update"), ctrl.Rollback)
 
+	// 查看配置 JSON 接口
+	configRouter.Get("/:id/json", base.AdminAuth.RequireAdminAuth("admin:config:read"), ctrl.GetConfigJSON)
+
 	// 导入导出接口
 	configRouter.Post("/export", base.AdminAuth.RequireAdminAuth("admin:config:export"), ctrl.Export)
 	configRouter.Post("/import", base.AdminAuth.RequireAdminAuth("admin:config:import"), ctrl.Import)
@@ -208,4 +211,27 @@ func (ctrl *ConfigController) Import(ctx *fiber.Ctx) error {
 
 	err := ctrl.app.ImportConfigs(util.Context(ctx), &req, adminAccount, adminID)
 	return result.Once(ctx, "导入成功", err)
+}
+
+// GetConfigJSON 查看配置的 JSON 格式（解密后的纯对象）
+func (ctrl *ConfigController) GetConfigJSON(ctx *fiber.Ctx) error {
+	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
+	if err != nil {
+		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+	}
+
+	// 查询配置
+	dbConfig, err := ctrl.app.ConfigItemService.FindById(util.Context(ctx), id)
+	if err != nil {
+		return err
+	}
+
+	// 获取纯对象格式（去掉 ConfigValue 包装）
+	plainObject, err := ctrl.app.ConfigItemService.GetConfigAsPlainObject(util.Context(ctx), dbConfig.Key)
+	if err != nil {
+		return err
+	}
+
+	// 返回纯对象 JSON（可直接反序列化到业务结构体）
+	return result.OK(ctx, plainObject)
 }

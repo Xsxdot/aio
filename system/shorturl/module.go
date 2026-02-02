@@ -27,3 +27,4 @@ func NewModule() *Module {
 		GRPCService: grpcSvc,
 	}
 }
+

@@ -150,8 +150,8 @@ func ValidateConfigKey(key string) error {
 		return errorc.New("配置键格式错误，至少需要2个部分（如 app.cert）", nil).ValidWithCtx()
 	}
 
-	if len(parts) > 4 {
-		return errorc.New("配置键格式错误，最多4个部分（如 module.submodule.name.env）", nil).ValidWithCtx()
+	if len(parts) > 6 {
+		return errorc.New("配置键格式错误，最多6个部分（如 team.module.submodule.category.name.env）", nil).ValidWithCtx()
 	}
 
 	// 检查每个部分是否为空

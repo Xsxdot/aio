@@ -25,3 +25,4 @@ func AutoMigrate(db *gorm.DB, log *logger.Log) error {
 	log.Info("短网址组件表迁移完成")
 	return nil
 }
+

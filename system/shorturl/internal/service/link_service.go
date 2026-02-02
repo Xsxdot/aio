@@ -143,3 +143,4 @@ func (s *LinkService) RecordSuccess(ctx context.Context, linkID int64, successDa
 	// 原子递增成功次数
 	return s.Dao.IncrementSuccessCount(ctx, linkID)
 }
+

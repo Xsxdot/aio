@@ -246,3 +246,4 @@ func convertToGRPCError(err error) error {
 	// 默认返回内部错误
 	return status.Error(codes.Internal, err.Error())
 }
+

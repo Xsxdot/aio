@@ -3,9 +3,11 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
+	_ "google.golang.org/grpc/balancer/roundrobin" // 注册 round_robin 负载均衡器
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -39,8 +41,6 @@ type Client struct {
 	ConfigClient *ConfigClient
 	// ShortURL 短网址客户端
 	ShortURL *ShortURLClient
-	// Application 应用部署客户端
-	Application *ApplicationClient
 }
 
 // New 创建 SDK 客户端
@@ -73,7 +73,8 @@ func New(config Config) (*Client, error) {
 	client.Auth = authClient
 
 	// 建立连接（带 token provider）
-	conn, err := client.dialWithAuth(config.RegistryAddr)
+	target := buildRegistryDialTarget(config.RegistryAddr)
+	conn, err := client.dialWithAuth(target)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial registry: %w", err)
 	}
@@ -99,10 +100,6 @@ func New(config Config) (*Client, error) {
 	shortURLClient := newShortURLClient(conn)
 	client.ShortURL = shortURLClient
 
-	// 初始化 Application 客户端
-	applicationClient := newApplicationClient(conn)
-	client.Application = applicationClient
-
 	return client, nil
 }
 
@@ -112,6 +109,11 @@ func (c *Client) dialWithAuth(target string) (*grpc.ClientConn, error) {
 
 	// 使用不安全连接（生产环境应该使用 TLS）
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	// 如果是集群模式（static:/// scheme），启用 round_robin 负载均衡
+	if strings.HasPrefix(target, "static:///") {
+		opts = append(opts, grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`))
+	}
 
 	// 添加拦截器
 	if !c.config.DisableAuth {

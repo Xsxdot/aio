@@ -43,9 +43,17 @@ func (s *ServerService) Create(ctx context.Context, req *dto.CreateServerRequest
 	}
 
 	// 构建模型
+	// 兼容策略：extranetHost 优先使用 req.ExtranetHost，否则使用 req.Host
+	extranetHost := req.ExtranetHost
+	if extranetHost == "" {
+		extranetHost = req.Host
+	}
+	
 	server := &model.ServerModel{
 		Name:             req.Name,
-		Host:             req.Host,
+		Host:             extranetHost,        // 兼容字段，与外网地址保持一致
+		IntranetHost:     req.IntranetHost,
+		ExtranetHost:     extranetHost,
 		AgentGrpcAddress: req.AgentGrpcAddress,
 		Enabled:          req.Enabled,
 		Comment:          req.Comment,
@@ -89,8 +97,17 @@ func (s *ServerService) Update(ctx context.Context, id int64, req *dto.UpdateSer
 	}
 
 	// 更新字段
-	if req.Host != nil {
+	// 兼容策略：如果更新了 Host 或 ExtranetHost，保持 Host 与 ExtranetHost 一致
+	if req.ExtranetHost != nil {
+		server.ExtranetHost = *req.ExtranetHost
+		server.Host = *req.ExtranetHost
+	} else if req.Host != nil {
 		server.Host = *req.Host
+		server.ExtranetHost = *req.Host
+	}
+	
+	if req.IntranetHost != nil {
+		server.IntranetHost = *req.IntranetHost
 	}
 	if req.AgentGrpcAddress != nil {
 		server.AgentGrpcAddress = *req.AgentGrpcAddress

@@ -86,6 +86,8 @@ func (a *App) buildServerStatusInfo(server *model.ServerModel, status *model.Ser
 		ID:               server.ID,
 		Name:             server.Name,
 		Host:             server.Host,
+		IntranetHost:     server.IntranetHost,
+		ExtranetHost:     server.ExtranetHost,
 		AgentGrpcAddress: server.AgentGrpcAddress,
 		Enabled:          server.Enabled,
 		Comment:          server.Comment,

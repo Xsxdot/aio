@@ -40,3 +40,4 @@ func NewApp() *App {
 		err:           errorc.NewErrorBuilder("ShortURLApp"),
 	}
 }
+

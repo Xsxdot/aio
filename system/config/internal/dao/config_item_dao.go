@@ -51,6 +51,54 @@ func (d *ConfigItemDao) FindByKeyLike(ctx context.Context, keyPattern string) ([
 	return items, nil
 }
 
+// FindByKeyPrefix 根据配置键前缀查询
+func (d *ConfigItemDao) FindByKeyPrefix(ctx context.Context, prefix string) ([]*model.ConfigItemModel, error) {
+	var items []*model.ConfigItemModel
+	err := d.db.WithContext(ctx).Where("`key` LIKE ?", prefix+"%").Find(&items).Error
+	if err != nil {
+		return nil, d.err.New("按前缀查询配置项失败", err).DB()
+	}
+	return items, nil
+}
+
+// FindPageByKeyLike 根据配置键模糊查询（分页）
+func (d *ConfigItemDao) FindPageByKeyLike(ctx context.Context, page *mvc.Page, keyPattern string) ([]*model.ConfigItemModel, int64, error) {
+	var items []*model.ConfigItemModel
+	var total int64
+
+	db := d.db.WithContext(ctx).Model(&model.ConfigItemModel{})
+	db = db.Where("`key` LIKE ?", "%"+keyPattern+"%")
+
+	// 统计总数
+	err := db.Count(&total).Error
+	if err != nil {
+		return nil, 0, d.err.New("查询配置项总数失败", err).DB()
+	}
+
+	// 设置分页参数
+	pageNum := page.PageNum
+	size := page.Size
+	if pageNum == 0 {
+		pageNum = 1
+	}
+	if size <= 0 {
+		size = 10
+	}
+
+	// 分页查询
+	db = db.Offset((pageNum - 1) * size).Limit(size)
+	if page.Sort != nil {
+		db = db.Order(page.Sort)
+	}
+
+	err = db.Find(&items).Error
+	if err != nil {
+		return nil, 0, d.err.New("分页查询配置项失败", err).DB()
+	}
+
+	return items, total, nil
+}
+
 // FindAll 查询所有配置项
 func (d *ConfigItemDao) FindAll(ctx context.Context) ([]*model.ConfigItemModel, error) {
 	var items []*model.ConfigItemModel

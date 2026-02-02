@@ -1,14 +1,11 @@
 package app
 
 import (
-	"xiaozhizhang/system/application"
 	"xiaozhizhang/system/config"
-	"xiaozhizhang/system/nginx"
 	"xiaozhizhang/system/registry"
 	"xiaozhizhang/system/server"
 	"xiaozhizhang/system/shorturl"
 	"xiaozhizhang/system/ssl"
-	"xiaozhizhang/system/systemd"
 	"xiaozhizhang/system/user"
 )
 
@@ -32,15 +29,6 @@ type App struct {
 	// SslModule SSL 证书组件模块
 	// 提供证书申请、续期、部署能力
 	SslModule *ssl.Module
-	// NginxModule Nginx 管理组件模块
-	// 提供远程 Nginx 配置文件 CRUD、校验、重载能力
-	NginxModule *nginx.Module
-	// SystemdModule Systemd 管理组件模块
-	// 提供本机 systemd service 的 CRUD、启停、启用禁用、状态日志查询能力
-	SystemdModule *systemd.Module
-	// ApplicationModule 应用部署组件模块
-	// 提供应用的自动化部署、更新、回滚能力
-	ApplicationModule *application.Module
 	// ServerModule 服务器管理组件模块
 	// 提供服务器清单管理、状态上报与聚合查询能力
 	ServerModule *server.Module
@@ -64,29 +52,15 @@ func NewApp() *App {
 	// 创建 ssl 组件，注入 server client
 	sslModule := ssl.NewModule(serverModule.Client)
 
-	nginxModule := nginx.NewModule()
-	systemdModule := systemd.NewModule()
-
-	// 创建 application 组件，需要注入依赖的其他组件
-	applicationModule := application.NewModule(
-		sslModule,
-		nginxModule,
-		systemdModule,
-		registryModule,
-	)
-
 	// 创建短网址组件
 	shorturlModule := shorturl.NewModule()
 
 	return &App{
-		ConfigModule:      configModule,
-		RegistryModule:    registryModule,
-		UserModule:        userModule,
-		SslModule:         sslModule,
-		NginxModule:       nginxModule,
-		SystemdModule:     systemdModule,
-		ApplicationModule: applicationModule,
-		ServerModule:      serverModule,
-		ShortURLModule:    shorturlModule,
+		ConfigModule:   configModule,
+		RegistryModule: registryModule,
+		UserModule:     userModule,
+		SslModule:      sslModule,
+		ServerModule:   serverModule,
+		ShortURLModule: shorturlModule,
 	}
 }

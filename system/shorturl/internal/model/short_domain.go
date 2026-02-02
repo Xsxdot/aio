@@ -17,3 +17,4 @@ type ShortDomain struct {
 func (ShortDomain) TableName() string {
 	return "shorturl_domains"
 }
+

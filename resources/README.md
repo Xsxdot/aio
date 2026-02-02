@@ -9,6 +9,61 @@
 - `prod.yaml` - 生产环境配置（本地文件，不提交到 Git）
 - `agent.yaml` - Agent 配置（本地文件，不提交到 Git）
 
+## 配置来源模式
+
+本项目支持两种配置加载模式，通过 `config-source` 字段控制：
+
+### 1. 本地文件模式（file）
+
+**默认模式**，所有配置从本地 YAML 文件读取。
+
+```yaml
+config-source: file
+app-name: aio
+port: 9000
+# ... 其他所有配置
+```
+
+### 2. 配置中心模式（config-center）
+
+从配置中心动态拉取配置，本地配置文件只需包含 `config-source` 和 `sdk` 配置。
+
+```yaml
+config-source: config-center
+
+sdk:
+  registry_addr: "localhost:50051"
+  client_key: "your-client-key"
+  client_secret: "your-client-secret"
+  bootstrap_config_prefix: "aio.xiaozhizhang.web"
+```
+
+**配置中心 key 组织约定：**
+
+- **完整配置键（推荐）**：直接用 `bootstrap_config_prefix` 作为 key 存储完整配置 JSON
+  - 示例：key = `aio.xiaozhizhang.web.dev`，value = 完整的应用配置 JSON
+
+- **按模块拆分（前缀模式）**：多个 key 按前缀 + 模块后缀组织
+  - `{prefix}.app.{env}`：根级字段（app-name、port、domain、host 等）会 merge 到配置根
+  - `{prefix}.db.{env}`：数据库配置，映射到 `db` 字段
+  - `{prefix}.jwt.{env}`：JWT 配置，映射到 `jwt` 字段
+  - `{prefix}.redis.{env}`：Redis 配置，映射到 `redis` 字段
+  - `{prefix}.oss.{env}`：OSS 配置，映射到 `oss` 字段
+  - `{prefix}.grpc.{env}`：gRPC 配置，映射到 `grpc` 字段
+  - `{prefix}.config.{env}`：配置中心配置，映射到 `config` 字段
+  - 其他字段按相同规则组织
+
+示例：
+```
+prefix = "aio.xiaozhizhang.web"
+env = "dev"
+
+配置中心 key：
+- aio.xiaozhizhang.web.app.dev → {"app-name":"aio","port":9000,"domain":"..."}
+- aio.xiaozhizhang.web.db.dev → {"host":"...","port":3306,...}
+- aio.xiaozhizhang.web.jwt.dev → {"secret":"...","admin-secret":"...",...}
+```
+
 ## 快速开始
 
 ### 1. 创建配置文件
@@ -163,4 +218,5 @@ ENV=prod ./main     # 使用 prod.yaml
 ## 更多信息
 
 如有问题，请查看项目文档或联系开发团队。
+
 

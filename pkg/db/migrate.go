@@ -2,7 +2,6 @@ package db
 
 import (
 	"xiaozhizhang/pkg/core/logger"
-	"xiaozhizhang/system/application"
 	"xiaozhizhang/system/config"
 	"xiaozhizhang/system/registry"
 	"xiaozhizhang/system/server"
@@ -36,11 +35,6 @@ func AutoMigrate(db *gorm.DB) error {
 
 	// 注册中心组件表迁移
 	if err := registry.AutoMigrate(db, log); err != nil {
-		return err
-	}
-
-	// Application 部署组件表迁移
-	if err := application.AutoMigrate(db, log); err != nil {
 		return err
 	}
 

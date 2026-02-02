@@ -152,3 +152,4 @@ GET {{baseUrl}}/api/registry/v1/services/1
 # 2. 注册 dev 环境实例（请求11，env=dev）
 # 3. 查看 prod 环境实例（请求8，env=prod）- 只看到 prod 实例
 # 4. 查看所有环境实例（请求6）- 看到所有实例
+

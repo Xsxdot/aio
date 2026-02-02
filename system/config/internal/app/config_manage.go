@@ -338,9 +338,7 @@ func (a *App) QueryConfigs(ctx context.Context, req *dto.QueryConfigRequest) ([]
 
 	if req.Key != "" {
 		// 模糊查询
-		return a.ConfigItemService.FindPageWithMap(ctx, page, map[string]interface{}{
-			"key LIKE ?": "%" + req.Key + "%",
-		})
+		return a.ConfigItemService.FindPageByKeyLike(ctx, page, req.Key)
 	}
 
 	// 查询全部

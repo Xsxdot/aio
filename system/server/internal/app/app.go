@@ -2,6 +2,7 @@ package app
 
 import (
 	"xiaozhizhang/base"
+	errorc "xiaozhizhang/pkg/core/err"
 	"xiaozhizhang/pkg/core/logger"
 	"xiaozhizhang/system/server/internal/dao"
 	"xiaozhizhang/system/server/internal/service"
@@ -13,6 +14,8 @@ type App struct {
 	ServerStatusService    *service.ServerStatusService
 	ServerSSHCredentialSvc *service.ServerSSHCredentialService
 	log                    *logger.Log
+	errBuilder             *errorc.ErrorBuilder
+	dialContext            DialContextFunc // 可注入的 TCP dial 函数（用于测试）
 }
 
 // NewApp 创建服务器组件应用层实例
@@ -31,5 +34,7 @@ func NewApp() *App {
 		ServerStatusService:    service.NewServerStatusService(base.DB, log),
 		ServerSSHCredentialSvc: sshCredentialSvc,
 		log:                    log,
+		errBuilder:             errorc.NewErrorBuilder("ServerApp"),
+		dialContext:            nil, // 默认使用 defaultDialContext
 	}
 }

@@ -17,7 +17,6 @@ import (
 	"xiaozhizhang/pkg/oss"
 	"xiaozhizhang/pkg/scheduler"
 	"xiaozhizhang/router"
-	agentclient "xiaozhizhang/system/agent/api/client"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -58,9 +57,6 @@ func main() {
 	if err != nil {
 		configures.Logger.Panic(fmt.Sprintf("启动调度器失败: %v", err))
 	}
-
-	// 初始化 Agent 客户端（用于调用远程 agent 守护进程）
-	base.AgentClient = initAgentClient()
 
 	if env == "dev" {
 		// 开发环境下添加数据库保活任务，防止代理超时导致连接断开
@@ -141,7 +137,22 @@ func main() {
 	if base.Configures.Config.GRPC.Address != "" {
 		grpcConfig := base.Configures.Config.GRPC
 
-		// 创建 gRPC Server 配置
+		// 创建 zap logger 用于 gRPC
+		zapLogger, err := createZapLogger(env)
+		if err != nil {
+			configures.Logger.Panic(fmt.Sprintf("创建 zap logger 失败: %v", err))
+		}
+
+		// 创建客户端凭证鉴权提供者
+		tokenParser := appRoot.UserModule.NewTokenParser()
+		authProvider := grpc.NewClientAuthProvider(tokenParser, zapLogger)
+
+		// 创建 gRPC Server 配置（必须在创建 Server 之前设置好 Auth）
+		authConfig := grpc.DefaultAuthConfig()
+		authConfig.AuthProvider = authProvider
+		// 添加需要跳过鉴权的方法（短网址的 ReportSuccess）
+		authConfig.SkipMethods = append(authConfig.SkipMethods, "/shorturl.v1.ShortURLService/ReportSuccess")
+
 		grpcServerConfig := &grpc.Config{
 			Address:           grpcConfig.Address,
 			EnableReflection:  grpcConfig.EnableReflection,
@@ -153,21 +164,11 @@ func main() {
 			MaxRecvMsgSize:    grpcConfig.MaxRecvMsgSize,
 			MaxSendMsgSize:    grpcConfig.MaxSendMsgSize,
 			ConnectionTimeout: grpcConfig.ConnectionTimeout,
+			Auth:              authConfig,
 		}
 
-		// 创建 zap logger 用于 gRPC
-		zapLogger, err := createZapLogger(env)
-		if err != nil {
-			configures.Logger.Panic(fmt.Sprintf("创建 zap logger 失败: %v", err))
-		}
-
-		// 创建 gRPC Server
+		// 创建 gRPC Server（此时中间件链会正确包含鉴权中间件）
 		grpcServer := grpc.NewServer(grpcServerConfig, zapLogger)
-
-		// 设置客户端凭证鉴权提供者
-		tokenParser := appRoot.UserModule.NewTokenParser()
-		authProvider := grpc.NewClientAuthProvider(tokenParser, zapLogger)
-		grpcServer.SetAuthProvider(authProvider)
 
 		base.GRPCServer = grpcServer
 
@@ -186,11 +187,6 @@ func main() {
 			configures.Logger.Panic(fmt.Sprintf("注册注册中心服务失败: %v", err))
 		}
 
-		// 注册 application 组件的 gRPC 服务
-		if err := grpcServer.RegisterService(appRoot.ApplicationModule.GRPCService); err != nil {
-			configures.Logger.Panic(fmt.Sprintf("注册应用部署服务失败: %v", err))
-		}
-
 		// 注册 server 组件的 gRPC 服务
 		if err := grpcServer.RegisterService(appRoot.ServerModule.GRPCService); err != nil {
 			configures.Logger.Panic(fmt.Sprintf("注册服务器管理服务失败: %v", err))
@@ -200,9 +196,6 @@ func main() {
 		if err := grpcServer.RegisterService(appRoot.ShortURLModule.GRPCService); err != nil {
 			configures.Logger.Panic(fmt.Sprintf("注册短网址服务失败: %v", err))
 		}
-
-		// 为短网址的 ReportSuccess 方法添加到跳过鉴权列表
-		grpcServer.EnableAuth([]string{"/shorturl.v1.ShortURLService/ReportSuccess"})
 
 		// 启动 gRPC 服务器
 		if err := grpcServer.Start(); err != nil {
@@ -255,18 +248,4 @@ func createZapLogger(env string) (*zap.Logger, error) {
 	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
 	return config.Build()
-}
-
-// initAgentClient 初始化 Agent 客户端
-func initAgentClient() *agentclient.AgentClient {
-	// Token 提供者：从 ClientAuth 获取当前有效的 JWT token
-	tokenProvider := func() string {
-		// 这里返回一个系统级 token（由配置或环境变量提供）
-		// 在实际调用时，可以从 context 或请求中获取用户的 token
-		// 目前先返回空，agent client 在使用时会检查 context 中的 token
-		return ""
-	}
-
-	// 默认 30 秒超时
-	return agentclient.NewAgentClient(tokenProvider, 30*time.Second)
 }
