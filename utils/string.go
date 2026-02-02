@@ -2,19 +2,8 @@ package utils
 
 import (
 	"encoding/json"
-	"math/rand"
 	"strconv"
-
-	"go.etcd.io/etcd/pkg/v3/stringutil"
 )
-
-func RandomString(length uint) string {
-	return stringutil.RandString(length)
-}
-
-func RandomInt64(max int) int {
-	return rand.Intn(max)
-}
 
 // ParseInt64 将字符串转换为int64类型，如果转换失败则返回默认值
 func ParseInt64(s string, defaultVal int64) int64 {
