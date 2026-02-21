@@ -14,6 +14,7 @@
 - **阿里云 DNS** (`alidns`)
 - **腾讯云 DNS** (`tencentcloud`)
 - **DNSPod** (`dnspod`，自动映射到 `tencentcloud`)
+- **GoDaddy** (`godaddy`，需要账号拥有 10 个以上域名或有效的 Discount Domain Club 会员资格)
 
 ### 证书类型支持
 - 单域名证书（example.com）
@@ -54,6 +55,8 @@ system/ssl/
 ### 1. DNS 凭证管理
 
 #### 创建 DNS 凭证
+
+阿里云 DNS 示例：
 ```http
 POST /admin/ssl/dns-credentials
 Authorization: Bearer {admin_token}
@@ -64,6 +67,21 @@ Content-Type: application/json
   "provider": "alidns",
   "access_key": "your_access_key",
   "secret_key": "your_secret_key",
+  "description": "用于 example.com 域名验证"
+}
+```
+
+GoDaddy DNS 示例（`access_key` 对应 API Key，`secret_key` 对应 API Secret）：
+```http
+POST /admin/ssl/dns-credentials
+Authorization: Bearer {admin_token}
+Content-Type: application/json
+
+{
+  "name": "GoDaddy DNS 凭证",
+  "provider": "godaddy",
+  "access_key": "your_godaddy_api_key",
+  "secret_key": "your_godaddy_api_secret",
   "description": "用于 example.com 域名验证"
 }
 ```

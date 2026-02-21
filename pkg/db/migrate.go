@@ -3,6 +3,7 @@ package db
 import (
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/config"
+	"github.com/xsxdot/aio/system/executor"
 	"github.com/xsxdot/aio/system/registry"
 	"github.com/xsxdot/aio/system/server"
 	"github.com/xsxdot/aio/system/shorturl"
@@ -45,6 +46,11 @@ func AutoMigrate(db *gorm.DB) error {
 
 	// 短网址组件表迁移
 	if err := shorturl.AutoMigrate(db, log); err != nil {
+		return err
+	}
+
+	// 任务执行器组件表迁移
+	if err := executor.AutoMigrate(db, log); err != nil {
 		return err
 	}
 

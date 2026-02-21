@@ -4,6 +4,7 @@ import (
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/security"
 	"github.com/xsxdot/aio/pkg/core/start"
+	"github.com/xsxdot/aio/pkg/executor"
 	"github.com/xsxdot/aio/pkg/grpc"
 	"github.com/xsxdot/aio/pkg/oss"
 	"github.com/xsxdot/aio/pkg/scheduler"
@@ -25,5 +26,8 @@ var (
 	Cache      *cache.Cache
 	OSS        *oss.AliyunService
 	Scheduler  *scheduler.Scheduler
+	Executor   *executor.Executor
 	GRPCServer *grpc.Server
+	// AIClient AI 服务统一客户端（可选）
+	AIClient interface{}
 )

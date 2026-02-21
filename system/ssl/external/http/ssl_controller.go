@@ -1,7 +1,11 @@
 package http
 
 import (
+	"context"
+	"fmt"
 	"strconv"
+	"time"
+
 	"github.com/xsxdot/aio/base"
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
@@ -277,15 +281,27 @@ func (c *SslController) DeployCertificate(ctx *fiber.Ctx) error {
 		return c.err.New("参数验证失败", err).ValidWithCtx()
 	}
 
-	// 异步部署
-	deployCtx := ctx.UserContext()
-	go func() {
-		if err := c.app.DeployCertificateToTargets(deployCtx, uint(id), req.TargetIDs, "manual"); err != nil {
-			c.log.WithErr(err).Error("手动部署证书失败")
-		}
-	}()
+	// 获取证书名称用于任务命名
+	cert, err := c.app.GetCertificate(ctx.UserContext(), uint(id))
+	if err != nil {
+		return err
+	}
 
-	return result.OK(ctx, fiber.Map{"message": "证书部署已触发"})
+	// 提交到后台任务执行器
+	certID := uint(id)
+	targetIDs := req.TargetIDs
+	jobID, err := base.Executor.Submit(ctx.UserContext(), fmt.Sprintf("手动部署证书[%s]", cert.Name), 10*time.Minute, func(execCtx context.Context) error {
+		return c.app.DeployCertificateToTargets(execCtx, certID, targetIDs, "manual")
+	})
+
+	if err != nil {
+		return c.err.New("提交部署任务失败", err)
+	}
+
+	return result.OK(ctx, fiber.Map{
+		"message": "证书部署已提交",
+		"job_id":  jobID,
+	})
 }
 
 func (c *SslController) DeleteCertificate(ctx *fiber.Ctx) error {

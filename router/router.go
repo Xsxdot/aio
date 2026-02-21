@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/xsxdot/aio/app"
 	"github.com/xsxdot/aio/system/config"
+	"github.com/xsxdot/aio/system/executor"
 	"github.com/xsxdot/aio/system/registry"
 	"github.com/xsxdot/aio/system/server"
 	"github.com/xsxdot/aio/system/shorturl"
@@ -46,4 +47,8 @@ func Register(a *app.App, f *fiber.App) {
 
 	// 注册短网址组件路由
 	shorturl.RegisterRoutes(a.ShortURLModule, api, admin)
+
+	// 注册任务执行器组件路由
+	executor.RegisterRoutes(a.ExecutorModule, api, admin)
+
 }

@@ -1,0 +1,131 @@
+### Executor 任务管理 HTTP 接口测试
+
+### 变量定义
+@baseUrl = http://localhost:8080
+@adminToken = YOUR_ADMIN_TOKEN_HERE
+
+### 1. 提交任务
+POST {{baseUrl}}/admin/executor/jobs
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "target_service": "test-service",
+  "method": "processOrder",
+  "args_json": "{\"order_id\": 123, \"user_id\": 456}",
+  "max_attempts": 3,
+  "priority": 0
+}
+
+### 2. 列出任务
+GET {{baseUrl}}/admin/executor/jobs?page_num=1&page_size=20
+Authorization: Bearer {{adminToken}}
+
+### 3. 获取任务详情
+GET {{baseUrl}}/admin/executor/jobs/1
+Authorization: Bearer {{adminToken}}
+
+### 4. 更新任务参数（新增接口）
+PUT {{baseUrl}}/admin/executor/jobs/1/args
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "args_json": "{\"order_id\": 999, \"user_id\": 888, \"updated\": true}"
+}
+
+### 5. 取消任务
+POST {{baseUrl}}/admin/executor/jobs/1/cancel
+Authorization: Bearer {{adminToken}}
+
+### 6. 重新入队任务
+POST {{baseUrl}}/admin/executor/jobs/1/requeue
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "run_at": 0
+}
+
+### 7. 查看任务执行历史
+GET {{baseUrl}}/admin/executor/jobs/1/attempts
+Authorization: Bearer {{adminToken}}
+
+### 8. 获取统计信息
+GET {{baseUrl}}/admin/executor/stats
+Authorization: Bearer {{adminToken}}
+
+### 9. 清理旧任务
+POST {{baseUrl}}/admin/executor/cleanup
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "succeeded_days": 7,
+  "canceled_days": 30,
+  "dead_days": 90
+}
+
+### 测试场景：验证更新参数的状态限制
+
+### 场景1：更新 pending 任务的参数（应该成功）
+# 先提交一个任务
+POST {{baseUrl}}/admin/executor/jobs
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "target_service": "test-service",
+  "method": "testMethod",
+  "args_json": "{\"test\": 1}",
+  "run_at": 9999999999
+}
+
+###
+# 记录返回的 job_id，然后更新参数
+PUT {{baseUrl}}/admin/executor/jobs/JOB_ID_HERE/args
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "args_json": "{\"test\": 2, \"updated\": true}"
+}
+
+### 场景2：尝试更新 running 任务的参数（应该失败）
+# 需要有一个 running 状态的任务
+PUT {{baseUrl}}/admin/executor/jobs/RUNNING_JOB_ID_HERE/args
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "args_json": "{\"test\": 3}"
+}
+# 预期返回错误："running 任务不允许修改参数"
+
+### 场景3：更新参数为非法 JSON（应该失败）
+PUT {{baseUrl}}/admin/executor/jobs/1/args
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "args_json": "{invalid json"
+}
+# 预期返回错误："参数 JSON 格式不合法"
+
+### 场景4：更新参数为空字符串（应该成功）
+PUT {{baseUrl}}/admin/executor/jobs/1/args
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "args_json": ""
+}
+
+### 场景5：更新参数为空对象（应该成功）
+PUT {{baseUrl}}/admin/executor/jobs/1/args
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "args_json": "{}"
+}

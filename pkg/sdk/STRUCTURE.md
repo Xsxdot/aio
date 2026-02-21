@@ -93,6 +93,21 @@ pkg/sdk/
 │   ├── type UploadArtifactResponse
 │   └── func (*ApplicationClient) UploadArtifactFromReader(ctx, meta, r, chunkSize)
 │
+├── executor_worker.go           # Executor Worker（开箱即用的任务消费者）(~460 行)
+│   ├── type JobHandler
+│   ├── type JobFailedError
+│   ├── type WorkerConfig
+│   ├── type ExecutorWorker
+│   ├── func DefaultWorkerConfig(targetService) *WorkerConfig
+│   ├── func (*ExecutorClient) NewWorker(config) (*ExecutorWorker, error)
+│   ├── func (*ExecutorClient) NewWorkerWithScheduler(s, config, ownScheduler) (*ExecutorWorker, error)
+│   ├── func (*ExecutorWorker) Register(method, handler) error
+│   ├── func (*ExecutorWorker) Unregister(method) error
+│   ├── func (*ExecutorWorker) Start() error
+│   ├── func (*ExecutorWorker) Stop() error
+│   ├── func (*ExecutorWorker) IsRunning() bool
+│   └── func (*ExecutorWorker) GetScheduler() *scheduler.Scheduler
+│
 ├── sdk_test.go                  # 单元测试 (~180 行)
 │   ├── func TestConfig(t)
 │   ├── func TestConfigDefaults(t)
@@ -102,16 +117,33 @@ pkg/sdk/
 │   ├── func TestShortURLRequestStructure(t)
 │   └── func TestDeployRequestStructure(t)
 │
+├── executor_worker_test.go      # Executor Worker 测试 (~510 行)
+│   ├── type mockExecutorServiceClient
+│   ├── func TestWorker_SuccessfulJob(t)
+│   ├── func TestWorker_FailedJob(t)
+│   ├── func TestWorker_FailedJobWithRetryAfter(t)
+│   ├── func TestWorker_PanicInHandler(t)
+│   ├── func TestWorker_AutoRenewLease(t)
+│   ├── func TestWorker_NoJob(t)
+│   └── func TestWorker_MultipleHandlers(t)
+│
 └── example/                     # 示例程序
     ├── README.md                # 示例说明
-    └── main.go                  # 完整示例 (~200 行)
-        ├── Step 1: 认证
-        ├── Step 2: 拉取服务列表
-        ├── Step 3: 服务发现
-        ├── Step 4: 配置中心（可选）
-        ├── Step 5: 短网址（可选）
-        ├── Step 6: 注册自身
-        └── Step 7: 运行和优雅退出
+    ├── sdk_full_integration_test.go  # 完整集成示例
+    │   ├── Step 1: 认证
+    │   ├── Step 2: 拉取服务列表
+    │   ├── Step 3: 服务发现
+    │   ├── Step 4: 配置中心（可选）
+    │   ├── Step 5: 短网址（可选）
+    │   └── Step 6: 注册自身
+    └── worker/                  # Worker 示例程序
+        └── main.go              # Worker 示例 (~230 行)
+            ├── 创建 SDK 客户端
+            ├── 创建 Scheduler
+            ├── 创建 Worker
+            ├── 注册方法处理器
+            ├── 启动 Worker
+            └── 优雅退出
 ```
 
 ## 模块关系

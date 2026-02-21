@@ -41,6 +41,8 @@ type Client struct {
 	ConfigClient *ConfigClient
 	// ShortURL 短网址客户端
 	ShortURL *ShortURLClient
+	// Executor 任务执行器客户端
+	Executor *ExecutorClient
 }
 
 // New 创建 SDK 客户端
@@ -99,6 +101,10 @@ func New(config Config) (*Client, error) {
 	// 初始化 ShortURL 客户端
 	shortURLClient := newShortURLClient(conn)
 	client.ShortURL = shortURLClient
+
+	// 初始化 Executor 客户端
+	executorClient := newExecutorClient(conn)
+	client.Executor = executorClient
 
 	return client, nil
 }

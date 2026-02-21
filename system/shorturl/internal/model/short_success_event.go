@@ -20,3 +20,8 @@ func (ShortSuccessEvent) TableName() string {
 }
 
 
+
+
+
+
+

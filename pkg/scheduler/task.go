@@ -57,6 +57,9 @@ type Task interface {
 	// GetName 获取任务名称
 	GetName() string
 
+	// GetKey 获取任务稳定标识（用于分布式锁），若为空则使用 Name
+	GetKey() string
+
 	// GetType 获取任务类型
 	GetType() TaskType
 
@@ -92,6 +95,7 @@ type Task interface {
 type BaseTask struct {
 	ID          string          `json:"id"`
 	Name        string          `json:"name"`
+	Key         string          `json:"key"` // 任务稳定标识，用于分布式锁；若为空则使用 Name
 	Type        TaskType        `json:"type"`
 	ExecuteMode TaskExecuteMode `json:"execute_mode"`
 	Status      TaskStatus      `json:"status"`
@@ -110,6 +114,14 @@ func (t *BaseTask) GetID() string {
 // GetName 获取任务名称
 func (t *BaseTask) GetName() string {
 	return t.Name
+}
+
+// GetKey 获取任务稳定标识，若为空则使用 Name
+func (t *BaseTask) GetKey() string {
+	if t.Key == "" {
+		return t.Name
+	}
+	return t.Key
 }
 
 // GetType 获取任务类型
@@ -189,6 +201,7 @@ func NewOnceTask(name string, executeTime time.Time, executeMode TaskExecuteMode
 		BaseTask: &BaseTask{
 			ID:          uuid.New().String(),
 			Name:        name,
+			Key:         name, // 默认使用 name 作为稳定标识
 			Type:        TaskTypeOnce,
 			ExecuteMode: executeMode,
 			Status:      TaskStatusWaiting,
@@ -221,6 +234,7 @@ func NewRetryableOnceTask(name string, executeTime time.Time, executeMode TaskEx
 		BaseTask: &BaseTask{
 			ID:          uuid.New().String(),
 			Name:        name,
+			Key:         name, // 默认使用 name 作为稳定标识
 			Type:        TaskTypeOnce,
 			ExecuteMode: executeMode,
 			Status:      TaskStatusWaiting,
@@ -308,6 +322,7 @@ func NewIntervalTask(name string, startTime time.Time, interval time.Duration, e
 		BaseTask: &BaseTask{
 			ID:          uuid.New().String(),
 			Name:        name,
+			Key:         name, // 默认使用 name 作为稳定标识
 			Type:        TaskTypeInterval,
 			ExecuteMode: executeMode,
 			Status:      TaskStatusWaiting,
@@ -339,7 +354,7 @@ type CronTask struct {
 // NewCronTask 创建Cron任务
 func NewCronTask(name string, cronExpr string, executeMode TaskExecuteMode, timeout time.Duration, fn TaskFunc) (*CronTask, error) {
 	parser := cron.NewParser(
-		cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
+		cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
 	)
 
 	schedule, err := parser.Parse(cronExpr)
@@ -352,6 +367,7 @@ func NewCronTask(name string, cronExpr string, executeMode TaskExecuteMode, time
 		BaseTask: &BaseTask{
 			ID:          uuid.New().String(),
 			Name:        name,
+			Key:         name, // 默认使用 name 作为稳定标识
 			Type:        TaskTypeCron,
 			ExecuteMode: executeMode,
 			Status:      TaskStatusWaiting,

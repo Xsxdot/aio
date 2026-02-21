@@ -7,6 +7,8 @@ const (
 	DnsProviderAliDNS       DnsProvider = "alidns"       // 阿里云 DNS
 	DnsProviderTencentCloud DnsProvider = "tencentcloud" // 腾讯云 DNS
 	DnsProviderDNSPod       DnsProvider = "dnspod"       // DNSPod（兼容别名，映射到 tencentcloud）
+	DnsProviderGoDaddy      DnsProvider = "godaddy"      // GoDaddy DNS
+	DnsProviderCloudflare   DnsProvider = "cloudflare"   // Cloudflare DNS
 )
 
 // CertificateStatus 证书状态

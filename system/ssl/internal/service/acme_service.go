@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"time"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/ssl/internal/model"
@@ -19,6 +20,8 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/lego"
 	"github.com/go-acme/lego/v4/providers/dns/alidns"
+	"github.com/go-acme/lego/v4/providers/dns/cloudflare"
+	"github.com/go-acme/lego/v4/providers/dns/godaddy"
 	"github.com/go-acme/lego/v4/providers/dns/tencentcloud"
 	"github.com/go-acme/lego/v4/registration"
 )
@@ -312,6 +315,17 @@ func (s *AcmeService) createDNSProvider(provider model.DnsProvider, accessKey, s
 		config.SecretID = accessKey
 		config.SecretKey = secretKey
 		return tencentcloud.NewDNSProviderConfig(config)
+
+	case model.DnsProviderGoDaddy:
+		config := godaddy.NewDefaultConfig()
+		config.APIKey = accessKey
+		config.APISecret = secretKey
+		return godaddy.NewDNSProviderConfig(config)
+
+	case model.DnsProviderCloudflare:
+		config := cloudflare.NewDefaultConfig()
+		config.AuthToken = accessKey
+		return cloudflare.NewDNSProviderConfig(config)
 
 	default:
 		return nil, fmt.Errorf("不支持的 DNS Provider: %s", provider)

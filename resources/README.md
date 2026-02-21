@@ -147,6 +147,9 @@ oss:
   access-secret: 'your_access_secret'    # 阿里云 AccessKey Secret
   bucket-name: your-bucket               # OSS Bucket 名称
   region: cn-hangzhou                    # OSS 区域
+  use-internal-download: false           # 是否使用内网 endpoint（默认 false）
+                                         # 开启后服务端直连下载/上传/删除走内网，节省流量费用
+                                         # 仅适用于服务器与 OSS 同地域部署场景
 ```
 
 ### gRPC 配置 (grpc)

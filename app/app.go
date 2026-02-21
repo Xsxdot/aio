@@ -2,6 +2,7 @@ package app
 
 import (
 	"github.com/xsxdot/aio/system/config"
+	"github.com/xsxdot/aio/system/executor"
 	"github.com/xsxdot/aio/system/registry"
 	"github.com/xsxdot/aio/system/server"
 	"github.com/xsxdot/aio/system/shorturl"
@@ -35,6 +36,9 @@ type App struct {
 	// ShortURLModule 短网址组件模块
 	// 提供短链接生成、跳转、统计能力
 	ShortURLModule *shorturl.Module
+	// ExecutorModule 任务执行器组件模块
+	// 提供远程任务调度、执行、重试能力
+	ExecutorModule *executor.Module
 }
 
 // NewApp 创建进程唯一的 App 实例，由 main.go 在启动时调用。
@@ -55,6 +59,9 @@ func NewApp() *App {
 	// 创建短网址组件
 	shorturlModule := shorturl.NewModule()
 
+	// 创建任务执行器组件
+	executorModule := executor.NewModule()
+
 	return &App{
 		ConfigModule:   configModule,
 		RegistryModule: registryModule,
@@ -62,5 +69,6 @@ func NewApp() *App {
 		SslModule:      sslModule,
 		ServerModule:   serverModule,
 		ShortURLModule: shorturlModule,
+		ExecutorModule: executorModule,
 	}
 }

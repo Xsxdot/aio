@@ -159,3 +159,8 @@ func TestDeploySSH(t *testing.T) {
 - **保持简洁**：不需要的适配器就不要加
 
 
+
+
+
+
+

@@ -125,6 +125,252 @@ if err != nil {
 defer handle.Stop()
 ```
 
+### 任务执行器
+
+```go
+// 提交任务（DedupKey 为必填项，用于幂等去重）
+ctx := context.Background()
+jobID, err := client.Executor.SubmitJob(ctx, &sdk.SubmitJobRequest{
+    TargetService: "my-service",
+    Method:        "processData",
+    ArgsJSON:      `{"input":"data"}`,
+    MaxAttempts:   3,
+    Priority:      5,
+    DedupKey:      "my-service:processData:unique-id-123",
+})
+if err != nil {
+    panic(err)
+}
+fmt.Println("Job submitted:", jobID)
+
+// 或使用便捷方法（自动序列化参数，dedupKey 为必填第三个参数）
+jobID, err = client.Executor.SubmitJobWithArgs(ctx, "my-service", "processData",
+    "my-service:processData:unique-id-123",
+    map[string]interface{}{"input": "data"},
+    sdk.WithMaxAttempts(3),
+    sdk.WithPriority(5),
+)
+
+// Worker 侧：领取任务（可选按 method 过滤）
+job, err := client.Executor.AcquireJob(ctx, &sdk.AcquireJobRequest{
+    TargetService: "my-service",
+    Method:        "",        // 可选：指定方法名过滤，空表示领取所有方法的任务
+    ConsumerID:    "worker-1",
+    LeaseDuration: 30, // 30秒租约
+})
+if err != nil {
+    panic(err)
+}
+
+if job == nil {
+    fmt.Println("No job available")
+} else {
+    fmt.Printf("Acquired job %d: %s.%s\n", job.JobID, job.TargetService, job.Method)
+    
+    // 执行任务...
+    // time.Sleep(10 * time.Second)
+    
+    // 如果任务执行时间较长，需要续租
+    newLeaseUntil, err := client.Executor.RenewLease(ctx, job.JobID, job.AttemptNo, "worker-1", 30)
+    if err != nil {
+        fmt.Println("Renew lease failed:", err)
+    } else {
+        fmt.Println("Lease renewed until:", newLeaseUntil)
+    }
+    
+    // 确认任务完成（成功）
+    err = client.Executor.AckJob(ctx, &sdk.AckJobRequest{
+        JobID:      job.JobID,
+        AttemptNo:  job.AttemptNo,
+        ConsumerID: "worker-1",
+        Status:     sdk.AckStatusSucceeded,
+        ResultJSON: `{"status":"done"}`,
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // 或者报告失败（会自动重试）
+    // err = client.Executor.AckJob(ctx, &sdk.AckJobRequest{
+    //     JobID:      job.JobID,
+    //     AttemptNo:  job.AttemptNo,
+    //     ConsumerID: "worker-1",
+    //     Status:     sdk.AckStatusFailed,
+    //     Error:      "processing failed",
+    //     RetryAfter: 60, // 60秒后重试
+    // })
+}
+
+// 按方法过滤示例：创建只处理特定方法的 Worker
+emailJob, err := client.Executor.AcquireJob(ctx, &sdk.AcquireJobRequest{
+    TargetService: "my-service",
+    Method:        "SendEmailNotification",  // 只领取邮件通知任务
+    ConsumerID:    "email-worker-1",
+    LeaseDuration: 30,
+})
+// 处理 emailJob...
+```
+
+### 开箱即用的 Worker（推荐）
+
+SDK 提供了基于 `pkg/scheduler` 的开箱即用 Worker，自动处理任务拉取、执行、续租和 Ack。
+
+```go
+import (
+    "context"
+    "encoding/json"
+    "log"
+    
+    "xiaozhizhang/pkg/scheduler"
+    "xiaozhizhang/pkg/sdk"
+)
+
+// 1. 创建 SDK 客户端
+client, err := sdk.New(sdk.Config{
+    RegistryAddr: "localhost:50051",
+    ClientKey:    "your-client-key",
+    ClientSecret: "your-client-secret",
+})
+if err != nil {
+    log.Fatal(err)
+}
+defer client.Close()
+
+// 2. 创建 Worker（方式 A：内部自建 scheduler）
+config := sdk.DefaultWorkerConfig("my-service")
+config.LeaseDuration = 30        // 租约 30 秒
+config.EnableAutoRenew = true    // 启用自动续租
+worker, err := client.Executor.NewWorker(config)
+if err != nil {
+    log.Fatal(err)
+}
+
+// 或者方式 B：使用外部 scheduler（推荐，便于统一管理）
+schedulerConfig := scheduler.DefaultSchedulerConfig()
+s := scheduler.NewScheduler(schedulerConfig)
+if err := s.Start(); err != nil {
+    log.Fatal(err)
+}
+defer s.Stop()
+
+worker, err := client.Executor.NewWorkerWithScheduler(s, config, false)
+if err != nil {
+    log.Fatal(err)
+}
+
+// 3. 注册方法处理器
+// 邮件通知处理器
+err = worker.Register("SendEmailNotification", func(ctx context.Context, job *sdk.AcquiredJob) (interface{}, error) {
+    // 解析参数
+    var args struct {
+        UserID int    `json:"user_id"`
+        Email  string `json:"email"`
+        Title  string `json:"title"`
+        Body   string `json:"body"`
+    }
+    if err := json.Unmarshal([]byte(job.ArgsJSON), &args); err != nil {
+        return nil, err
+    }
+    
+    // 执行业务逻辑
+    log.Printf("发送邮件: user_id=%d, email=%s, title=%s", args.UserID, args.Email, args.Title)
+    // ... 实际发送邮件 ...
+    
+    // 返回结果（会自动序列化为 JSON）
+    return map[string]interface{}{
+        "sent_at": time.Now().Unix(),
+        "status":  "success",
+    }, nil
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+// 支付处理器（带重试延迟）
+err = worker.Register("ProcessPayment", func(ctx context.Context, job *sdk.AcquiredJob) (interface{}, error) {
+    var args struct {
+        OrderID string  `json:"order_id"`
+        Amount  float64 `json:"amount"`
+    }
+    if err := json.Unmarshal([]byte(job.ArgsJSON), &args); err != nil {
+        return nil, err
+    }
+    
+    // 执行支付
+    log.Printf("处理支付: order_id=%s, amount=%.2f", args.OrderID, args.Amount)
+    
+    // 如果支付失败，可以指定重试延迟
+    if args.Amount <= 0 {
+        return nil, &sdk.JobFailedError{
+            Message:    "invalid amount",
+            RetryAfter: 60, // 60 秒后重试
+        }
+    }
+    
+    // ... 实际支付逻辑 ...
+    
+    return map[string]interface{}{"order_id": args.OrderID}, nil
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+// 4. 启动 Worker
+if err := worker.Start(); err != nil {
+    log.Fatal(err)
+}
+defer worker.Stop()
+
+// Worker 会自动：
+// - 每秒拉取一次任务（每个注册的方法一个独立的定时任务）
+// - 执行处理器函数
+// - 长任务自动续租（默认每 LeaseDuration/3 续租一次）
+// - 自动 Ack 成功/失败
+// - 捕获 panic 并 Ack 失败
+
+log.Println("Worker 已启动，按 Ctrl+C 退出")
+select {} // 保持运行
+```
+
+#### Worker 高级配置
+
+```go
+config := &sdk.WorkerConfig{
+    TargetService:   "my-service",
+    ConsumerID:      "worker-1",           // 消费者 ID
+    LeaseDuration:   30,                    // 租约时长（秒）
+    EnableAutoRenew: true,                  // 启用自动续租
+    RenewInterval:   10 * time.Second,      // 续租间隔（默认 LeaseDuration/3）
+    ExtendDuration:  30,                    // 续租延长时长（秒，默认使用 LeaseDuration）
+    TaskTimeout:     25 * time.Second,      // 任务超时时间（应小于 LeaseDuration）
+    PollInterval:    1 * time.Second,       // 轮询间隔
+    
+    // 结果序列化失败回调
+    OnResultSerializeError: func(job *sdk.AcquiredJob, result interface{}, err error) {
+        log.Printf("结果序列化失败: job_id=%d, error=%v", job.JobID, err)
+        // 默认行为：仍然上报成功（避免任务重复执行）
+    },
+    
+    // 续租失败回调
+    OnRenewLeaseError: func(job *sdk.AcquiredJob, err error) {
+        log.Printf("续租失败: job_id=%d, error=%v", job.JobID, err)
+    },
+}
+```
+
+#### Worker 特性
+
+- **开箱即用**：注册方法后自动拉取、执行、Ack，无需手写循环
+- **自动续租**：长任务执行期间自动续租，避免租约过期
+- **故障容错**：
+  - 自动捕获 panic 并 Ack 失败
+  - Ack 使用独立短超时 context，避免被任务 context 取消
+  - 续租失败不会导致 panic，会继续尝试 Ack
+- **灵活重试**：通过 `JobFailedError{RetryAfter}` 控制重试延迟
+- **结果序列化**：handler 返回结果自动序列化为 JSON
+- **并发控制**：通过 scheduler 的 `MaxWorkers` 控制并发数
+- **优雅退出**：`Stop()` 会等待所有正在执行的任务完成
+
 ## API 文档
 
 ### Client
@@ -136,6 +382,7 @@ type Client struct {
     Auth      *AuthClient      // 鉴权客户端
     Registry  *RegistryClient  // 注册中心客户端
     Discovery *DiscoveryClient // 服务发现客户端
+    Executor  *ExecutorClient  // 任务执行器客户端
 }
 
 func New(config Config) (*Client, error)
@@ -203,6 +450,80 @@ type RegistrationHandle struct { ... }
 
 // 停止心跳并注销实例
 func (h *RegistrationHandle) Stop() error
+```
+
+### ExecutorClient
+
+任务执行器客户端。
+
+```go
+type ExecutorClient struct { ... }
+
+// 提交任务（req.DedupKey 为必填项，空值会在客户端直接返回 InvalidArgument 错误）
+func (c *ExecutorClient) SubmitJob(ctx context.Context, req *SubmitJobRequest) (int64, error)
+
+// 提交任务（自动序列化参数，dedupKey 为必填参数）
+func (c *ExecutorClient) SubmitJobWithArgs(ctx context.Context, targetService, method, dedupKey string, args interface{}, opts ...SubmitJobOption) (int64, error)
+
+// 领取任务（Worker 侧，低级 API）
+func (c *ExecutorClient) AcquireJob(ctx context.Context, req *AcquireJobRequest) (*AcquiredJob, error)
+
+// 续租（长任务周期性调用，低级 API）
+func (c *ExecutorClient) RenewLease(ctx context.Context, jobID int64, attemptNo int32, consumerID string, extendDuration int32) (int64, error)
+
+// 确认任务执行结果（低级 API）
+func (c *ExecutorClient) AckJob(ctx context.Context, req *AckJobRequest) error
+
+// 创建开箱即用的 Worker（内部自建 scheduler）
+func (c *ExecutorClient) NewWorker(config *WorkerConfig) (*ExecutorWorker, error)
+
+// 创建开箱即用的 Worker（使用外部 scheduler）
+func (c *ExecutorClient) NewWorkerWithScheduler(s *scheduler.Scheduler, config *WorkerConfig, ownScheduler bool) (*ExecutorWorker, error)
+```
+
+### ExecutorWorker
+
+开箱即用的任务消费者（基于 `pkg/scheduler`）。
+
+```go
+type ExecutorWorker struct { ... }
+
+// 注册方法处理器
+func (w *ExecutorWorker) Register(method string, handler JobHandler) error
+
+// 注销方法处理器
+func (w *ExecutorWorker) Unregister(method string) error
+
+// 启动 Worker
+func (w *ExecutorWorker) Start() error
+
+// 停止 Worker
+func (w *ExecutorWorker) Stop() error
+
+// 检查 Worker 是否正在运行
+func (w *ExecutorWorker) IsRunning() bool
+
+// 获取 Scheduler（用于观测）
+func (w *ExecutorWorker) GetScheduler() *scheduler.Scheduler
+```
+
+#### JobHandler
+
+任务处理函数类型。
+
+```go
+type JobHandler func(ctx context.Context, job *AcquiredJob) (result interface{}, err error)
+```
+
+#### JobFailedError
+
+任务失败错误（带重试延迟）。
+
+```go
+type JobFailedError struct {
+    Message    string // 错误信息
+    RetryAfter int32  // 重试延迟（秒），0 表示使用默认退避策略
+}
 ```
 
 ## 配置

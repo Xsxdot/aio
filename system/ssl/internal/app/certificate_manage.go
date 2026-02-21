@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"time"
+
 	"github.com/xsxdot/aio/base"
 	"github.com/xsxdot/aio/pkg/core/mvc"
 	"github.com/xsxdot/aio/system/ssl/internal/model"
@@ -106,23 +108,29 @@ func (a *App) IssueCertificate(ctx context.Context, req *IssueCertificateRequest
 
 	// 7. 触发自动部署（根据证书域名自动匹配部署目标）
 	if req.AutoDeploy {
-		go func() {
-			deployCtx := context.Background()
+		certID := certificate.ID
+		domain := certificate.Domain
+		_, err := base.Executor.Submit(ctx, fmt.Sprintf("自动部署证书[%s]", certificate.Name), 10*time.Minute, func(execCtx context.Context) error {
 			// 按证书域名自动匹配部署目标
-			targetIDs, err := a.DeployTargetSvc.MatchTargetsByCertificateDomain(deployCtx, certificate.Domain)
+			targetIDs, err := a.DeployTargetSvc.MatchTargetsByCertificateDomain(execCtx, domain)
 			if err != nil {
-				a.log.WithErr(err).WithField("certificate_id", certificate.ID).Error("匹配部署目标失败")
-				return
+				a.log.WithErr(err).WithField("certificate_id", certID).Error("匹配部署目标失败")
+				return err
 			}
 
 			if len(targetIDs) > 0 {
-				if err := a.DeployCertificateToTargets(deployCtx, uint(certificate.ID), targetIDs, "auto_issue"); err != nil {
-					a.log.WithErr(err).WithField("certificate_id", certificate.ID).Error("自动部署证书失败")
+				if err := a.DeployCertificateToTargets(execCtx, uint(certID), targetIDs, "auto_issue"); err != nil {
+					a.log.WithErr(err).WithField("certificate_id", certID).Error("自动部署证书失败")
+					return err
 				}
 			} else {
-				a.log.WithField("certificate_id", certificate.ID).Info("未找到匹配的部署目标，跳过自动部署")
+				a.log.WithField("certificate_id", certID).Info("未找到匹配的部署目标，跳过自动部署")
 			}
-		}()
+			return nil
+		})
+		if err != nil {
+			a.log.WithErr(err).WithField("certificate_id", certificate.ID).Warn("提交自动部署任务失败")
+		}
 	}
 
 	return certificate, nil
@@ -193,23 +201,29 @@ func (a *App) RenewCertificate(ctx context.Context, certificateID uint) error {
 
 	// 8. 触发自动部署（按证书域名匹配部署目标）
 	if cert.AutoDeploy == 1 {
-		go func() {
-			deployCtx := context.Background()
+		certName := cert.Name
+		domain := cert.Domain
+		_, err := base.Executor.Submit(ctx, fmt.Sprintf("自动部署续期证书[%s]", certName), 10*time.Minute, func(execCtx context.Context) error {
 			// 按证书域名匹配部署目标
-			targetIDs, err := a.DeployTargetSvc.MatchTargetsByCertificateDomain(deployCtx, cert.Domain)
+			targetIDs, err := a.DeployTargetSvc.MatchTargetsByCertificateDomain(execCtx, domain)
 			if err != nil {
 				a.log.WithErr(err).WithField("certificate_id", certificateID).Error("匹配部署目标失败")
-				return
+				return err
 			}
 
 			if len(targetIDs) > 0 {
-				if err := a.DeployCertificateToTargets(deployCtx, uint(certificateID), targetIDs, "auto_renew"); err != nil {
+				if err := a.DeployCertificateToTargets(execCtx, uint(certificateID), targetIDs, "auto_renew"); err != nil {
 					a.log.WithErr(err).WithField("certificate_id", certificateID).Error("自动部署证书失败")
+					return err
 				}
 			} else {
 				a.log.WithField("certificate_id", certificateID).Info("未找到匹配的部署目标，跳过自动部署")
 			}
-		}()
+			return nil
+		})
+		if err != nil {
+			a.log.WithErr(err).WithField("certificate_id", certificateID).Warn("提交自动部署任务失败")
+		}
 	}
 
 	return nil

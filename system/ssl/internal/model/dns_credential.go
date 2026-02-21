@@ -8,7 +8,7 @@ import (
 type DnsCredential struct {
 	common.Model
 	Name        string        `gorm:"size:100;not null" json:"name" comment:"凭证名称"`
-	Provider    DnsProvider   `gorm:"size:50;not null;index" json:"provider" comment:"DNS 服务商类型(alidns/tencentcloud/dnspod)"`
+	Provider    DnsProvider   `gorm:"size:50;not null;index" json:"provider" comment:"DNS 服务商类型(alidns/tencentcloud/dnspod/godaddy)"`
 	AccessKey   string        `gorm:"type:text;not null" json:"access_key" comment:"访问密钥 AK（加密存储）"`
 	SecretKey   string        `gorm:"type:text;not null" json:"secret_key" comment:"访问密钥 SK（加密存储）"`
 	ExtraConfig *common.JSON  `gorm:"type:json" json:"extra_config,omitempty" comment:"额外配置（JSON，如 region、endpoint 等）"`

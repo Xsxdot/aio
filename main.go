@@ -12,7 +12,9 @@ import (
 	"github.com/xsxdot/aio/base"
 	"github.com/xsxdot/aio/pkg/core/security"
 	"github.com/xsxdot/aio/pkg/core/start"
+	"github.com/xsxdot/aio/pkg/core/system"
 	"github.com/xsxdot/aio/pkg/db"
+	"github.com/xsxdot/aio/pkg/executor"
 	"github.com/xsxdot/aio/pkg/grpc"
 	"github.com/xsxdot/aio/pkg/oss"
 	"github.com/xsxdot/aio/pkg/scheduler"
@@ -52,11 +54,34 @@ func main() {
 
 	base.RDB = configures.EnableRedis()
 	base.Cache = configures.EnableCache(base.RDB)
-	base.Scheduler = scheduler.NewScheduler(scheduler.DefaultSchedulerConfig())
+	base.Scheduler = scheduler.NewSchedulerWithRedis(scheduler.DefaultSchedulerConfig(), base.RDB)
 	err = base.Scheduler.Start()
 	if err != nil {
 		configures.Logger.Panic(fmt.Sprintf("启动调度器失败: %v", err))
 	}
+
+	// 初始化并启动后台任务执行器
+	base.Executor = executor.NewExecutor(executor.DefaultConfig())
+	err = base.Executor.Start()
+	if err != nil {
+		configures.Logger.Panic(fmt.Sprintf("启动任务执行器失败: %v", err))
+	}
+
+	// 注册优雅关闭回调
+	system.RegisterClose(func() {
+		base.Logger.Info("正在关闭 Scheduler...")
+		if err := base.Scheduler.Stop(); err != nil {
+			base.Logger.WithErr(err).Error("关闭 Scheduler 失败")
+		}
+		base.Logger.Info("正在关闭 Executor...")
+		if err := base.Executor.Stop(); err != nil {
+			base.Logger.WithErr(err).Error("关闭 Executor 失败")
+		}
+		if base.GRPCServer != nil {
+			base.Logger.Info("正在关闭 gRPC Server...")
+			base.GRPCServer.Stop()
+		}
+	})
 
 	if env == "dev" {
 		// 开发环境下添加数据库保活任务，防止代理超时导致连接断开
@@ -106,7 +131,7 @@ func main() {
 	// 注册 SSL 证书自动续期任务（每天凌晨 2:30 执行）
 	sslRenewTask, err := scheduler.NewCronTask(
 		"SSL证书自动续期",
-		"0 30 2 * * *", // 每天凌晨 2:30
+		"30 2 * * *", // 每天凌晨 2:30
 		scheduler.TaskExecuteModeDistributed,
 		10*time.Minute, // 超时时间 10 分钟
 		func(ctx context.Context) error {
@@ -126,6 +151,32 @@ func main() {
 		configures.Logger.Panic(fmt.Sprintf("添加 SSL 证书自动续期任务失败: %v", err))
 	}
 	base.Logger.Info("已注册 SSL 证书自动续期任务，每天凌晨 2:30 执行")
+
+	// 注册任务执行器清理任务（可选，每天凌晨 3:00 执行）
+	// 清理：7天前的已成功任务、30天前的已取消任务、90天前的死信任务
+	executorCleanupTask, err := scheduler.NewCronTask(
+		"任务执行器清理",
+		"0 3 * * *", // 每天凌晨 3:00
+		scheduler.TaskExecuteModeDistributed,
+		30*time.Minute, // 超时时间 30 分钟
+		func(ctx context.Context) error {
+			base.Logger.Info("开始执行任务执行器清理任务")
+			_, err := appRoot.ExecutorModule.Client.CleanupOldJobs(ctx, 7, 30, 90)
+			if err != nil {
+				base.Logger.WithErr(err).Error("任务执行器清理任务执行失败")
+				return err
+			}
+			base.Logger.Info("任务执行器清理任务执行完成")
+			return nil
+		},
+	)
+	if err != nil {
+		configures.Logger.Panic(fmt.Sprintf("创建任务执行器清理任务失败: %v", err))
+	}
+	if err := base.Scheduler.AddTask(executorCleanupTask); err != nil {
+		configures.Logger.Panic(fmt.Sprintf("添加任务执行器清理任务失败: %v", err))
+	}
+	base.Logger.Info("已注册任务执行器清理任务，每天凌晨 3:00 执行")
 
 	// 创建 Fiber 应用
 	fiberApp := app.GetApp()
@@ -195,6 +246,11 @@ func main() {
 		// 注册短网址组件的 gRPC 服务
 		if err := grpcServer.RegisterService(appRoot.ShortURLModule.GRPCService); err != nil {
 			configures.Logger.Panic(fmt.Sprintf("注册短网址服务失败: %v", err))
+		}
+
+		// 注册任务执行器组件的 gRPC 服务
+		if err := grpcServer.RegisterService(appRoot.ExecutorModule.GRPCService); err != nil {
+			configures.Logger.Panic(fmt.Sprintf("注册任务执行器服务失败: %v", err))
 		}
 
 		// 启动 gRPC 服务器

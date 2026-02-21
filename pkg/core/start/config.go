@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
 	"github.com/xsxdot/aio/pkg/core/config"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/security"
@@ -47,24 +48,16 @@ type Configures struct {
 	UserAuth  *security.UserAuth
 }
 
+// NewConfigures 从文件加载配置并创建 Configures 实例（兼容旧 API）
+// 内部使用 LoadConfig[Config] + NewConfiguresFromConfig 实现
 func NewConfigures(file []byte, env string) *Configures {
-	var cfg Config
-	err := yaml.Unmarshal(file, &cfg)
-	if err != nil {
-		panic(fmt.Sprintf("读取文件信息失败，因为%v", err))
-	}
+	cfg := MustLoadConfig[Config](file, env)
+	return NewConfiguresFromConfig(*cfg)
+}
 
-	// 如果配置来源为 config-center，从配置中心拉取配置
-	if cfg.ConfigSource == "config-center" {
-		cfg, err = loadConfigFromCenter(cfg, env)
-		if err != nil {
-			panic(fmt.Sprintf("从配置中心加载配置失败，因为%v", err))
-		}
-	}
-
-	cfg.Env = env
-	cfg.Host, _ = getLocalIP()
-
+// NewConfiguresFromConfig 从已加载的 Config 创建 Configures 实例
+// 推荐其他项目使用此方法，配合泛型 LoadConfig[T] 加载自定义配置
+func NewConfiguresFromConfig(cfg Config) *Configures {
 	c := &Configures{
 		Config: cfg,
 		Logger: logger.InitLogger("debug"),
@@ -272,8 +265,20 @@ func loadAndComposeConfigsByPrefix(ctx context.Context, client *sdk.Client, pref
 		return "", fmt.Errorf("no configs found with prefix: %s", prefix)
 	}
 
-	// 组装大 JSON
-	bigConfig := make(map[string]interface{})
+	return composeConfigsByPrefix(configs, prefix, env)
+}
+
+// configEntry 配置条目（用于排序）
+type configEntry struct {
+	section string
+	obj     map[string]interface{}
+	depth   int
+}
+
+// composeConfigsByPrefix 将配置 map 组装成嵌套 JSON（纯函数，便于测试）
+func composeConfigsByPrefix(configs map[string]string, prefix, env string) (string, error) {
+	// 收集所有条目，并按路径深度排序（父节点先写，子节点后写可覆盖冲突字段）
+	entries := make([]configEntry, 0, len(configs))
 	prefixDot := prefix + "."
 
 	for fullKey, jsonStr := range configs {
@@ -292,14 +297,25 @@ func loadAndComposeConfigsByPrefix(ctx context.Context, client *sdk.Client, pref
 			return "", fmt.Errorf("failed to parse config %s: %w", fullKey, err)
 		}
 
+		depth := strings.Count(section, ".") + 1
+		entries = append(entries, configEntry{section: section, obj: obj, depth: depth})
+	}
+
+	// 按深度排序（父先写），同深度按 section 字典序
+	sortEntriesByDepth(entries)
+
+	// 组装大 JSON
+	bigConfig := make(map[string]interface{})
+
+	for _, e := range entries {
 		// 特殊处理：{prefix}.app 的内容 merge 到根
-		if section == "app" {
-			for k, v := range obj {
+		if e.section == "app" {
+			for k, v := range e.obj {
 				bigConfig[k] = v
 			}
 		} else {
-			// 其他 section 作为嵌套字段
-			bigConfig[section] = obj
+			// 按 `.` 分段，写入嵌套路径
+			setNestedValue(bigConfig, strings.Split(e.section, "."), e.obj)
 		}
 	}
 
@@ -310,6 +326,70 @@ func loadAndComposeConfigsByPrefix(ctx context.Context, client *sdk.Client, pref
 	}
 
 	return string(result), nil
+}
+
+// sortEntriesByDepth 按深度（父节点优先）和 section 字典序排序
+func sortEntriesByDepth(entries []configEntry) {
+	// 简单冒泡排序（配置项不多时性能足够）
+	for i := 0; i < len(entries); i++ {
+		for j := i + 1; j < len(entries); j++ {
+			if entries[i].depth > entries[j].depth ||
+				(entries[i].depth == entries[j].depth && entries[i].section > entries[j].section) {
+				entries[i], entries[j] = entries[j], entries[i]
+			}
+		}
+	}
+}
+
+// setNestedValue 将 value 写入嵌套路径 path，支持递归合并 map
+func setNestedValue(root map[string]interface{}, path []string, value map[string]interface{}) {
+	if len(path) == 0 {
+		return
+	}
+
+	// 遍历到倒数第二层
+	current := root
+	for i := 0; i < len(path)-1; i++ {
+		key := path[i]
+		if _, exists := current[key]; !exists {
+			current[key] = make(map[string]interface{})
+		}
+		// 如果中间节点不是 map，跳过（不覆盖）
+		if nextMap, ok := current[key].(map[string]interface{}); ok {
+			current = nextMap
+		} else {
+			return
+		}
+	}
+
+	// 最后一层：合并或覆盖
+	lastKey := path[len(path)-1]
+	if existing, exists := current[lastKey]; exists {
+		if existingMap, ok := existing.(map[string]interface{}); ok {
+			// 双方都是 map，递归合并
+			mergeMaps(existingMap, value)
+			return
+		}
+	}
+	// 否则直接覆盖
+	current[lastKey] = value
+}
+
+// mergeMaps 将 src 的键值递归合并到 dst 中（子节点优先，冲突时覆盖）
+func mergeMaps(dst, src map[string]interface{}) {
+	for k, v := range src {
+		if dstVal, exists := dst[k]; exists {
+			// 如果双方都是 map，递归合并
+			if dstMap, dstOk := dstVal.(map[string]interface{}); dstOk {
+				if srcMap, srcOk := v.(map[string]interface{}); srcOk {
+					mergeMaps(dstMap, srcMap)
+					continue
+				}
+			}
+		}
+		// 否则覆盖
+		dst[k] = v
+	}
 }
 
 func (c *Configures) EnableSDKAndRegisterSelf() (*sdk.Client, *sdk.RegistrationHandle) {

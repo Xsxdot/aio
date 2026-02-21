@@ -3,10 +3,13 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/bsm/redislock"
+	"github.com/redis/go-redis/v9"
+	"github.com/sirupsen/logrus"
 )
 
 // Scheduler 分布式任务调度器
@@ -20,7 +23,6 @@ type Scheduler struct {
 
 	// 运行时状态
 	isRunning atomic.Bool
-	isLeader  atomic.Bool
 	ctx       context.Context
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
@@ -40,6 +42,10 @@ type Scheduler struct {
 
 	// 统计信息
 	stats *SchedulerStats
+
+	// Redis 分布式锁（可选）
+	rdb    *redis.Client
+	locker *redislock.Client
 }
 
 // SchedulerStats 调度器统计信息
@@ -74,13 +80,28 @@ func DefaultSchedulerConfig() *SchedulerConfig {
 	}
 }
 
-// NewScheduler 创建新的调度器
+// NewScheduler 创建新的调度器（不支持分布式任务）
 func NewScheduler(config *SchedulerConfig) *Scheduler {
+	return newSchedulerInternal(config, nil)
+}
+
+// NewSchedulerWithRedis 创建支持分布式任务的调度器
+func NewSchedulerWithRedis(config *SchedulerConfig, rdb *redis.Client) *Scheduler {
+	return newSchedulerInternal(config, rdb)
+}
+
+// newSchedulerInternal 内部构造函数
+func newSchedulerInternal(config *SchedulerConfig, rdb *redis.Client) *Scheduler {
 	if config == nil {
 		config = DefaultSchedulerConfig()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+
+	var locker *redislock.Client
+	if rdb != nil {
+		locker = redislock.New(rdb)
+	}
 
 	s := &Scheduler{
 		nodeID:          config.NodeID,
@@ -94,14 +115,9 @@ func NewScheduler(config *SchedulerConfig) *Scheduler {
 		workerSemaphore: make(chan struct{}, config.MaxWorkers),
 		logger:          logrus.New(),
 		stats:           &SchedulerStats{},
+		rdb:             rdb,
+		locker:          locker,
 	}
-
-	// 创建分布式锁
-	//lockOpts := &lock.LockOptions{
-	//	RetryInterval: 1 * time.Second,
-	//	MaxRetries:    0,
-	//}
-	//s.distributedLock = lockManager.NewLock(config.LockKey, lockOpts)
 
 	return s
 }
@@ -113,11 +129,12 @@ func (s *Scheduler) Start() error {
 	}
 
 	s.logger.Infof("启动调度器，节点ID: %s", s.nodeID)
+	if s.locker != nil {
+		s.logger.Info("Redis 分布式锁已启用")
+	} else {
+		s.logger.Warn("Redis 分布式锁未启用，分布式任务将不会执行")
+	}
 	s.isRunning.Store(true)
-
-	// 启动主循环
-	s.wg.Add(1)
-	go s.mainLoop()
 
 	// 如果有任务需要执行，立即设置定时器
 	s.resetTimer()
@@ -134,13 +151,6 @@ func (s *Scheduler) Stop() error {
 	s.logger.Info("停止调度器")
 	s.isRunning.Store(false)
 	s.cancel()
-
-	// 释放分布式锁
-	//if s.distributedLock != nil && s.distributedLock.IsLocked() {
-	//	if err := s.distributedLock.Unlock(context.Background()); err != nil {
-	//		s.logger.Errorf("释放分布式锁失败: %v", err)
-	//	}
-	//}
 
 	// 停止定时器
 	s.stopTimer()
@@ -217,95 +227,10 @@ func (s *Scheduler) GetStats() *SchedulerStats {
 	}
 }
 
-// IsLeader 检查是否为领导者
+// IsLeader 检查是否为领导者（已废弃，按任务粒度加锁）
+// Deprecated: 不再使用 leader 选举模式，改为按任务粒度加锁
 func (s *Scheduler) IsLeader() bool {
-	return s.isLeader.Load()
-}
-
-// hasLocalTasks 检查是否有本地任务
-func (s *Scheduler) hasLocalTasks() bool {
-	tasks := s.taskHeap.SafeList()
-	for _, task := range tasks {
-		if task.GetExecuteMode() == TaskExecuteModeLocal && !task.IsCompleted() {
-			return true
-		}
-	}
 	return false
-}
-
-// mainLoop 主循环，负责领导者选举和任期管理
-func (s *Scheduler) mainLoop() {
-	defer s.wg.Done()
-
-	// 初始时随机延迟，避免所有节点同时竞争
-	time.Sleep(time.Duration(time.Now().UnixNano()%1000) * time.Millisecond)
-
-	for {
-		// 检查调度器是否已停止
-		select {
-		case <-s.ctx.Done():
-			return
-		default:
-		}
-
-		//s.logger.Info("尝试成为领导者...")
-
-		// 阻塞式获取锁，直到成功或上下文取消
-		//err := s.distributedLock.Lock(s.ctx)
-		//if err != nil {
-		//	if s.ctx.Err() != nil {
-		//		s.logger.Info("调度器已停止，退出领导者选举循环")
-		//		return
-		//	}
-		//	s.logger.Errorf("获取领导者锁失败，将在 %v 后重试: %v", s.checkInterval, err)
-		//	time.Sleep(s.checkInterval) // 等待后重试
-		//	continue
-		//}
-
-		// 成功获取锁，开始领导者任期
-		s.runLeaderTerm()
-	}
-}
-
-// runLeaderTerm 执行一个完整的领导者任期
-func (s *Scheduler) runLeaderTerm() {
-	// 确保在任期结束时，状态变回 Follower 并释放锁
-	defer func() {
-		s.becomeFollower()
-		// 使用后台上下文确保即使父上下文取消，也能尝试释放锁
-		//if err := s.distributedLock.Unlock(context.Background()); err != nil {
-		//	// 如果锁因会话丢失而已被释放，这里会报错，是正常现象
-		//	s.logger.Warnf("卸任时释放领导者锁可能失败（通常是正常的）: %v", err)
-		//}
-	}()
-
-	// 更新状态为领导者
-	s.logger.Info("成功成为领导者，开始任期")
-	s.isLeader.Store(true)
-	s.stats.IncrementLeaderElections()
-
-	// 作为领导者，立即重置定时器以调度任务
-	s.resetTimer()
-
-	// 等待任期结束：要么是调度器关闭，要么是锁丢失
-	select {
-	case <-s.ctx.Done():
-		s.logger.Info("调度器停止，正常卸任领导者")
-		//case <-s.distributedLock.Done():
-		//	s.logger.Warn("检测到领导者锁已丢失，任期结束，将重新进入选举")
-	}
-}
-
-// becomeFollower 成为跟随者
-func (s *Scheduler) becomeFollower() {
-	if s.isLeader.Load() {
-		s.logger.Info("失去领导者身份")
-		s.isLeader.Store(false)
-		// 检查是否还有本地任务需要执行，如果有则不停止定时器
-		if !s.hasLocalTasks() {
-			s.stopTimer()
-		}
-	}
 }
 
 // resetTimer 重置定时器
@@ -365,36 +290,32 @@ func (s *Scheduler) onTimerFired() {
 		s.executeTask(task)
 	}
 
-	// 注意：不在此处立即重置定时器，而是在任务执行完成后由 runTask 触发重置
+	// 立即重置定时器，指向堆里下一个到期任务
+	// 这样可以避免长耗时任务导致后续任务延迟触发
+	s.resetTimer()
 }
 
 // executeTask 执行任务
 func (s *Scheduler) executeTask(task Task) {
 	// 检查任务执行模式
-	shouldExecute := false
 	if task.GetExecuteMode() == TaskExecuteModeDistributed {
-		// 分布式任务需要领导者身份
-		if s.isLeader.Load() {
-			shouldExecute = true
-			s.stats.IncrementDistributedTasks()
+		// 分布式任务需要 Redis 锁
+		if s.locker == nil {
+			// 稳定性优先：没有 locker 则不执行分布式任务
+			s.logger.Warnf("分布式任务 %s [%s] 无法执行：Redis locker 未配置", task.GetName(), task.GetID())
+			// 重新加入堆等待下次调度
+			nextTime := task.UpdateNextTime(time.Now())
+			if !task.IsCompleted() && !nextTime.IsZero() {
+				task.SetStatus(TaskStatusWaiting)
+				s.taskHeap.SafePush(task)
+				s.resetTimer()
+			}
+			return
 		}
+		s.stats.IncrementDistributedTasks()
 	} else {
 		// 本地任务总是执行
-		shouldExecute = true
 		s.stats.IncrementLocalTasks()
-	}
-
-	if !shouldExecute {
-		// 如果不应该执行，重新加入堆（等待下次调度）
-		nextTime := task.UpdateNextTime(time.Now())
-		if !task.IsCompleted() && !nextTime.IsZero() {
-			// 重置任务状态为等待，以便下次执行
-			task.SetStatus(TaskStatusWaiting)
-			s.taskHeap.SafePush(task)
-			// 任务重新加入堆后，重置定时器
-			s.resetTimer()
-		}
-		return
 	}
 
 	// 获取工作者资源
@@ -443,6 +364,52 @@ func (s *Scheduler) runTask(task Task) {
 
 	// 根据任务类型选择合适的日志级别
 	isIntervalTask := task.GetType() == TaskTypeInterval
+
+	// 如果是分布式任务，尝试获取锁
+	var lock *redislock.Lock
+	if task.GetExecuteMode() == TaskExecuteModeDistributed {
+		var err error
+		lock, err = s.obtainTaskLock(task)
+		if err != nil {
+			if err == redislock.ErrNotObtained {
+				// 其他节点正在执行，本节点跳过
+				if !isIntervalTask {
+					s.logger.Infof("任务 %s [%s] 已被其他节点执行，跳过", task.GetName(), task.GetID())
+				}
+				// 对于一次性任务，标记为完成；对于周期任务，等待下次调度
+				if task.GetType() == TaskTypeOnce {
+					task.SetStatus(TaskStatusCompleted)
+				} else {
+					// 重新加入堆等待下次调度
+					nextTime := task.UpdateNextTime(time.Now())
+					if !task.IsCompleted() && !nextTime.IsZero() {
+						task.SetStatus(TaskStatusWaiting)
+						s.taskHeap.SafePush(task)
+					}
+				}
+				s.resetTimer()
+				return
+			}
+			// 其他错误（Redis 连接失败等）
+			s.logger.Errorf("获取任务锁失败: %s [%s], 错误: %v", task.GetName(), task.GetID(), err)
+			s.stats.IncrementFailedTasks()
+			// 重新加入堆等待下次调度
+			nextTime := task.UpdateNextTime(time.Now())
+			if !task.IsCompleted() && !nextTime.IsZero() {
+				task.SetStatus(TaskStatusWaiting)
+				s.taskHeap.SafePush(task)
+			}
+			s.resetTimer()
+			return
+		}
+		// 成功获取锁，确保执行完释放
+		defer func() {
+			if err := lock.Release(context.Background()); err != nil {
+				s.logger.Warnf("释放任务锁失败: %s [%s], 错误: %v", task.GetName(), task.GetID(), err)
+			}
+		}()
+	}
+
 	if isIntervalTask {
 		s.logger.Debugf("开始执行固定间隔任务: %s [%s]", task.GetName(), task.GetID())
 	} else {
@@ -452,6 +419,13 @@ func (s *Scheduler) runTask(task Task) {
 	// 创建带超时的上下文
 	ctx, cancel := context.WithTimeout(s.ctx, task.GetTimeout())
 	defer cancel()
+
+	// 如果是分布式任务且获得了锁，启动续租
+	if lock != nil {
+		refreshCtx, refreshCancel := context.WithCancel(ctx)
+		defer refreshCancel()
+		go s.refreshLock(refreshCtx, lock, task)
+	}
 
 	// 执行任务
 	err := task.Execute(ctx)
@@ -487,6 +461,59 @@ func (s *Scheduler) runTask(task Task) {
 	} else {
 		// 任务已完成，重置定时器以便调度其他任务
 		s.resetTimer()
+	}
+}
+
+// obtainTaskLock 获取任务的分布式锁
+func (s *Scheduler) obtainTaskLock(task Task) (*redislock.Lock, error) {
+	lockKey := fmt.Sprintf("%s/%s", s.lockKey, task.GetKey())
+
+	// 计算锁的 TTL：任务超时 + 10s grace period
+	lockTTL := task.GetTimeout() + 10*time.Second
+	if lockTTL < s.lockTTL {
+		lockTTL = s.lockTTL
+	}
+
+	// 使用短超时上下文尝试获取锁（500ms，最多重试 3 次）
+	obtainCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	opts := &redislock.Options{
+		RetryStrategy: redislock.LimitRetry(redislock.LinearBackoff(100*time.Millisecond), 3),
+	}
+
+	lock, err := s.locker.Obtain(obtainCtx, lockKey, lockTTL, opts)
+	return lock, err
+}
+
+// refreshLock 持续续租锁，直到任务完成或上下文取消
+func (s *Scheduler) refreshLock(ctx context.Context, lock *redislock.Lock, task Task) {
+	lockTTL := task.GetTimeout() + 10*time.Second
+	if lockTTL < s.lockTTL {
+		lockTTL = s.lockTTL
+	}
+
+	// 续租间隔为 TTL 的 1/3
+	refreshInterval := lockTTL / 3
+	ticker := time.NewTicker(refreshInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			// 任务完成或取消
+			return
+		case <-ticker.C:
+			// 续租
+			if err := lock.Refresh(ctx, lockTTL, nil); err != nil {
+				if err == redislock.ErrNotObtained {
+					s.logger.Errorf("任务锁已丢失: %s [%s]，任务可能被其他节点接管", task.GetName(), task.GetID())
+				} else {
+					s.logger.Warnf("续租任务锁失败: %s [%s], 错误: %v", task.GetName(), task.GetID(), err)
+				}
+				return
+			}
+		}
 	}
 }
 

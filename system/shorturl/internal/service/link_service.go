@@ -145,3 +145,8 @@ func (s *LinkService) RecordSuccess(ctx context.Context, linkID int64, successDa
 }
 
 
+
+
+
+
+

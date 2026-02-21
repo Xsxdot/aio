@@ -1,0 +1,186 @@
+syntax = "proto3";
+
+package xiaozhizhang.executor.v1;
+
+option go_package = "xiaozhizhang/system/executor/api/proto;proto";
+
+// ExecutorService 任务执行服务
+service ExecutorService {
+  // SubmitJob 提交任务
+  rpc SubmitJob(SubmitJobRequest) returns (SubmitJobResponse);
+  
+  // AcquireJob 领取任务（Worker 调用）
+  rpc AcquireJob(AcquireJobRequest) returns (AcquireJobResponse);
+  
+  // RenewLease 续租（长任务周期性续租）
+  rpc RenewLease(RenewLeaseRequest) returns (RenewLeaseResponse);
+  
+  // AckJob 确认任务执行结果
+  rpc AckJob(AckJobRequest) returns (AckJobResponse);
+  
+  // GetJob 获取任务详情
+  rpc GetJob(GetJobRequest) returns (JobResponse);
+  
+  // ListJobs 列出任务（管理后台）
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
+  
+  // CancelJob 取消任务（管理后台）
+  rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
+  
+  // RequeueJob 重新入队任务（管理后台）
+  rpc RequeueJob(RequeueJobRequest) returns (RequeueJobResponse);
+  
+  // UpdateJobArgs 更新任务参数（管理后台）
+  rpc UpdateJobArgs(UpdateJobArgsRequest) returns (UpdateJobArgsResponse);
+}
+
+// JobStatus 任务状态
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0;
+  JOB_STATUS_PENDING = 1;      // 待执行
+  JOB_STATUS_RUNNING = 2;      // 执行中
+  JOB_STATUS_SUCCEEDED = 3;    // 成功
+  JOB_STATUS_FAILED = 4;       // 失败（可重试）
+  JOB_STATUS_CANCELED = 5;     // 已取消
+  JOB_STATUS_DEAD = 6;         // 死信（超过最大重试次数）
+}
+
+// SubmitJobRequest 提交任务请求
+message SubmitJobRequest {
+  string target_service = 1;    // 目标服务名
+  string method = 2;            // 方法名
+  string args_json = 3;         // 参数 JSON
+  int64 run_at = 4;             // 执行时间（Unix 时间戳秒），0表示立即执行
+  int32 max_attempts = 5;       // 最大重试次数，默认3次
+  string dedup_key = 6;         // 幂等键（可选）
+  int32 priority = 7;           // 优先级，数字越大优先级越高，默认0
+}
+
+// SubmitJobResponse 提交任务响应
+message SubmitJobResponse {
+  int64 job_id = 1;             // 任务ID
+}
+
+// AcquireJobRequest 领取任务请求
+message AcquireJobRequest {
+  string target_service = 1;    // 目标服务名（只能领取指定服务的任务）
+  string consumer_id = 2;       // 消费者ID（实例唯一标识）
+  int32 lease_duration = 3;     // 租约时长（秒），默认30秒
+  string method = 4;            // 可选：方法名过滤，空表示不过滤
+}
+
+// AcquireJobResponse 领取任务响应
+message AcquireJobResponse {
+  int64 job_id = 1;             // 任务ID，0表示没有可领取的任务
+  int32 attempt_no = 2;         // 当前尝试次数
+  string target_service = 3;    // 目标服务名
+  string method = 4;            // 方法名
+  string args_json = 5;         // 参数 JSON
+  int64 lease_until = 6;        // 租约到期时间（Unix 时间戳秒）
+}
+
+// RenewLeaseRequest 续租请求
+message RenewLeaseRequest {
+  int64 job_id = 1;             // 任务ID
+  int32 attempt_no = 2;         // 尝试次数（用于校验）
+  string consumer_id = 3;       // 消费者ID
+  int32 extend_duration = 4;    // 延长时长（秒）
+}
+
+// RenewLeaseResponse 续租响应
+message RenewLeaseResponse {
+  bool success = 1;             // 是否成功
+  string message = 2;           // 消息
+  int64 lease_until = 3;        // 新的租约到期时间
+}
+
+// AckJobRequest 确认任务请求
+message AckJobRequest {
+  int64 job_id = 1;             // 任务ID
+  int32 attempt_no = 2;         // 尝试次数（用于校验）
+  string consumer_id = 3;       // 消费者ID
+  JobStatus status = 4;         // 执行结果状态（SUCCESS/FAILED）
+  string error = 5;             // 错误信息（失败时）
+  string result_json = 6;       // 结果 JSON（可选）
+  int32 retry_after = 7;        // 重试延迟（秒），仅当status=FAILED时有效，0表示使用默认退避策略
+}
+
+// AckJobResponse 确认任务响应
+message AckJobResponse {
+  bool success = 1;             // 是否成功
+  string message = 2;           // 消息
+}
+
+// GetJobRequest 获取任务请求
+message GetJobRequest {
+  int64 job_id = 1;             // 任务ID
+}
+
+// JobResponse 任务详情响应
+message JobResponse {
+  int64 id = 1;                 // 任务ID
+  string target_service = 2;    // 目标服务名
+  string method = 3;            // 方法名
+  string args_json = 4;         // 参数 JSON
+  JobStatus status = 5;         // 状态
+  int32 priority = 6;           // 优先级
+  int64 next_run_at = 7;        // 下次执行时间
+  int32 max_attempts = 8;       // 最大重试次数
+  int32 attempts = 9;           // 已尝试次数
+  string lease_owner = 10;      // 租约持有者
+  int64 lease_until = 11;       // 租约到期时间
+  string dedup_key = 12;        // 幂等键
+  string last_error = 13;       // 最后错误
+  string result_json = 14;      // 结果 JSON
+  int64 created_at = 15;        // 创建时间
+  int64 updated_at = 16;        // 更新时间
+}
+
+// ListJobsRequest 列出任务请求
+message ListJobsRequest {
+  string target_service = 1;    // 目标服务名（可选）
+  JobStatus status = 2;         // 状态过滤（可选）
+  int32 page_num = 3;           // 页码，从1开始
+  int32 page_size = 4;          // 每页数量
+}
+
+// ListJobsResponse 列出任务响应
+message ListJobsResponse {
+  repeated JobResponse jobs = 1; // 任务列表
+  int64 total = 2;              // 总数
+}
+
+// CancelJobRequest 取消任务请求
+message CancelJobRequest {
+  int64 job_id = 1;             // 任务ID
+}
+
+// CancelJobResponse 取消任务响应
+message CancelJobResponse {
+  bool success = 1;             // 是否成功
+  string message = 2;           // 消息
+}
+
+// RequeueJobRequest 重新入队请求
+message RequeueJobRequest {
+  int64 job_id = 1;             // 任务ID
+  int64 run_at = 2;             // 执行时间（Unix 时间戳秒），0表示立即执行
+}
+
+// RequeueJobResponse 重新入队响应
+message RequeueJobResponse {
+  bool success = 1;             // 是否成功
+  string message = 2;           // 消息
+}
+
+// UpdateJobArgsRequest 更新任务参数请求
+message UpdateJobArgsRequest {
+  int64 job_id = 1;             // 任务ID
+  string args_json = 2;         // 参数 JSON
+}
+
+// UpdateJobArgsResponse 更新任务参数响应
+message UpdateJobArgsResponse {
+  bool success = 1;             // 是否成功
+  string message = 2;           // 消息
+}

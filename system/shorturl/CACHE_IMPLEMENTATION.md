@@ -144,3 +144,8 @@ err := base.Cache.Once(&cache.Item{
 4. **统计缓存命中率**: 增加 Prometheus 指标监控
 
 
+
+
+
+
+

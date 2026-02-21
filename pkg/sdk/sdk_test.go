@@ -150,6 +150,7 @@ func TestClientStructure(t *testing.T) {
 	// 验证新增的客户端字段存在（编译期检查）
 	_ = client.ConfigClient
 	_ = client.ShortURL
+	_ = client.Executor
 
 	// 验证原有字段仍然存在
 	_ = client.Auth
@@ -278,6 +279,83 @@ func TestConfigClientMethods(t *testing.T) {
 				_ = ctx // 避免 unused 警告
 				// 这些只是类型检查，不会真正执行
 			}
+		}
+	})
+}
+
+// TestExecutorClientMethods 测试 ExecutorClient 方法签名（编译期保障）
+func TestExecutorClientMethods(t *testing.T) {
+	// 这个测试只是为了确保方法存在且签名正确
+	// 不会实际调用（因为没有真实的 gRPC 连接）
+	var client *ExecutorClient
+
+	// 验证方法存在（编译期检查）
+	// 如果方法不存在或签名不对，编译会失败
+	_ = client.SubmitJob
+	_ = client.SubmitJobWithArgs
+	_ = client.AcquireJob
+	_ = client.RenewLease
+	_ = client.AckJob
+
+	// 验证请求/响应结构
+	t.Run("request_response_structures", func(t *testing.T) {
+		// 验证 SubmitJobRequest 结构
+		submitReq := &SubmitJobRequest{
+			TargetService: "test-service",
+			Method:        "test-method",
+			ArgsJSON:      `{"key":"value"}`,
+			MaxAttempts:   3,
+			Priority:      5,
+			DedupKey:      "test-dedup-key",
+		}
+		if submitReq.TargetService != "test-service" {
+			t.Errorf("SubmitJobRequest.TargetService = %v, want test-service", submitReq.TargetService)
+		}
+
+		// 验证 AcquireJobRequest 结构
+		acquireReq := &AcquireJobRequest{
+			TargetService: "test-service",
+			ConsumerID:    "worker-1",
+			LeaseDuration: 30,
+		}
+		if acquireReq.ConsumerID != "worker-1" {
+			t.Errorf("AcquireJobRequest.ConsumerID = %v, want worker-1", acquireReq.ConsumerID)
+		}
+
+		// 验证 AcquiredJob 结构
+		acquiredJob := &AcquiredJob{
+			JobID:         123,
+			AttemptNo:     1,
+			TargetService: "test-service",
+			Method:        "test-method",
+			ArgsJSON:      `{"key":"value"}`,
+			LeaseUntil:    1234567890,
+		}
+		if acquiredJob.JobID != 123 {
+			t.Errorf("AcquiredJob.JobID = %v, want 123", acquiredJob.JobID)
+		}
+
+		// 验证 AckJobRequest 结构
+		ackReq := &AckJobRequest{
+			JobID:      123,
+			AttemptNo:  1,
+			ConsumerID: "worker-1",
+			Status:     AckStatusSucceeded,
+			ResultJSON: `{"result":"success"}`,
+		}
+		if ackReq.Status != AckStatusSucceeded {
+			t.Errorf("AckJobRequest.Status = %v, want SUCCEEDED", ackReq.Status)
+		}
+
+		// 验证 AckStatus 常量
+		var status AckStatus
+		status = AckStatusSucceeded
+		if status != "SUCCEEDED" {
+			t.Errorf("AckStatusSucceeded = %v, want SUCCEEDED", status)
+		}
+		status = AckStatusFailed
+		if status != "FAILED" {
+			t.Errorf("AckStatusFailed = %v, want FAILED", status)
 		}
 	})
 }
