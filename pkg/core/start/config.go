@@ -173,6 +173,7 @@ func (c *Configures) EnableSDK() *sdk.Client {
 		ClientSecret:   c.Config.Sdk.ClientSecret,
 		DefaultTimeout: c.Config.Sdk.DefaultTimeout,
 		DisableAuth:    c.Config.Sdk.DisableAuth,
+		Env:            c.Config.Env,
 	}
 
 	client, err := sdk.New(sdkConfig)
@@ -210,6 +211,7 @@ func loadConfigFromCenter(localCfg Config, env string) (Config, error) {
 		ClientSecret:   localCfg.Sdk.ClientSecret,
 		DefaultTimeout: localCfg.Sdk.DefaultTimeout,
 		DisableAuth:    localCfg.Sdk.DisableAuth,
+		Env:            env,
 	}
 	if sdkConfig.DefaultTimeout == 0 {
 		sdkConfig.DefaultTimeout = 30 * time.Second

@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	"github.com/xsxdot/aio/base"
 	errorc "github.com/xsxdot/aio/pkg/core/err"
@@ -66,6 +67,7 @@ func (ctrl *ExecutorAdminController) SubmitJob(ctx *fiber.Ctx) error {
 
 	jobID, err := ctrl.app.JobService.SubmitJob(
 		util.Context(ctx),
+		req.Env,
 		req.TargetService,
 		req.Method,
 		req.ArgsJSON,
@@ -90,6 +92,10 @@ func (ctrl *ExecutorAdminController) ListJobs(ctx *fiber.Ctx) error {
 		return ctrl.err.New("解析查询参数失败", err).WithTraceID(util.Context(ctx))
 	}
 
+	if strings.TrimSpace(req.Env) == "" {
+		return ctrl.err.New("env 不能为空", nil).WithTraceID(util.Context(ctx))
+	}
+
 	// 转换状态
 	var status model.JobStatus
 	if req.Status != "" {
@@ -98,6 +104,7 @@ func (ctrl *ExecutorAdminController) ListJobs(ctx *fiber.Ctx) error {
 
 	jobs, total, err := ctrl.app.JobService.ListJobs(
 		util.Context(ctx),
+		req.Env,
 		req.TargetService,
 		status,
 		req.PageNum,
@@ -187,7 +194,16 @@ func (ctrl *ExecutorAdminController) GetJobAttempts(ctx *fiber.Ctx) error {
 
 // GetStats 获取统计信息
 func (ctrl *ExecutorAdminController) GetStats(ctx *fiber.Ctx) error {
-	stats, err := ctrl.app.JobService.GetStats(util.Context(ctx))
+	var req dto.GetStatsRequest
+	if err := ctx.QueryParser(&req); err != nil {
+		return ctrl.err.New("解析查询参数失败", err).WithTraceID(util.Context(ctx))
+	}
+
+	if strings.TrimSpace(req.Env) == "" {
+		return ctrl.err.New("env 不能为空", nil).WithTraceID(util.Context(ctx))
+	}
+
+	stats, err := ctrl.app.JobService.GetStats(util.Context(ctx), req.Env)
 	return result.Once(ctx, stats, err)
 }
 
@@ -198,7 +214,11 @@ func (ctrl *ExecutorAdminController) CleanupJobs(ctx *fiber.Ctx) error {
 		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx))
 	}
 
-	deleted, err := ctrl.app.JobService.CleanupOldJobs(util.Context(ctx), req.SucceededDays, req.CanceledDays, req.DeadDays)
+	if errMsg, err := utils.Validate(&req); err != nil {
+		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+	}
+
+	deleted, err := ctrl.app.JobService.CleanupOldJobs(util.Context(ctx), req.Env, req.SucceededDays, req.CanceledDays, req.DeadDays)
 	if err != nil {
 		return err
 	}

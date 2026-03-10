@@ -14,12 +14,17 @@ import (
 
 // ExecutorClient 任务执行器客户端
 type ExecutorClient struct {
+	env     string
 	service executorpb.ExecutorServiceClient
 }
 
 // newExecutorClient 创建任务执行器客户端
-func newExecutorClient(conn *grpc.ClientConn) *ExecutorClient {
+func newExecutorClient(conn *grpc.ClientConn, env string) *ExecutorClient {
+	if strings.TrimSpace(env) == "" {
+		env = "dev"
+	}
 	return &ExecutorClient{
+		env:     env,
 		service: executorpb.NewExecutorServiceClient(conn),
 	}
 }
@@ -46,7 +51,7 @@ type SubmitJobRequest struct {
 }
 
 // SubmitJob 提交任务
-// req.DedupKey 为必填项，若为空会在客户端直接返回错误。
+// req.Env 和 req.DedupKey 为必填项，若为空会在客户端直接返回错误。
 func (c *ExecutorClient) SubmitJob(ctx context.Context, req *SubmitJobRequest) (int64, error) {
 	if strings.TrimSpace(req.DedupKey) == "" {
 		return 0, WrapError(
@@ -56,6 +61,7 @@ func (c *ExecutorClient) SubmitJob(ctx context.Context, req *SubmitJobRequest) (
 	}
 
 	pbReq := &executorpb.SubmitJobRequest{
+		Env:           c.env,
 		TargetService: req.TargetService,
 		Method:        req.Method,
 		ArgsJson:      req.ArgsJSON,
@@ -74,7 +80,7 @@ func (c *ExecutorClient) SubmitJob(ctx context.Context, req *SubmitJobRequest) (
 }
 
 // SubmitJobWithArgs 提交任务（自动序列化参数）
-// args 会被自动序列化为 JSON；dedupKey 为必填项，不能为空。
+// env、dedupKey 为必填项，不能为空；args 会被自动序列化为 JSON。
 func (c *ExecutorClient) SubmitJobWithArgs(ctx context.Context, targetService, method, dedupKey string, args interface{}, opts ...SubmitJobOption) (int64, error) {
 	// 序列化参数
 	argsJSON := ""
@@ -138,6 +144,7 @@ type AcquireJobRequest struct {
 type AcquiredJob struct {
 	JobID         int64  // 任务ID
 	AttemptNo     int32  // 当前尝试次数
+	Env           string // 环境标识
 	TargetService string // 目标服务名
 	Method        string // 方法名
 	ArgsJSON      string // 参数 JSON
@@ -145,9 +152,10 @@ type AcquiredJob struct {
 }
 
 // AcquireJob 领取任务
-// 返回 (nil, nil) 表示没有可领取的任务
+// req.Env 为必填项；返回 (nil, nil) 表示没有可领取的任务
 func (c *ExecutorClient) AcquireJob(ctx context.Context, req *AcquireJobRequest) (*AcquiredJob, error) {
 	pbReq := &executorpb.AcquireJobRequest{
+		Env:           c.env,
 		TargetService: req.TargetService,
 		Method:        req.Method,
 		ConsumerId:    req.ConsumerID,
@@ -167,6 +175,7 @@ func (c *ExecutorClient) AcquireJob(ctx context.Context, req *AcquireJobRequest)
 	return &AcquiredJob{
 		JobID:         resp.JobId,
 		AttemptNo:     resp.AttemptNo,
+		Env:           resp.Env,
 		TargetService: resp.TargetService,
 		Method:        resp.Method,
 		ArgsJSON:      resp.ArgsJson,

@@ -250,7 +250,7 @@ func (s *AliyunService) GetUploadToken(ctx context.Context, policy *UploadPolicy
 		//SignatureV4:      signature,
 		Signature: signature,
 		Acl:       acl,
-		Host:      fmt.Sprintf("http://%s.oss-%s.aliyuncs.com", s.config.Bucket, s.config.Region), // 返回 OSS 上传地址
+		Host:      fmt.Sprintf("https://%s.oss-%s.aliyuncs.com", s.config.Bucket, s.config.Region), // 返回 OSS 上传地址
 		Key:       policy.Key,
 		Callback:  callbackBase64, // 返回上传回调参数
 		//AccessKeyID: cred.AccessKeyID,

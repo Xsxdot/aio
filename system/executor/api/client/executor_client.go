@@ -19,11 +19,11 @@ func NewExecutorClient(a *app.App) *ExecutorClient {
 	}
 }
 
-// SubmitJob 提交任务
-func (c *ExecutorClient) SubmitJob(ctx context.Context, targetService, method, argsJSON string,
+// SubmitJob 提交任务（env 必填）
+func (c *ExecutorClient) SubmitJob(ctx context.Context, env, targetService, method, argsJSON string,
 	runAt int64, maxAttempts, priority int32, dedupKey string) (uint64, error) {
-	
-	return c.app.JobService.SubmitJob(ctx, targetService, method, argsJSON, runAt, maxAttempts, priority, dedupKey)
+
+	return c.app.JobService.SubmitJob(ctx, env, targetService, method, argsJSON, runAt, maxAttempts, priority, dedupKey)
 }
 
 // GetJob 获取任务详情
@@ -41,12 +41,12 @@ func (c *ExecutorClient) RequeueJob(ctx context.Context, jobID uint64, runAt int
 	return c.app.JobService.RequeueJob(ctx, jobID, runAt)
 }
 
-// GetStats 获取统计信息
-func (c *ExecutorClient) GetStats(ctx context.Context) (map[string]interface{}, error) {
-	return c.app.JobService.GetStats(ctx)
+// GetStats 获取统计信息（env 必填）
+func (c *ExecutorClient) GetStats(ctx context.Context, env string) (map[string]interface{}, error) {
+	return c.app.JobService.GetStats(ctx, env)
 }
 
-// CleanupOldJobs 清理旧任务
-func (c *ExecutorClient) CleanupOldJobs(ctx context.Context, succeededDays, canceledDays, deadDays int) (int64, error) {
-	return c.app.JobService.CleanupOldJobs(ctx, succeededDays, canceledDays, deadDays)
+// CleanupOldJobs 清理旧任务（env 必填，仅清理该 env 的任务）
+func (c *ExecutorClient) CleanupOldJobs(ctx context.Context, env string, succeededDays, canceledDays, deadDays int) (int64, error) {
+	return c.app.JobService.CleanupOldJobs(ctx, env, succeededDays, canceledDays, deadDays)
 }

@@ -47,13 +47,14 @@ enum JobStatus {
 
 // SubmitJobRequest 提交任务请求
 message SubmitJobRequest {
-  string target_service = 1;    // 目标服务名
-  string method = 2;            // 方法名
-  string args_json = 3;         // 参数 JSON
-  int64 run_at = 4;             // 执行时间（Unix 时间戳秒），0表示立即执行
-  int32 max_attempts = 5;       // 最大重试次数，默认3次
-  string dedup_key = 6;         // 幂等键（可选）
-  int32 priority = 7;           // 优先级，数字越大优先级越高，默认0
+  string env = 1;               // 环境标识（必填，如 dev/prod/test）
+  string target_service = 2;    // 目标服务名
+  string method = 3;            // 方法名
+  string args_json = 4;         // 参数 JSON
+  int64 run_at = 5;             // 执行时间（Unix 时间戳秒），0表示立即执行
+  int32 max_attempts = 6;       // 最大重试次数，默认3次
+  string dedup_key = 7;         // 幂等键（可选）
+  int32 priority = 8;           // 优先级，数字越大优先级越高，默认0
 }
 
 // SubmitJobResponse 提交任务响应
@@ -63,10 +64,11 @@ message SubmitJobResponse {
 
 // AcquireJobRequest 领取任务请求
 message AcquireJobRequest {
-  string target_service = 1;    // 目标服务名（只能领取指定服务的任务）
-  string consumer_id = 2;       // 消费者ID（实例唯一标识）
-  int32 lease_duration = 3;     // 租约时长（秒），默认30秒
-  string method = 4;            // 可选：方法名过滤，空表示不过滤
+  string env = 1;               // 环境标识（必填，如 dev/prod/test）
+  string target_service = 2;    // 目标服务名（只能领取指定服务的任务）
+  string consumer_id = 3;       // 消费者ID（实例唯一标识）
+  int32 lease_duration = 4;     // 租约时长（秒），默认30秒
+  string method = 5;            // 可选：方法名过滤，空表示不过滤
 }
 
 // AcquireJobResponse 领取任务响应
@@ -77,6 +79,7 @@ message AcquireJobResponse {
   string method = 4;            // 方法名
   string args_json = 5;         // 参数 JSON
   int64 lease_until = 6;        // 租约到期时间（Unix 时间戳秒）
+  string env = 7;               // 环境标识
 }
 
 // RenewLeaseRequest 续租请求
@@ -134,14 +137,16 @@ message JobResponse {
   string result_json = 14;      // 结果 JSON
   int64 created_at = 15;        // 创建时间
   int64 updated_at = 16;        // 更新时间
+  string env = 17;              // 环境标识
 }
 
 // ListJobsRequest 列出任务请求
 message ListJobsRequest {
-  string target_service = 1;    // 目标服务名（可选）
-  JobStatus status = 2;         // 状态过滤（可选）
-  int32 page_num = 3;           // 页码，从1开始
-  int32 page_size = 4;          // 每页数量
+  string env = 1;               // 环境标识（必填，如 dev/prod/test）
+  string target_service = 2;    // 目标服务名（可选）
+  JobStatus status = 3;         // 状态过滤（可选）
+  int32 page_num = 4;           // 页码，从1开始
+  int32 page_size = 5;          // 每页数量
 }
 
 // ListJobsResponse 列出任务响应

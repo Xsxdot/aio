@@ -37,10 +37,10 @@ func (d *ExecutorJobDAO) GetByID(ctx context.Context, id uint64) (*model.Executo
 	return &job, nil
 }
 
-// GetByDedupKey 根据幂等键获取任务
-func (d *ExecutorJobDAO) GetByDedupKey(ctx context.Context, dedupKey string) (*model.ExecutorJobModel, error) {
+// GetByDedupKey 根据环境+幂等键获取任务（不同环境的 dedup_key 相互独立）
+func (d *ExecutorJobDAO) GetByDedupKey(ctx context.Context, env, dedupKey string) (*model.ExecutorJobModel, error) {
 	var job model.ExecutorJobModel
-	err := d.db.WithContext(ctx).Where("dedup_key = ?", dedupKey).First(&job).Error
+	err := d.db.WithContext(ctx).Where("env = ? AND dedup_key = ?", env, dedupKey).First(&job).Error
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (d *ExecutorJobDAO) GetByDedupKey(ctx context.Context, dedupKey string) (*m
 }
 
 // AcquireJob 领取任务（使用原子更新实现竞争领取，兼容 MySQL 5.7+）
-func (d *ExecutorJobDAO) AcquireJob(ctx context.Context, targetService, method, consumerID string, leaseDuration int32) (*model.ExecutorJobModel, *model.ExecutorJobAttemptModel, error) {
+func (d *ExecutorJobDAO) AcquireJob(ctx context.Context, env, targetService, method, consumerID string, leaseDuration int32) (*model.ExecutorJobModel, *model.ExecutorJobAttemptModel, error) {
 	var job model.ExecutorJobModel
 	var attempt model.ExecutorJobAttemptModel
 	now := time.Now()
@@ -67,18 +67,19 @@ func (d *ExecutorJobDAO) AcquireJob(ctx context.Context, targetService, method, 
 		}
 
 		// 2. 查找可领取的任务（按优先级降序，next_run_at升序）
-		// 条件：target_service匹配 AND method匹配（如果指定） AND (状态为pending OR (状态为running但租约已过期)) AND next_run_at <= now
+		// 条件：env匹配 AND target_service匹配 AND method匹配（如果指定） AND (状态为pending OR (状态为running但租约已过期)) AND next_run_at <= now
 		// 使用子查询获取候选任务ID列表（不使用 FOR UPDATE SKIP LOCKED，兼容 MySQL 5.7）
 		var candidateIDs []uint64
 		err = tx.Raw(`
-			SELECT id FROM executor_jobs
-			WHERE target_service = ?
+			SELECT id FROM aio_executor_jobs
+			WHERE env = ?
+			  AND target_service = ?
 			  AND (? = '' OR method = ?)
 			  AND (status = ? OR (status = ? AND (lease_until IS NULL OR lease_until <= ?)))
 			  AND (next_run_at IS NULL OR next_run_at <= ?)
 			ORDER BY priority DESC, next_run_at ASC, id ASC
 			LIMIT 10
-		`, targetService, method, method, model.JobStatusPending, model.JobStatusRunning, now, now).
+		`, env, targetService, method, method, model.JobStatusPending, model.JobStatusRunning, now, now).
 			Scan(&candidateIDs).Error
 
 		if err != nil {
@@ -271,12 +272,12 @@ func (d *ExecutorJobDAO) Requeue(ctx context.Context, jobID uint64, runAt time.T
 		Updates(updates).Error
 }
 
-// List 列出任务
-func (d *ExecutorJobDAO) List(ctx context.Context, targetService string, status model.JobStatus, pageNum, pageSize int32) ([]*model.ExecutorJobModel, int64, error) {
+// List 列出任务（env 必须传，确保只看当前环境的任务）
+func (d *ExecutorJobDAO) List(ctx context.Context, env, targetService string, status model.JobStatus, pageNum, pageSize int32) ([]*model.ExecutorJobModel, int64, error) {
 	var jobs []*model.ExecutorJobModel
 	var total int64
 
-	query := d.db.WithContext(ctx).Model(&model.ExecutorJobModel{})
+	query := d.db.WithContext(ctx).Model(&model.ExecutorJobModel{}).Where("env = ?", env)
 
 	if targetService != "" {
 		query = query.Where("target_service = ?", targetService)
@@ -303,8 +304,8 @@ func (d *ExecutorJobDAO) List(ctx context.Context, targetService string, status 
 	return jobs, total, nil
 }
 
-// CountByStatus 统计各状态任务数量
-func (d *ExecutorJobDAO) CountByStatus(ctx context.Context) (map[model.JobStatus]int64, error) {
+// CountByStatus 统计各状态任务数量（只统计当前环境）
+func (d *ExecutorJobDAO) CountByStatus(ctx context.Context, env string) (map[model.JobStatus]int64, error) {
 	type StatusCount struct {
 		Status model.JobStatus
 		Count  int64
@@ -313,6 +314,7 @@ func (d *ExecutorJobDAO) CountByStatus(ctx context.Context) (map[model.JobStatus
 	var counts []StatusCount
 	err := d.db.WithContext(ctx).
 		Model(&model.ExecutorJobModel{}).
+		Where("env = ?", env).
 		Select("status, COUNT(*) as count").
 		Group("status").
 		Find(&counts).Error
@@ -329,21 +331,21 @@ func (d *ExecutorJobDAO) CountByStatus(ctx context.Context) (map[model.JobStatus
 	return result, nil
 }
 
-// CountDueJobs 统计到期任务数量
-func (d *ExecutorJobDAO) CountDueJobs(ctx context.Context) (int64, error) {
+// CountDueJobs 统计到期任务数量（只统计当前环境）
+func (d *ExecutorJobDAO) CountDueJobs(ctx context.Context, env string) (int64, error) {
 	var count int64
 	now := time.Now()
 
 	err := d.db.WithContext(ctx).
 		Model(&model.ExecutorJobModel{}).
-		Where("status = ? AND (next_run_at IS NULL OR next_run_at <= ?)", model.JobStatusPending, now).
+		Where("env = ? AND status = ? AND (next_run_at IS NULL OR next_run_at <= ?)", env, model.JobStatusPending, now).
 		Count(&count).Error
 
 	return count, err
 }
 
-// GetRetryDistribution 获取重试次数分布
-func (d *ExecutorJobDAO) GetRetryDistribution(ctx context.Context) (map[int32]int64, error) {
+// GetRetryDistribution 获取重试次数分布（只统计当前环境）
+func (d *ExecutorJobDAO) GetRetryDistribution(ctx context.Context, env string) (map[int32]int64, error) {
 	type RetryCount struct {
 		Attempts int32
 		Count    int64
@@ -352,8 +354,8 @@ func (d *ExecutorJobDAO) GetRetryDistribution(ctx context.Context) (map[int32]in
 	var counts []RetryCount
 	err := d.db.WithContext(ctx).
 		Model(&model.ExecutorJobModel{}).
+		Where("env = ? AND status != ?", env, model.JobStatusPending).
 		Select("attempts, COUNT(*) as count").
-		Where("status != ?", model.JobStatusPending).
 		Group("attempts").
 		Find(&counts).Error
 
@@ -369,28 +371,28 @@ func (d *ExecutorJobDAO) GetRetryDistribution(ctx context.Context) (map[int32]in
 	return result, nil
 }
 
-// DeleteOldSucceededJobs 删除旧的已成功任务（归档清理）
-func (d *ExecutorJobDAO) DeleteOldSucceededJobs(ctx context.Context, olderThan time.Time) (int64, error) {
+// DeleteOldSucceededJobs 删除旧的已成功任务（仅清理指定 env）
+func (d *ExecutorJobDAO) DeleteOldSucceededJobs(ctx context.Context, env string, olderThan time.Time) (int64, error) {
 	result := d.db.WithContext(ctx).
-		Where("status = ? AND updated_at < ?", model.JobStatusSucceeded, olderThan).
+		Where("env = ? AND status = ? AND updated_at < ?", env, model.JobStatusSucceeded, olderThan).
 		Delete(&model.ExecutorJobModel{})
 
 	return result.RowsAffected, result.Error
 }
 
-// DeleteOldCanceledJobs 删除旧的已取消任务（归档清理）
-func (d *ExecutorJobDAO) DeleteOldCanceledJobs(ctx context.Context, olderThan time.Time) (int64, error) {
+// DeleteOldCanceledJobs 删除旧的已取消任务（仅清理指定 env）
+func (d *ExecutorJobDAO) DeleteOldCanceledJobs(ctx context.Context, env string, olderThan time.Time) (int64, error) {
 	result := d.db.WithContext(ctx).
-		Where("status = ? AND updated_at < ?", model.JobStatusCanceled, olderThan).
+		Where("env = ? AND status = ? AND updated_at < ?", env, model.JobStatusCanceled, olderThan).
 		Delete(&model.ExecutorJobModel{})
 
 	return result.RowsAffected, result.Error
 }
 
-// DeleteOldDeadJobs 删除旧的死信任务（归档清理）
-func (d *ExecutorJobDAO) DeleteOldDeadJobs(ctx context.Context, olderThan time.Time) (int64, error) {
+// DeleteOldDeadJobs 删除旧的死信任务（仅清理指定 env）
+func (d *ExecutorJobDAO) DeleteOldDeadJobs(ctx context.Context, env string, olderThan time.Time) (int64, error) {
 	result := d.db.WithContext(ctx).
-		Where("status = ? AND updated_at < ?", model.JobStatusDead, olderThan).
+		Where("env = ? AND status = ? AND updated_at < ?", env, model.JobStatusDead, olderThan).
 		Delete(&model.ExecutorJobModel{})
 
 	return result.RowsAffected, result.Error

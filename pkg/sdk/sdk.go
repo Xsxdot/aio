@@ -23,6 +23,8 @@ type Config struct {
 	DefaultTimeout time.Duration
 	// DisableAuth 禁用自动鉴权（用于特殊场景）
 	DisableAuth bool
+	// Env 环境标识（必填，如 dev/prod/test）
+	Env string
 }
 
 // Client SDK 客户端
@@ -103,7 +105,7 @@ func New(config Config) (*Client, error) {
 	client.ShortURL = shortURLClient
 
 	// 初始化 Executor 客户端
-	executorClient := newExecutorClient(conn)
+	executorClient := newExecutorClient(conn, config.Env)
 	client.Executor = executorClient
 
 	return client, nil

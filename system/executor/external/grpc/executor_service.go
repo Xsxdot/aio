@@ -52,12 +52,16 @@ func (s *ExecutorService) RegisterService(server *grpc.Server) error {
 
 // SubmitJob 提交任务
 func (s *ExecutorService) SubmitJob(ctx context.Context, req *pb.SubmitJobRequest) (*pb.SubmitJobResponse, error) {
+	if strings.TrimSpace(req.Env) == "" {
+		return nil, status.Error(codes.InvalidArgument, "env 不能为空")
+	}
 	if strings.TrimSpace(req.DedupKey) == "" {
 		return nil, status.Error(codes.InvalidArgument, "dedup_key 不能为空")
 	}
 
 	jobID, err := s.app.JobService.SubmitJob(
 		ctx,
+		req.Env,
 		req.TargetService,
 		req.Method,
 		req.ArgsJson,
@@ -78,8 +82,13 @@ func (s *ExecutorService) SubmitJob(ctx context.Context, req *pb.SubmitJobReques
 
 // AcquireJob 领取任务
 func (s *ExecutorService) AcquireJob(ctx context.Context, req *pb.AcquireJobRequest) (*pb.AcquireJobResponse, error) {
+	if strings.TrimSpace(req.Env) == "" {
+		return nil, status.Error(codes.InvalidArgument, "env 不能为空")
+	}
+
 	job, err := s.app.JobService.AcquireJob(
 		ctx,
+		req.Env,
 		req.TargetService,
 		req.Method,
 		req.ConsumerId,
@@ -105,6 +114,7 @@ func (s *ExecutorService) AcquireJob(ctx context.Context, req *pb.AcquireJobRequ
 		Method:        job.Method,
 		ArgsJson:      job.ArgsJSON,
 		LeaseUntil:    job.LeaseUntil.Unix(),
+		Env:           job.Env,
 	}, nil
 }
 
@@ -185,6 +195,10 @@ func (s *ExecutorService) GetJob(ctx context.Context, req *pb.GetJobRequest) (*p
 
 // ListJobs 列出任务
 func (s *ExecutorService) ListJobs(ctx context.Context, req *pb.ListJobsRequest) (*pb.ListJobsResponse, error) {
+	if strings.TrimSpace(req.Env) == "" {
+		return nil, status.Error(codes.InvalidArgument, "env 不能为空")
+	}
+
 	// 转换状态
 	var jobStatus model.JobStatus
 	if req.Status != pb.JobStatus_JOB_STATUS_UNSPECIFIED {
@@ -193,6 +207,7 @@ func (s *ExecutorService) ListJobs(ctx context.Context, req *pb.ListJobsRequest)
 
 	jobs, total, err := s.app.JobService.ListJobs(
 		ctx,
+		req.Env,
 		req.TargetService,
 		jobStatus,
 		req.PageNum,
@@ -285,6 +300,7 @@ func (s *ExecutorService) UpdateJobArgs(ctx context.Context, req *pb.UpdateJobAr
 func (s *ExecutorService) modelToProto(job *model.ExecutorJobModel) *pb.JobResponse {
 	resp := &pb.JobResponse{
 		Id:            int64(job.ID),
+		Env:           job.Env,
 		TargetService: job.TargetService,
 		Method:        job.Method,
 		ArgsJson:      job.ArgsJSON,

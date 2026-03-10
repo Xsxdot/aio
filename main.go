@@ -161,7 +161,7 @@ func main() {
 		30*time.Minute, // 超时时间 30 分钟
 		func(ctx context.Context) error {
 			base.Logger.Info("开始执行任务执行器清理任务")
-			_, err := appRoot.ExecutorModule.Client.CleanupOldJobs(ctx, 7, 30, 90)
+			_, err := appRoot.ExecutorModule.Client.CleanupOldJobs(ctx, base.ENV, 7, 30, 90)
 			if err != nil {
 				base.Logger.WithErr(err).Error("任务执行器清理任务执行失败")
 				return err

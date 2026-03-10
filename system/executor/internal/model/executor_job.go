@@ -21,15 +21,18 @@ const (
 // ExecutorJobModel 任务主表
 type ExecutorJobModel struct {
 	common.Model
+	// 环境标识（(env, dedup_key) 联合唯一，隔离不同环境）
+	Env string `gorm:"column:env;size:50;not null;default:'dev';uniqueIndex:idx_env_dedup_key;index:idx_env_target_status_next;index:idx_env_target_method_status_next" json:"env" comment:"环境标识（dev/prod/test）"`
+
 	// 路由信息
-	TargetService string `gorm:"column:target_service;size:100;not null;index:idx_target_status_next;index:idx_target_method_status_next" json:"target_service" comment:"目标服务名"`
-	Method        string `gorm:"column:method;size:100;not null;index:idx_target_method_status_next" json:"method" comment:"方法名"`
+	TargetService string `gorm:"column:target_service;size:100;not null;index:idx_env_target_status_next;index:idx_env_target_method_status_next" json:"target_service" comment:"目标服务名"`
+	Method        string `gorm:"column:method;size:100;not null;index:idx_env_target_method_status_next" json:"method" comment:"方法名"`
 	ArgsJSON      string `gorm:"column:args_json;type:text" json:"args_json" comment:"参数JSON"`
 
 	// 调度信息
-	Status    JobStatus  `gorm:"column:status;size:20;not null;index:idx_target_status_next;index:idx_status;index:idx_target_method_status_next" json:"status" comment:"任务状态"`
+	Status    JobStatus  `gorm:"column:status;size:20;not null;index:idx_env_target_status_next;index:idx_status;index:idx_env_target_method_status_next" json:"status" comment:"任务状态"`
 	Priority  int32      `gorm:"column:priority;default:0;not null;index:idx_priority" json:"priority" comment:"优先级，数字越大优先级越高"`
-	NextRunAt *time.Time `gorm:"column:next_run_at;index:idx_target_status_next;index:idx_next_run;index:idx_target_method_status_next" json:"next_run_at" comment:"下次执行时间"`
+	NextRunAt *time.Time `gorm:"column:next_run_at;index:idx_env_target_status_next;index:idx_next_run;index:idx_env_target_method_status_next" json:"next_run_at" comment:"下次执行时间"`
 
 	// 重试信息
 	MaxAttempts int32 `gorm:"column:max_attempts;default:3;not null" json:"max_attempts" comment:"最大重试次数"`
@@ -39,8 +42,8 @@ type ExecutorJobModel struct {
 	LeaseOwner string     `gorm:"column:lease_owner;size:100;index:idx_lease_owner" json:"lease_owner" comment:"租约持有者（consumer_id）"`
 	LeaseUntil *time.Time `gorm:"column:lease_until;index:idx_lease_until" json:"lease_until" comment:"租约到期时间"`
 
-	// 幂等信息
-	DedupKey string `gorm:"column:dedup_key;size:255;uniqueIndex:idx_dedup_key" json:"dedup_key" comment:"幂等键"`
+	// 幂等信息（与 Env 联合唯一，隔离不同环境）
+	DedupKey string `gorm:"column:dedup_key;size:255;uniqueIndex:idx_env_dedup_key" json:"dedup_key" comment:"幂等键"`
 
 	// 结果信息
 	LastError  string `gorm:"column:last_error;type:text" json:"last_error" comment:"最后错误信息"`
@@ -49,7 +52,7 @@ type ExecutorJobModel struct {
 
 // TableName 指定表名
 func (ExecutorJobModel) TableName() string {
-	return "executor_jobs"
+	return "aio_executor_jobs"
 }
 
 // ExecutorJobAttemptModel 任务尝试记录表（审计用）

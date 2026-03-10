@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	errorc "github.com/xsxdot/aio/pkg/core/err"
@@ -37,7 +38,11 @@ func NewAdminLogger(config AdminConfig) fiber.Handler {
 			WithField("req", string(c.Request().Body()))
 
 		if c.Method() != fiber.MethodGet {
-			cLog = cLog.WithField("resp", string(c.Response().Body()))
+			// 流式响应（如 SSE）跳过响应体读取，避免将 body stream 一次性消费导致无法实时推送
+			contentType := string(c.Response().Header.ContentType())
+			if !strings.Contains(contentType, "text/event-stream") {
+				cLog = cLog.WithField("resp", string(c.Response().Body()))
+			}
 		}
 
 		if err != nil {

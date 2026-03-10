@@ -13,6 +13,15 @@ import (
 	"gorm.io/gorm"
 )
 
+// requireEnv 校验 env 参数，为空或仅空白则返回错误
+func requireEnv(env string) (string, error) {
+	e := strings.TrimSpace(env)
+	if e == "" {
+		return "", errors.New("env 不能为空")
+	}
+	return e, nil
+}
+
 // ExecutorJobService 任务服务层
 type ExecutorJobService struct {
 	dao *dao.ExecutorJobDAO
@@ -26,8 +35,14 @@ func NewExecutorJobService() *ExecutorJobService {
 }
 
 // SubmitJob 提交任务
-func (s *ExecutorJobService) SubmitJob(ctx context.Context, targetService, method, argsJSON string,
+func (s *ExecutorJobService) SubmitJob(ctx context.Context, env, targetService, method, argsJSON string,
 	runAt int64, maxAttempts, priority int32, dedupKey string) (uint64, error) {
+
+	e, err := requireEnv(env)
+	if err != nil {
+		return 0, err
+	}
+	env = e
 
 	if strings.TrimSpace(dedupKey) == "" {
 		return 0, errors.New("dedupKey 不能为空")
@@ -37,10 +52,10 @@ func (s *ExecutorJobService) SubmitJob(ctx context.Context, targetService, metho
 	if maxAttempts <= 0 {
 		maxAttempts = 3
 	}
-	
-	// 检查幂等键
+
+	// 检查幂等键（按 env 隔离）
 	if dedupKey != "" {
-		existingJob, err := s.dao.GetByDedupKey(ctx, dedupKey)
+		existingJob, err := s.dao.GetByDedupKey(ctx, env, dedupKey)
 		if err == nil {
 			// 已存在相同幂等键的任务
 			base.Logger.Info("任务已存在，返回已有任务ID")
@@ -60,8 +75,9 @@ func (s *ExecutorJobService) SubmitJob(ctx context.Context, targetService, metho
 		nextRunAt = &now
 	}
 	
-	// 创建任务
+	// 创建任务，写入当前运行环境
 	job := &model.ExecutorJobModel{
+		Env:           env,
 		TargetService: targetService,
 		Method:        method,
 		ArgsJSON:      argsJSON,
@@ -82,14 +98,19 @@ func (s *ExecutorJobService) SubmitJob(ctx context.Context, targetService, metho
 	return uint64(job.ID), nil
 }
 
-// AcquireJob 领取任务
-func (s *ExecutorJobService) AcquireJob(ctx context.Context, targetService, method, consumerID string, leaseDuration int32) (*model.ExecutorJobModel, error) {
+// AcquireJob 领取任务（仅领取指定 env 的任务）
+func (s *ExecutorJobService) AcquireJob(ctx context.Context, env, targetService, method, consumerID string, leaseDuration int32) (*model.ExecutorJobModel, error) {
+	e, err := requireEnv(env)
+	if err != nil {
+		return nil, err
+	}
+
 	// 默认租约时长30秒
 	if leaseDuration <= 0 {
 		leaseDuration = 30
 	}
-	
-	job, _, err := s.dao.AcquireJob(ctx, targetService, method, consumerID, leaseDuration)
+
+	job, _, err := s.dao.AcquireJob(ctx, e, targetService, method, consumerID, leaseDuration)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// 没有可领取的任务，返回空
@@ -151,16 +172,21 @@ func (s *ExecutorJobService) GetJob(ctx context.Context, jobID uint64) (*model.E
 	return job, nil
 }
 
-// ListJobs 列出任务
-func (s *ExecutorJobService) ListJobs(ctx context.Context, targetService string, status model.JobStatus, pageNum, pageSize int32) ([]*model.ExecutorJobModel, int64, error) {
+// ListJobs 列出任务（按 env 过滤）
+func (s *ExecutorJobService) ListJobs(ctx context.Context, env, targetService string, status model.JobStatus, pageNum, pageSize int32) ([]*model.ExecutorJobModel, int64, error) {
+	e, err := requireEnv(env)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	if pageNum <= 0 {
 		pageNum = 1
 	}
 	if pageSize <= 0 || pageSize > 100 {
 		pageSize = 20
 	}
-	
-	return s.dao.List(ctx, targetService, status, pageNum, pageSize)
+
+	return s.dao.List(ctx, e, targetService, status, pageNum, pageSize)
 }
 
 // CancelJob 取消任务
@@ -223,22 +249,28 @@ func (s *ExecutorJobService) RequeueJob(ctx context.Context, jobID uint64, runAt
 	return nil
 }
 
-// GetStats 获取统计信息
-func (s *ExecutorJobService) GetStats(ctx context.Context) (map[string]interface{}, error) {
+// GetStats 获取统计信息（按 env 过滤）
+func (s *ExecutorJobService) GetStats(ctx context.Context, env string) (map[string]interface{}, error) {
+	e, err := requireEnv(env)
+	if err != nil {
+		return nil, err
+	}
+	env = e
+
 	// 统计各状态任务数量
-	statusCounts, err := s.dao.CountByStatus(ctx)
+	statusCounts, err := s.dao.CountByStatus(ctx, env)
 	if err != nil {
 		return nil, err
 	}
 	
 	// 统计到期任务数量
-	dueCount, err := s.dao.CountDueJobs(ctx)
+	dueCount, err := s.dao.CountDueJobs(ctx, env)
 	if err != nil {
 		return nil, err
 	}
 	
 	// 获取重试次数分布
-	retryDistribution, err := s.dao.GetRetryDistribution(ctx)
+	retryDistribution, err := s.dao.GetRetryDistribution(ctx, env)
 	if err != nil {
 		return nil, err
 	}
@@ -261,44 +293,50 @@ func (s *ExecutorJobService) GetStats(ctx context.Context) (map[string]interface
 	return stats, nil
 }
 
-// CleanupOldJobs 清理旧任务（归档）
-func (s *ExecutorJobService) CleanupOldJobs(ctx context.Context, succeededDays, canceledDays, deadDays int) (int64, error) {
+// CleanupOldJobs 清理旧任务（仅清理指定 env，避免跨 env 误删）
+func (s *ExecutorJobService) CleanupOldJobs(ctx context.Context, env string, succeededDays, canceledDays, deadDays int) (int64, error) {
+	e, err := requireEnv(env)
+	if err != nil {
+		return 0, err
+	}
+	env = e
+
 	now := time.Now()
 	var totalDeleted int64
-	
+
 	// 清理已成功的任务
 	if succeededDays > 0 {
 		succeededOlderThan := now.AddDate(0, 0, -succeededDays)
-		deleted, err := s.dao.DeleteOldSucceededJobs(ctx, succeededOlderThan)
+		deleted, err := s.dao.DeleteOldSucceededJobs(ctx, env, succeededOlderThan)
 		if err != nil {
 			return totalDeleted, err
 		}
 		totalDeleted += deleted
 		base.Logger.Info("清理已成功任务完成")
 	}
-	
+
 	// 清理已取消的任务
 	if canceledDays > 0 {
 		canceledOlderThan := now.AddDate(0, 0, -canceledDays)
-		deleted, err := s.dao.DeleteOldCanceledJobs(ctx, canceledOlderThan)
+		deleted, err := s.dao.DeleteOldCanceledJobs(ctx, env, canceledOlderThan)
 		if err != nil {
 			return totalDeleted, err
 		}
 		totalDeleted += deleted
 		base.Logger.Info("清理已取消任务完成")
 	}
-	
+
 	// 清理死信任务
 	if deadDays > 0 {
 		deadOlderThan := now.AddDate(0, 0, -deadDays)
-		deleted, err := s.dao.DeleteOldDeadJobs(ctx, deadOlderThan)
+		deleted, err := s.dao.DeleteOldDeadJobs(ctx, env, deadOlderThan)
 		if err != nil {
 			return totalDeleted, err
 		}
 		totalDeleted += deleted
 		base.Logger.Info("清理死信任务完成")
 	}
-	
+
 	return totalDeleted, nil
 }
 

@@ -77,6 +77,7 @@ func loadConfigFromCenterGeneric[T any](localCfg Config, env string) (*T, error)
 		ClientSecret:   localCfg.Sdk.ClientSecret,
 		DefaultTimeout: localCfg.Sdk.DefaultTimeout,
 		DisableAuth:    localCfg.Sdk.DisableAuth,
+		Env:            env,
 	}
 	if sdkConfig.DefaultTimeout == 0 {
 		sdkConfig.DefaultTimeout = 30 * time.Second

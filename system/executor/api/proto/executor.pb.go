@@ -86,13 +86,14 @@ func (JobStatus) EnumDescriptor() ([]byte, []int) {
 // SubmitJobRequest 提交任务请求
 type SubmitJobRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetService string                 `protobuf:"bytes,1,opt,name=target_service,json=targetService,proto3" json:"target_service,omitempty"` // 目标服务名
-	Method        string                 `protobuf:"bytes,2,opt,name=method,proto3" json:"method,omitempty"`                                    // 方法名
-	ArgsJson      string                 `protobuf:"bytes,3,opt,name=args_json,json=argsJson,proto3" json:"args_json,omitempty"`                // 参数 JSON
-	RunAt         int64                  `protobuf:"varint,4,opt,name=run_at,json=runAt,proto3" json:"run_at,omitempty"`                        // 执行时间（Unix 时间戳秒），0表示立即执行
-	MaxAttempts   int32                  `protobuf:"varint,5,opt,name=max_attempts,json=maxAttempts,proto3" json:"max_attempts,omitempty"`      // 最大重试次数，默认3次
-	DedupKey      string                 `protobuf:"bytes,6,opt,name=dedup_key,json=dedupKey,proto3" json:"dedup_key,omitempty"`                // 幂等键（可选）
-	Priority      int32                  `protobuf:"varint,7,opt,name=priority,proto3" json:"priority,omitempty"`                               // 优先级，数字越大优先级越高，默认0
+	Env           string                 `protobuf:"bytes,1,opt,name=env,proto3" json:"env,omitempty"`                                          // 环境标识（必填，如 dev/prod/test）
+	TargetService string                 `protobuf:"bytes,2,opt,name=target_service,json=targetService,proto3" json:"target_service,omitempty"` // 目标服务名
+	Method        string                 `protobuf:"bytes,3,opt,name=method,proto3" json:"method,omitempty"`                                    // 方法名
+	ArgsJson      string                 `protobuf:"bytes,4,opt,name=args_json,json=argsJson,proto3" json:"args_json,omitempty"`                // 参数 JSON
+	RunAt         int64                  `protobuf:"varint,5,opt,name=run_at,json=runAt,proto3" json:"run_at,omitempty"`                        // 执行时间（Unix 时间戳秒），0表示立即执行
+	MaxAttempts   int32                  `protobuf:"varint,6,opt,name=max_attempts,json=maxAttempts,proto3" json:"max_attempts,omitempty"`      // 最大重试次数，默认3次
+	DedupKey      string                 `protobuf:"bytes,7,opt,name=dedup_key,json=dedupKey,proto3" json:"dedup_key,omitempty"`                // 幂等键（可选）
+	Priority      int32                  `protobuf:"varint,8,opt,name=priority,proto3" json:"priority,omitempty"`                               // 优先级，数字越大优先级越高，默认0
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -125,6 +126,13 @@ func (x *SubmitJobRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use SubmitJobRequest.ProtoReflect.Descriptor instead.
 func (*SubmitJobRequest) Descriptor() ([]byte, []int) {
 	return file_executor_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *SubmitJobRequest) GetEnv() string {
+	if x != nil {
+		return x.Env
+	}
+	return ""
 }
 
 func (x *SubmitJobRequest) GetTargetService() string {
@@ -224,10 +232,11 @@ func (x *SubmitJobResponse) GetJobId() int64 {
 // AcquireJobRequest 领取任务请求
 type AcquireJobRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetService string                 `protobuf:"bytes,1,opt,name=target_service,json=targetService,proto3" json:"target_service,omitempty"`  // 目标服务名（只能领取指定服务的任务）
-	ConsumerId    string                 `protobuf:"bytes,2,opt,name=consumer_id,json=consumerId,proto3" json:"consumer_id,omitempty"`           // 消费者ID（实例唯一标识）
-	LeaseDuration int32                  `protobuf:"varint,3,opt,name=lease_duration,json=leaseDuration,proto3" json:"lease_duration,omitempty"` // 租约时长（秒），默认30秒
-	Method        string                 `protobuf:"bytes,4,opt,name=method,proto3" json:"method,omitempty"`                                     // 可选：方法名过滤，空表示不过滤
+	Env           string                 `protobuf:"bytes,1,opt,name=env,proto3" json:"env,omitempty"`                                           // 环境标识（必填，如 dev/prod/test）
+	TargetService string                 `protobuf:"bytes,2,opt,name=target_service,json=targetService,proto3" json:"target_service,omitempty"`  // 目标服务名（只能领取指定服务的任务）
+	ConsumerId    string                 `protobuf:"bytes,3,opt,name=consumer_id,json=consumerId,proto3" json:"consumer_id,omitempty"`           // 消费者ID（实例唯一标识）
+	LeaseDuration int32                  `protobuf:"varint,4,opt,name=lease_duration,json=leaseDuration,proto3" json:"lease_duration,omitempty"` // 租约时长（秒），默认30秒
+	Method        string                 `protobuf:"bytes,5,opt,name=method,proto3" json:"method,omitempty"`                                     // 可选：方法名过滤，空表示不过滤
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -260,6 +269,13 @@ func (x *AcquireJobRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use AcquireJobRequest.ProtoReflect.Descriptor instead.
 func (*AcquireJobRequest) Descriptor() ([]byte, []int) {
 	return file_executor_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *AcquireJobRequest) GetEnv() string {
+	if x != nil {
+		return x.Env
+	}
+	return ""
 }
 
 func (x *AcquireJobRequest) GetTargetService() string {
@@ -299,6 +315,7 @@ type AcquireJobResponse struct {
 	Method        string                 `protobuf:"bytes,4,opt,name=method,proto3" json:"method,omitempty"`                                    // 方法名
 	ArgsJson      string                 `protobuf:"bytes,5,opt,name=args_json,json=argsJson,proto3" json:"args_json,omitempty"`                // 参数 JSON
 	LeaseUntil    int64                  `protobuf:"varint,6,opt,name=lease_until,json=leaseUntil,proto3" json:"lease_until,omitempty"`         // 租约到期时间（Unix 时间戳秒）
+	Env           string                 `protobuf:"bytes,7,opt,name=env,proto3" json:"env,omitempty"`                                          // 环境标识
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -373,6 +390,13 @@ func (x *AcquireJobResponse) GetLeaseUntil() int64 {
 		return x.LeaseUntil
 	}
 	return 0
+}
+
+func (x *AcquireJobResponse) GetEnv() string {
+	if x != nil {
+		return x.Env
+	}
+	return ""
 }
 
 // RenewLeaseRequest 续租请求
@@ -715,6 +739,7 @@ type JobResponse struct {
 	ResultJson    string                 `protobuf:"bytes,14,opt,name=result_json,json=resultJson,proto3" json:"result_json,omitempty"`               // 结果 JSON
 	CreatedAt     int64                  `protobuf:"varint,15,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                 // 创建时间
 	UpdatedAt     int64                  `protobuf:"varint,16,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`                 // 更新时间
+	Env           string                 `protobuf:"bytes,17,opt,name=env,proto3" json:"env,omitempty"`                                               // 环境标识
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -861,13 +886,21 @@ func (x *JobResponse) GetUpdatedAt() int64 {
 	return 0
 }
 
+func (x *JobResponse) GetEnv() string {
+	if x != nil {
+		return x.Env
+	}
+	return ""
+}
+
 // ListJobsRequest 列出任务请求
 type ListJobsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetService string                 `protobuf:"bytes,1,opt,name=target_service,json=targetService,proto3" json:"target_service,omitempty"`       // 目标服务名（可选）
-	Status        JobStatus              `protobuf:"varint,2,opt,name=status,proto3,enum=xiaozhizhang.executor.v1.JobStatus" json:"status,omitempty"` // 状态过滤（可选）
-	PageNum       int32                  `protobuf:"varint,3,opt,name=page_num,json=pageNum,proto3" json:"page_num,omitempty"`                        // 页码，从1开始
-	PageSize      int32                  `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`                     // 每页数量
+	Env           string                 `protobuf:"bytes,1,opt,name=env,proto3" json:"env,omitempty"`                                                // 环境标识（必填，如 dev/prod/test）
+	TargetService string                 `protobuf:"bytes,2,opt,name=target_service,json=targetService,proto3" json:"target_service,omitempty"`       // 目标服务名（可选）
+	Status        JobStatus              `protobuf:"varint,3,opt,name=status,proto3,enum=xiaozhizhang.executor.v1.JobStatus" json:"status,omitempty"` // 状态过滤（可选）
+	PageNum       int32                  `protobuf:"varint,4,opt,name=page_num,json=pageNum,proto3" json:"page_num,omitempty"`                        // 页码，从1开始
+	PageSize      int32                  `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`                     // 每页数量
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -900,6 +933,13 @@ func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListJobsRequest.ProtoReflect.Descriptor instead.
 func (*ListJobsRequest) Descriptor() ([]byte, []int) {
 	return file_executor_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ListJobsRequest) GetEnv() string {
+	if x != nil {
+		return x.Env
+	}
+	return ""
 }
 
 func (x *ListJobsRequest) GetTargetService() string {
@@ -1297,23 +1337,25 @@ var File_executor_proto protoreflect.FileDescriptor
 
 const file_executor_proto_rawDesc = "" +
 	"\n" +
-	"\x0eexecutor.proto\x12\x18xiaozhizhang.executor.v1\"\xe1\x01\n" +
-	"\x10SubmitJobRequest\x12%\n" +
-	"\x0etarget_service\x18\x01 \x01(\tR\rtargetService\x12\x16\n" +
-	"\x06method\x18\x02 \x01(\tR\x06method\x12\x1b\n" +
-	"\targs_json\x18\x03 \x01(\tR\bargsJson\x12\x15\n" +
-	"\x06run_at\x18\x04 \x01(\x03R\x05runAt\x12!\n" +
-	"\fmax_attempts\x18\x05 \x01(\x05R\vmaxAttempts\x12\x1b\n" +
-	"\tdedup_key\x18\x06 \x01(\tR\bdedupKey\x12\x1a\n" +
-	"\bpriority\x18\a \x01(\x05R\bpriority\"*\n" +
+	"\x0eexecutor.proto\x12\x18xiaozhizhang.executor.v1\"\xf3\x01\n" +
+	"\x10SubmitJobRequest\x12\x10\n" +
+	"\x03env\x18\x01 \x01(\tR\x03env\x12%\n" +
+	"\x0etarget_service\x18\x02 \x01(\tR\rtargetService\x12\x16\n" +
+	"\x06method\x18\x03 \x01(\tR\x06method\x12\x1b\n" +
+	"\targs_json\x18\x04 \x01(\tR\bargsJson\x12\x15\n" +
+	"\x06run_at\x18\x05 \x01(\x03R\x05runAt\x12!\n" +
+	"\fmax_attempts\x18\x06 \x01(\x05R\vmaxAttempts\x12\x1b\n" +
+	"\tdedup_key\x18\a \x01(\tR\bdedupKey\x12\x1a\n" +
+	"\bpriority\x18\b \x01(\x05R\bpriority\"*\n" +
 	"\x11SubmitJobResponse\x12\x15\n" +
-	"\x06job_id\x18\x01 \x01(\x03R\x05jobId\"\x9a\x01\n" +
-	"\x11AcquireJobRequest\x12%\n" +
-	"\x0etarget_service\x18\x01 \x01(\tR\rtargetService\x12\x1f\n" +
-	"\vconsumer_id\x18\x02 \x01(\tR\n" +
+	"\x06job_id\x18\x01 \x01(\x03R\x05jobId\"\xac\x01\n" +
+	"\x11AcquireJobRequest\x12\x10\n" +
+	"\x03env\x18\x01 \x01(\tR\x03env\x12%\n" +
+	"\x0etarget_service\x18\x02 \x01(\tR\rtargetService\x12\x1f\n" +
+	"\vconsumer_id\x18\x03 \x01(\tR\n" +
 	"consumerId\x12%\n" +
-	"\x0elease_duration\x18\x03 \x01(\x05R\rleaseDuration\x12\x16\n" +
-	"\x06method\x18\x04 \x01(\tR\x06method\"\xc7\x01\n" +
+	"\x0elease_duration\x18\x04 \x01(\x05R\rleaseDuration\x12\x16\n" +
+	"\x06method\x18\x05 \x01(\tR\x06method\"\xd9\x01\n" +
 	"\x12AcquireJobResponse\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\x03R\x05jobId\x12\x1d\n" +
 	"\n" +
@@ -1322,7 +1364,8 @@ const file_executor_proto_rawDesc = "" +
 	"\x06method\x18\x04 \x01(\tR\x06method\x12\x1b\n" +
 	"\targs_json\x18\x05 \x01(\tR\bargsJson\x12\x1f\n" +
 	"\vlease_until\x18\x06 \x01(\x03R\n" +
-	"leaseUntil\"\x93\x01\n" +
+	"leaseUntil\x12\x10\n" +
+	"\x03env\x18\a \x01(\tR\x03env\"\x93\x01\n" +
 	"\x11RenewLeaseRequest\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\x03R\x05jobId\x12\x1d\n" +
 	"\n" +
@@ -1351,7 +1394,7 @@ const file_executor_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"&\n" +
 	"\rGetJobRequest\x12\x15\n" +
-	"\x06job_id\x18\x01 \x01(\x03R\x05jobId\"\x8e\x04\n" +
+	"\x06job_id\x18\x01 \x01(\x03R\x05jobId\"\xa0\x04\n" +
 	"\vJobResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12%\n" +
 	"\x0etarget_service\x18\x02 \x01(\tR\rtargetService\x12\x16\n" +
@@ -1375,12 +1418,14 @@ const file_executor_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x0f \x01(\x03R\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\x10 \x01(\x03R\tupdatedAt\"\xad\x01\n" +
-	"\x0fListJobsRequest\x12%\n" +
-	"\x0etarget_service\x18\x01 \x01(\tR\rtargetService\x12;\n" +
-	"\x06status\x18\x02 \x01(\x0e2#.xiaozhizhang.executor.v1.JobStatusR\x06status\x12\x19\n" +
-	"\bpage_num\x18\x03 \x01(\x05R\apageNum\x12\x1b\n" +
-	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"c\n" +
+	"updated_at\x18\x10 \x01(\x03R\tupdatedAt\x12\x10\n" +
+	"\x03env\x18\x11 \x01(\tR\x03env\"\xbf\x01\n" +
+	"\x0fListJobsRequest\x12\x10\n" +
+	"\x03env\x18\x01 \x01(\tR\x03env\x12%\n" +
+	"\x0etarget_service\x18\x02 \x01(\tR\rtargetService\x12;\n" +
+	"\x06status\x18\x03 \x01(\x0e2#.xiaozhizhang.executor.v1.JobStatusR\x06status\x12\x19\n" +
+	"\bpage_num\x18\x04 \x01(\x05R\apageNum\x12\x1b\n" +
+	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\"c\n" +
 	"\x10ListJobsResponse\x129\n" +
 	"\x04jobs\x18\x01 \x03(\v2%.xiaozhizhang.executor.v1.JobResponseR\x04jobs\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x03R\x05total\")\n" +
