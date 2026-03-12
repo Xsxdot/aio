@@ -201,7 +201,54 @@ if job == nil {
     // })
 }
 
-// 按方法过滤示例：创建只处理特定方法的 Worker
+### 工作流
+
+```go
+// 创建工作流定义
+defID, err := client.Workflow.CreateDef(ctx, "order_flow", "订单流程", dagJSON, 1)
+if err != nil {
+    panic(err)
+}
+fmt.Println("定义 ID:", defID)
+
+// 启动工作流
+instanceID, err := client.Workflow.StartWorkflow(ctx, "order_flow", map[string]interface{}{
+    "order_id": "123",
+    "amount":   99.99,
+})
+if err != nil {
+    panic(err)
+}
+fmt.Println("实例 ID:", instanceID)
+
+// 报告节点完成（人工审核、外部回调场景）
+err = client.Workflow.ReportNodeCompleted(ctx, instanceID, "approve_node", map[string]interface{}{
+    "approved": true,
+    "comment":  "通过",
+})
+if err != nil {
+    panic(err)
+}
+
+// 回滚到指定节点
+err = client.Workflow.RollbackToNode(ctx, instanceID, "step_1")
+if err != nil {
+    panic(err)
+}
+
+// 获取执行轨迹
+trail, err := client.Workflow.GetExecutionTrail(ctx, instanceID)
+if err != nil {
+    panic(err)
+}
+fmt.Printf("状态: %s, 检查点数: %d\n", trail.Status, len(trail.Checkpoints))
+```
+
+### 按方法过滤示例（Executor）
+
+创建只处理特定方法的 Worker：
+
+```go
 emailJob, err := client.Executor.AcquireJob(ctx, &sdk.AcquireJobRequest{
     TargetService: "my-service",
     Method:        "SendEmailNotification",  // 只领取邮件通知任务
@@ -383,6 +430,7 @@ type Client struct {
     Registry  *RegistryClient  // 注册中心客户端
     Discovery *DiscoveryClient // 服务发现客户端
     Executor  *ExecutorClient  // 任务执行器客户端
+    Workflow  *WorkflowClient  // 工作流客户端
 }
 
 func New(config Config) (*Client, error)
@@ -479,6 +527,56 @@ func (c *ExecutorClient) NewWorker(config *WorkerConfig) (*ExecutorWorker, error
 
 // 创建开箱即用的 Worker（使用外部 scheduler）
 func (c *ExecutorClient) NewWorkerWithScheduler(s *scheduler.Scheduler, config *WorkerConfig, ownScheduler bool) (*ExecutorWorker, error)
+```
+
+### WorkflowClient
+
+工作流客户端，支持创建工作流定义、启动工作流、报告节点完成、回滚、获取执行轨迹。
+
+```go
+type WorkflowClient struct { ... }
+
+// 创建工作流定义
+func (c *WorkflowClient) CreateDef(ctx context.Context, code, name, dagJSON string, version int32) (int64, error)
+
+// 启动工作流（initialData 为 map 会自动序列化为 JSON）
+func (c *WorkflowClient) StartWorkflow(ctx context.Context, defCode string, initialData map[string]interface{}) (int64, error)
+
+// 启动工作流（传入已序列化的 initialDataJSON）
+func (c *WorkflowClient) StartWorkflowWithJSON(ctx context.Context, defCode, initialDataJSON string) (int64, error)
+
+// 报告节点完成（人工审核、外部回调场景）
+func (c *WorkflowClient) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID string, output map[string]interface{}) error
+
+// 报告节点完成（传入已序列化的 outputJSON）
+func (c *WorkflowClient) ReportNodeCompletedWithJSON(ctx context.Context, instanceID int64, nodeID, outputJSON string) error
+
+// 回滚到指定节点重新执行
+func (c *WorkflowClient) RollbackToNode(ctx context.Context, instanceID int64, targetNodeID string) error
+
+// 获取执行轨迹
+func (c *WorkflowClient) GetExecutionTrail(ctx context.Context, instanceID int64) (*ExecutionTrail, error)
+```
+
+#### ExecutionTrail
+
+执行轨迹结构体。
+
+```go
+type ExecutionTrail struct {
+    InstanceID    int64
+    Status        string
+    CurrentState  string                 // 当前状态 JSON
+    ActiveNodeIDs string                 // 活动节点 ID 列表（JSON 字符串）
+    Checkpoints   []ExecutionTrailCheckpoint
+}
+
+type ExecutionTrailCheckpoint struct {
+    NodeID     string
+    NodeOutput map[string]interface{} // 节点输出
+    StateAfter map[string]interface{} // 节点执行后状态
+    CreatedAt  string
+}
 ```
 
 ### ExecutorWorker

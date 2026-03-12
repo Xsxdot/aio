@@ -47,7 +47,10 @@ require (
 	gorm.io/gorm v1.31.1
 )
 
-require github.com/rogpeppe/go-internal v1.14.1 // indirect
+require (
+	github.com/expr-lang/expr v1.17.8 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
+)
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect

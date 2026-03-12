@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/xsxdot/aio/base"
+	"github.com/xsxdot/aio/system/executor/api/callback"
+	"github.com/xsxdot/aio/system/executor/api/dto"
 	"github.com/xsxdot/aio/system/executor/internal/dao"
 	"github.com/xsxdot/aio/system/executor/internal/model"
 
@@ -24,77 +27,94 @@ func requireEnv(env string) (string, error) {
 
 // ExecutorJobService 任务服务层
 type ExecutorJobService struct {
-	dao *dao.ExecutorJobDAO
+	dao      *dao.ExecutorJobDAO
+	handlers map[string]callback.JobCompletionHandler // 按 Source 注册的任务完成处理器
+	mu       sync.RWMutex
 }
 
 // NewExecutorJobService 创建任务服务实例
 func NewExecutorJobService() *ExecutorJobService {
 	return &ExecutorJobService{
-		dao: dao.NewExecutorJobDAO(),
+		dao:      dao.NewExecutorJobDAO(),
+		handlers: make(map[string]callback.JobCompletionHandler),
 	}
 }
 
-// SubmitJob 提交任务
-func (s *ExecutorJobService) SubmitJob(ctx context.Context, env, targetService, method, argsJSON string,
-	runAt int64, maxAttempts, priority int32, dedupKey string) (uint64, error) {
+// RegisterJobCompletionHandler 注册任务完成处理器（按 Source 路由）
+func (s *ExecutorJobService) RegisterJobCompletionHandler(source string, h callback.JobCompletionHandler) {
+	if source == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.handlers[source] = h
+}
 
-	e, err := requireEnv(env)
+// SubmitJob 提交任务
+func (s *ExecutorJobService) SubmitJob(ctx context.Context, req *dto.SubmitJobInput) (uint64, error) {
+	e, err := requireEnv(req.Env)
 	if err != nil {
 		return 0, err
 	}
-	env = e
 
-	if strings.TrimSpace(dedupKey) == "" {
+	if strings.TrimSpace(req.DedupKey) == "" {
 		return 0, errors.New("dedupKey 不能为空")
 	}
 
-	// 默认最大重试次数
+	maxAttempts := req.MaxAttempts
 	if maxAttempts <= 0 {
 		maxAttempts = 3
 	}
 
 	// 检查幂等键（按 env 隔离）
-	if dedupKey != "" {
-		existingJob, err := s.dao.GetByDedupKey(ctx, env, dedupKey)
-		if err == nil {
-			// 已存在相同幂等键的任务
-			base.Logger.Info("任务已存在，返回已有任务ID")
-			return uint64(existingJob.ID), nil
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, err
-		}
+	existingJob, err := s.dao.GetByDedupKey(ctx, e, req.DedupKey)
+	if err == nil {
+		base.Logger.Info("任务已存在，返回已有任务ID")
+		return uint64(existingJob.ID), nil
 	}
-	
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, err
+	}
+
 	// 计算下次执行时间
 	var nextRunAt *time.Time
-	if runAt > 0 {
-		t := time.Unix(runAt, 0)
+	if req.RunAt > 0 {
+		t := time.Unix(req.RunAt, 0)
 		nextRunAt = &t
 	} else {
 		now := time.Now()
 		nextRunAt = &now
 	}
-	
-	// 创建任务，写入当前运行环境
-	job := &model.ExecutorJobModel{
-		Env:           env,
-		TargetService: targetService,
-		Method:        method,
-		ArgsJSON:      argsJSON,
-		Status:        model.JobStatusPending,
-		Priority:      priority,
-		NextRunAt:     nextRunAt,
-		MaxAttempts:   maxAttempts,
-		Attempts:      0,
-		DedupKey:      dedupKey,
+
+	retryBackoffType := model.RetryBackoffType(req.RetryBackoffType)
+	if retryBackoffType == "" {
+		retryBackoffType = model.RetryBackoffExponential
 	}
-	
+
+	job := &model.ExecutorJobModel{
+		Env:              e,
+		TargetService:    req.TargetService,
+		Method:           req.Method,
+		ArgsJSON:         req.ArgsJSON,
+		Status:           model.JobStatusPending,
+		Priority:         req.Priority,
+		NextRunAt:        nextRunAt,
+		MaxAttempts:      maxAttempts,
+		Attempts:         0,
+		DedupKey:         req.DedupKey,
+		RetryBackoffType: retryBackoffType,
+		RetryIntervalSec: req.RetryIntervalSec,
+		SequenceKey:      strings.TrimSpace(req.SequenceKey),
+		Source:           strings.TrimSpace(req.Source),
+		CallbackData:     req.CallbackData,
+	}
+
 	if err := s.dao.Create(ctx, job); err != nil {
 		return 0, err
 	}
-	
+
 	base.Logger.Info("任务提交成功")
-	
+
 	return uint64(job.ID), nil
 }
 
@@ -118,9 +138,9 @@ func (s *ExecutorJobService) AcquireJob(ctx context.Context, env, targetService,
 		}
 		return nil, err
 	}
-	
+
 	base.Logger.Info("任务领取成功")
-	
+
 	return job, nil
 }
 
@@ -129,7 +149,7 @@ func (s *ExecutorJobService) RenewLease(ctx context.Context, jobID uint64, attem
 	if extendDuration <= 0 {
 		extendDuration = 30
 	}
-	
+
 	job, err := s.dao.RenewLease(ctx, jobID, attemptNo, consumerID, extendDuration)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -137,26 +157,48 @@ func (s *ExecutorJobService) RenewLease(ctx context.Context, jobID uint64, attem
 		}
 		return nil, err
 	}
-	
+
 	base.Logger.Debug("任务租约续期成功")
-	
+
 	return job, nil
 }
 
 // AckJob 确认任务执行结果
 func (s *ExecutorJobService) AckJob(ctx context.Context, jobID uint64, attemptNo int32, consumerID string,
-	status model.JobStatus, errorMsg, resultJSON string, retryAfter int32) error {
-	
-	err := s.dao.AckJob(ctx, jobID, attemptNo, consumerID, status, errorMsg, resultJSON, retryAfter)
+	status model.JobStatus, errorMsg, resultJSON string, retryAfter int32,
+	stopRetry bool, addMaxAttempts int32, errorType string) error {
+
+	// 成功时需在 Ack 前获取 Source、CallbackData（用于回调）
+	var source, callbackData string
+	if status == model.JobStatusSucceeded {
+		job, err := s.dao.GetByID(ctx, jobID)
+		if err == nil && job.Source != "" {
+			source = job.Source
+			callbackData = job.CallbackData
+		}
+	}
+
+	err := s.dao.AckJob(ctx, jobID, attemptNo, consumerID, status, errorMsg, resultJSON, retryAfter,
+		stopRetry, addMaxAttempts, errorType)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errors.New("任务不存在或租约信息不匹配")
 		}
 		return err
 	}
-	
+
 	base.Logger.Info("任务确认成功")
-	
+
+	// 成功时按 Source 路由到对应 Handler
+	if status == model.JobStatusSucceeded && source != "" {
+		s.mu.RLock()
+		handler := s.handlers[source]
+		s.mu.RUnlock()
+		if handler != nil {
+			handler.OnJobCompleted(ctx, jobID, callbackData, resultJSON)
+		}
+	}
+
 	return nil
 }
 
@@ -166,6 +208,22 @@ func (s *ExecutorJobService) GetJob(ctx context.Context, jobID uint64) (*model.E
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("任务不存在")
+		}
+		return nil, err
+	}
+	return job, nil
+}
+
+// GetJobByDedupKey 根据环境+幂等键获取任务（供 Workflow 等组件按 dedupKey 查找并取消任务）
+func (s *ExecutorJobService) GetJobByDedupKey(ctx context.Context, env, dedupKey string) (*model.ExecutorJobModel, error) {
+	e, err := requireEnv(env)
+	if err != nil {
+		return nil, err
+	}
+	job, err := s.dao.GetByDedupKey(ctx, e, dedupKey)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
 		}
 		return nil, err
 	}
@@ -198,19 +256,19 @@ func (s *ExecutorJobService) CancelJob(ctx context.Context, jobID uint64) error 
 		}
 		return err
 	}
-	
+
 	// 只有 pending 或 running（租约过期）的任务才能取消
 	if job.Status != model.JobStatusPending && job.Status != model.JobStatusRunning {
 		return errors.New("只有待执行或执行中的任务才能取消")
 	}
-	
+
 	err = s.dao.UpdateStatus(ctx, jobID, model.JobStatusCanceled)
 	if err != nil {
 		return err
 	}
-	
+
 	base.Logger.Info("任务取消成功")
-	
+
 	return nil
 }
 
@@ -223,14 +281,14 @@ func (s *ExecutorJobService) RequeueJob(ctx context.Context, jobID uint64, runAt
 		}
 		return err
 	}
-	
+
 	// 只有 failed、canceled、dead 状态的任务才能重新入队
-	if job.Status != model.JobStatusFailed && 
-	   job.Status != model.JobStatusCanceled && 
-	   job.Status != model.JobStatusDead {
+	if job.Status != model.JobStatusFailed &&
+		job.Status != model.JobStatusCanceled &&
+		job.Status != model.JobStatusDead {
 		return errors.New("只有失败、已取消或死信状态的任务才能重新入队")
 	}
-	
+
 	// 计算执行时间
 	var nextRunAt time.Time
 	if runAt > 0 {
@@ -238,14 +296,14 @@ func (s *ExecutorJobService) RequeueJob(ctx context.Context, jobID uint64, runAt
 	} else {
 		nextRunAt = time.Now()
 	}
-	
+
 	err = s.dao.Requeue(ctx, jobID, nextRunAt)
 	if err != nil {
 		return err
 	}
-	
+
 	base.Logger.Info("任务重新入队成功")
-	
+
 	return nil
 }
 
@@ -262,22 +320,22 @@ func (s *ExecutorJobService) GetStats(ctx context.Context, env string) (map[stri
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// 统计到期任务数量
 	dueCount, err := s.dao.CountDueJobs(ctx, env)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// 获取重试次数分布
 	retryDistribution, err := s.dao.GetRetryDistribution(ctx, env)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// 计算队列长度（pending + due）
 	queueLength := statusCounts[model.JobStatusPending]
-	
+
 	stats := map[string]interface{}{
 		"queue_length":       queueLength,
 		"pending_count":      statusCounts[model.JobStatusPending],
@@ -289,7 +347,7 @@ func (s *ExecutorJobService) GetStats(ctx context.Context, env string) (map[stri
 		"due_count":          dueCount,
 		"retry_distribution": retryDistribution,
 	}
-	
+
 	return stats, nil
 }
 
@@ -350,19 +408,19 @@ func (s *ExecutorJobService) UpdateJobArgsJSON(ctx context.Context, jobID uint64
 		}
 		return err
 	}
-	
+
 	// 只有非 running 状态的任务才能修改参数
 	if job.Status == model.JobStatusRunning {
 		return errors.New("running 任务不允许修改参数")
 	}
-	
+
 	// 更新参数
 	err = s.dao.UpdateArgsJSON(ctx, jobID, argsJSON)
 	if err != nil {
 		return err
 	}
-	
+
 	base.Logger.Info("任务参数更新成功")
-	
+
 	return nil
 }

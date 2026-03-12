@@ -19,15 +19,16 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ExecutorService_SubmitJob_FullMethodName     = "/xiaozhizhang.executor.v1.ExecutorService/SubmitJob"
-	ExecutorService_AcquireJob_FullMethodName    = "/xiaozhizhang.executor.v1.ExecutorService/AcquireJob"
-	ExecutorService_RenewLease_FullMethodName    = "/xiaozhizhang.executor.v1.ExecutorService/RenewLease"
-	ExecutorService_AckJob_FullMethodName        = "/xiaozhizhang.executor.v1.ExecutorService/AckJob"
-	ExecutorService_GetJob_FullMethodName        = "/xiaozhizhang.executor.v1.ExecutorService/GetJob"
-	ExecutorService_ListJobs_FullMethodName      = "/xiaozhizhang.executor.v1.ExecutorService/ListJobs"
-	ExecutorService_CancelJob_FullMethodName     = "/xiaozhizhang.executor.v1.ExecutorService/CancelJob"
-	ExecutorService_RequeueJob_FullMethodName    = "/xiaozhizhang.executor.v1.ExecutorService/RequeueJob"
-	ExecutorService_UpdateJobArgs_FullMethodName = "/xiaozhizhang.executor.v1.ExecutorService/UpdateJobArgs"
+	ExecutorService_SubmitJob_FullMethodName             = "/xiaozhizhang.executor.v1.ExecutorService/SubmitJob"
+	ExecutorService_AcquireJob_FullMethodName            = "/xiaozhizhang.executor.v1.ExecutorService/AcquireJob"
+	ExecutorService_RenewLease_FullMethodName            = "/xiaozhizhang.executor.v1.ExecutorService/RenewLease"
+	ExecutorService_AckJob_FullMethodName                = "/xiaozhizhang.executor.v1.ExecutorService/AckJob"
+	ExecutorService_GetJob_FullMethodName                = "/xiaozhizhang.executor.v1.ExecutorService/GetJob"
+	ExecutorService_ListJobs_FullMethodName              = "/xiaozhizhang.executor.v1.ExecutorService/ListJobs"
+	ExecutorService_CancelJob_FullMethodName             = "/xiaozhizhang.executor.v1.ExecutorService/CancelJob"
+	ExecutorService_RequeueJob_FullMethodName            = "/xiaozhizhang.executor.v1.ExecutorService/RequeueJob"
+	ExecutorService_UpdateJobArgs_FullMethodName         = "/xiaozhizhang.executor.v1.ExecutorService/UpdateJobArgs"
+	ExecutorService_SubscribeJobAvailable_FullMethodName = "/xiaozhizhang.executor.v1.ExecutorService/SubscribeJobAvailable"
 )
 
 // ExecutorServiceClient is the client API for ExecutorService service.
@@ -54,6 +55,9 @@ type ExecutorServiceClient interface {
 	RequeueJob(ctx context.Context, in *RequeueJobRequest, opts ...grpc.CallOption) (*RequeueJobResponse, error)
 	// UpdateJobArgs 更新任务参数（管理后台）
 	UpdateJobArgs(ctx context.Context, in *UpdateJobArgsRequest, opts ...grpc.CallOption) (*UpdateJobArgsResponse, error)
+	// SubscribeJobAvailable 订阅任务可用通知（Server Streaming）
+	// 当有匹配 env/target_service/method 的新任务入队时，服务端向流中推送 hint
+	SubscribeJobAvailable(ctx context.Context, in *SubscribeJobAvailableRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[JobAvailableHint], error)
 }
 
 type executorServiceClient struct {
@@ -154,6 +158,25 @@ func (c *executorServiceClient) UpdateJobArgs(ctx context.Context, in *UpdateJob
 	return out, nil
 }
 
+func (c *executorServiceClient) SubscribeJobAvailable(ctx context.Context, in *SubscribeJobAvailableRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[JobAvailableHint], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ExecutorService_ServiceDesc.Streams[0], ExecutorService_SubscribeJobAvailable_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[SubscribeJobAvailableRequest, JobAvailableHint]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ExecutorService_SubscribeJobAvailableClient = grpc.ServerStreamingClient[JobAvailableHint]
+
 // ExecutorServiceServer is the server API for ExecutorService service.
 // All implementations must embed UnimplementedExecutorServiceServer
 // for forward compatibility.
@@ -178,6 +201,9 @@ type ExecutorServiceServer interface {
 	RequeueJob(context.Context, *RequeueJobRequest) (*RequeueJobResponse, error)
 	// UpdateJobArgs 更新任务参数（管理后台）
 	UpdateJobArgs(context.Context, *UpdateJobArgsRequest) (*UpdateJobArgsResponse, error)
+	// SubscribeJobAvailable 订阅任务可用通知（Server Streaming）
+	// 当有匹配 env/target_service/method 的新任务入队时，服务端向流中推送 hint
+	SubscribeJobAvailable(*SubscribeJobAvailableRequest, grpc.ServerStreamingServer[JobAvailableHint]) error
 	mustEmbedUnimplementedExecutorServiceServer()
 }
 
@@ -214,6 +240,9 @@ func (UnimplementedExecutorServiceServer) RequeueJob(context.Context, *RequeueJo
 }
 func (UnimplementedExecutorServiceServer) UpdateJobArgs(context.Context, *UpdateJobArgsRequest) (*UpdateJobArgsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateJobArgs not implemented")
+}
+func (UnimplementedExecutorServiceServer) SubscribeJobAvailable(*SubscribeJobAvailableRequest, grpc.ServerStreamingServer[JobAvailableHint]) error {
+	return status.Errorf(codes.Unimplemented, "method SubscribeJobAvailable not implemented")
 }
 func (UnimplementedExecutorServiceServer) mustEmbedUnimplementedExecutorServiceServer() {}
 func (UnimplementedExecutorServiceServer) testEmbeddedByValue()                         {}
@@ -398,6 +427,17 @@ func _ExecutorService_UpdateJobArgs_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ExecutorService_SubscribeJobAvailable_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SubscribeJobAvailableRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ExecutorServiceServer).SubscribeJobAvailable(m, &grpc.GenericServerStream[SubscribeJobAvailableRequest, JobAvailableHint]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ExecutorService_SubscribeJobAvailableServer = grpc.ServerStreamingServer[JobAvailableHint]
+
 // ExecutorService_ServiceDesc is the grpc.ServiceDesc for ExecutorService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -442,6 +482,12 @@ var ExecutorService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ExecutorService_UpdateJobArgs_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "SubscribeJobAvailable",
+			Handler:       _ExecutorService_SubscribeJobAvailable_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "executor.proto",
 }

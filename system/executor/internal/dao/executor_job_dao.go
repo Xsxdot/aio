@@ -68,18 +68,27 @@ func (d *ExecutorJobDAO) AcquireJob(ctx context.Context, env, targetService, met
 
 		// 2. 查找可领取的任务（按优先级降序，next_run_at升序）
 		// 条件：env匹配 AND target_service匹配 AND method匹配（如果指定） AND (状态为pending OR (状态为running但租约已过期)) AND next_run_at <= now
-		// 使用子查询获取候选任务ID列表（不使用 FOR UPDATE SKIP LOCKED，兼容 MySQL 5.7）
+		// 顺序执行：若任务有 sequence_key，且存在同 key 的 running 任务（租约未过期），则排除
 		var candidateIDs []uint64
 		err = tx.Raw(`
-			SELECT id FROM aio_executor_jobs
-			WHERE env = ?
-			  AND target_service = ?
-			  AND (? = '' OR method = ?)
-			  AND (status = ? OR (status = ? AND (lease_until IS NULL OR lease_until <= ?)))
-			  AND (next_run_at IS NULL OR next_run_at <= ?)
-			ORDER BY priority DESC, next_run_at ASC, id ASC
+			SELECT j.id FROM aio_executor_jobs j
+			WHERE j.env = ?
+			  AND j.target_service = ?
+			  AND (? = '' OR j.method = ?)
+			  AND (j.status = ? OR (j.status = ? AND (j.lease_until IS NULL OR j.lease_until <= ?)))
+			  AND (j.next_run_at IS NULL OR j.next_run_at <= ?)
+			  AND ((j.sequence_key IS NULL OR j.sequence_key = '')
+			    OR NOT EXISTS (
+			      SELECT 1 FROM aio_executor_jobs j2
+			      WHERE j2.sequence_key = j.sequence_key
+			        AND j2.sequence_key != ''
+			        AND j2.status = ?
+			        AND j2.lease_until > ?
+			        AND j2.id != j.id
+			    ))
+			ORDER BY j.priority DESC, j.next_run_at ASC, j.id ASC
 			LIMIT 10
-		`, env, targetService, method, method, model.JobStatusPending, model.JobStatusRunning, now, now).
+		`, env, targetService, method, method, model.JobStatusPending, model.JobStatusRunning, now, now, model.JobStatusRunning, now).
 			Scan(&candidateIDs).Error
 
 		if err != nil {
@@ -92,12 +101,19 @@ func (d *ExecutorJobDAO) AcquireJob(ctx context.Context, env, targetService, met
 
 		// 3. 使用原子更新尝试领取任务（乐观锁）
 		// 遍历候选任务，尝试原子更新第一个可用的
+		// 在 UPDATE 中再次校验 sequence_key，避免 SELECT 与 UPDATE 之间的竞态导致同 key 多任务并行
 		for _, jobID := range candidateIDs {
 			// 使用 UPDATE ... WHERE 原子性地领取任务
 			result := tx.Model(&model.ExecutorJobModel{}).
 				Where("id = ?", jobID).
 				Where("(status = ? OR (status = ? AND (lease_until IS NULL OR lease_until <= ?)))",
 					model.JobStatusPending, model.JobStatusRunning, now).
+				Where("(sequence_key IS NULL OR sequence_key = '' OR NOT EXISTS ("+
+					"SELECT 1 FROM aio_executor_jobs j2 "+
+					"WHERE j2.sequence_key = aio_executor_jobs.sequence_key "+
+					"AND j2.sequence_key != '' "+
+					"AND j2.status = ? AND j2.lease_until > ? AND j2.id != aio_executor_jobs.id))",
+					model.JobStatusRunning, now).
 				Updates(map[string]interface{}{
 					"status":      model.JobStatusRunning,
 					"lease_owner": consumerID,
@@ -170,7 +186,8 @@ func (d *ExecutorJobDAO) RenewLease(ctx context.Context, jobID uint64, attemptNo
 
 // AckJob 确认任务执行结果
 func (d *ExecutorJobDAO) AckJob(ctx context.Context, jobID uint64, attemptNo int32, consumerID string,
-	status model.JobStatus, errorMsg, resultJSON string, retryAfter int32) error {
+	status model.JobStatus, errorMsg, resultJSON string, retryAfter int32,
+	stopRetry bool, addMaxAttempts int32, errorType string) error {
 
 	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var job model.ExecutorJobModel
@@ -184,13 +201,17 @@ func (d *ExecutorJobDAO) AckJob(ctx context.Context, jobID uint64, attemptNo int
 
 		// 更新尝试记录
 		now := time.Now()
+		attemptUpdates := map[string]interface{}{
+			"status":      status,
+			"error":       errorMsg,
+			"finished_at": now,
+		}
+		if errorType != "" {
+			attemptUpdates["error_type"] = errorType
+		}
 		err = tx.Model(&model.ExecutorJobAttemptModel{}).
 			Where("job_id = ? AND attempt_no = ?", jobID, attemptNo).
-			Updates(map[string]interface{}{
-				"status":      status,
-				"error":       errorMsg,
-				"finished_at": now,
-			}).Error
+			Updates(attemptUpdates).Error
 		if err != nil {
 			return err
 		}
@@ -204,18 +225,29 @@ func (d *ExecutorJobDAO) AckJob(ctx context.Context, jobID uint64, attemptNo int
 			// 成功
 			job.ResultJSON = resultJSON
 			job.LastError = ""
+			job.LastErrorType = ""
 		} else if status == model.JobStatusFailed {
 			// 失败
 			job.LastError = errorMsg
+			if errorType != "" {
+				job.LastErrorType = errorType
+			}
 
-			// 判断是否超过最大重试次数
-			if job.Attempts >= job.MaxAttempts {
+			if stopRetry {
 				job.Status = model.JobStatusDead
 			} else {
-				// 重新入队，计算下次执行时间
-				job.Status = model.JobStatusPending
-				nextRunAt := calculateNextRunAt(job.Attempts, retryAfter)
-				job.NextRunAt = &nextRunAt
+				if addMaxAttempts > 0 {
+					job.MaxAttempts += addMaxAttempts
+				}
+				// 判断是否超过最大重试次数
+				if job.Attempts >= job.MaxAttempts {
+					job.Status = model.JobStatusDead
+				} else {
+					// 重新入队，计算下次执行时间
+					job.Status = model.JobStatusPending
+					nextRunAt := calculateNextRunAt(job.Attempts, retryAfter, job.RetryBackoffType, job.RetryIntervalSec)
+					job.NextRunAt = &nextRunAt
+				}
 			}
 		}
 
@@ -223,10 +255,14 @@ func (d *ExecutorJobDAO) AckJob(ctx context.Context, jobID uint64, attemptNo int
 	})
 }
 
-// calculateNextRunAt 计算下次执行时间（指数退避 + 抖动）
-func calculateNextRunAt(attempts int32, retryAfter int32) time.Time {
+// calculateNextRunAt 计算下次执行时间（可配置指数退避或固定间隔）
+func calculateNextRunAt(attempts int32, retryAfter int32, retryBackoffType model.RetryBackoffType, retryIntervalSec int32) time.Time {
 	if retryAfter > 0 {
 		return time.Now().Add(time.Duration(retryAfter) * time.Second)
+	}
+
+	if retryBackoffType == model.RetryBackoffFixed && retryIntervalSec > 0 {
+		return time.Now().Add(time.Duration(retryIntervalSec) * time.Second)
 	}
 
 	// 指数退避：2^attempts 秒，最大 300 秒（5分钟）

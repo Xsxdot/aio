@@ -253,6 +253,11 @@ func main() {
 			configures.Logger.Panic(fmt.Sprintf("注册任务执行器服务失败: %v", err))
 		}
 
+		// 注册工作流组件的 gRPC 服务
+		if err := grpcServer.RegisterService(appRoot.WorkflowModule.GRPCService); err != nil {
+			configures.Logger.Panic(fmt.Sprintf("注册工作流服务失败: %v", err))
+		}
+
 		// 启动 gRPC 服务器
 		if err := grpcServer.Start(); err != nil {
 			configures.Logger.Panic(fmt.Sprintf("启动 gRPC 服务器失败: %v", err))

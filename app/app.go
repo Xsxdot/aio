@@ -8,6 +8,7 @@ import (
 	"github.com/xsxdot/aio/system/shorturl"
 	"github.com/xsxdot/aio/system/ssl"
 	"github.com/xsxdot/aio/system/user"
+	"github.com/xsxdot/aio/system/workflow"
 )
 
 // App 是应用根对象（Application Root），
@@ -39,6 +40,9 @@ type App struct {
 	// ExecutorModule 任务执行器组件模块
 	// 提供远程任务调度、执行、重试能力
 	ExecutorModule *executor.Module
+	// WorkflowModule 工作流组件模块
+	// 提供流程编排、人工审核、状态回滚能力
+	WorkflowModule *workflow.Module
 }
 
 // NewApp 创建进程唯一的 App 实例，由 main.go 在启动时调用。
@@ -62,13 +66,20 @@ func NewApp() *App {
 	// 创建任务执行器组件
 	executorModule := executor.NewModule()
 
+	// 创建工作流组件（依赖 ExecutorModule）
+	workflowModule := workflow.NewModule(executorModule)
+
+	// 注入任务完成处理器：AckJob 成功且 Source=workflow 时，回调 Workflow.ReportNodeCompleted
+	executorModule.RegisterJobCompletionHandler("workflow", workflowModule.GetJobCompletionHandler())
+
 	return &App{
-		ConfigModule:   configModule,
-		RegistryModule: registryModule,
+		ConfigModule:    configModule,
+		RegistryModule:  registryModule,
 		UserModule:     userModule,
 		SslModule:      sslModule,
 		ServerModule:   serverModule,
 		ShortURLModule: shorturlModule,
 		ExecutorModule: executorModule,
+		WorkflowModule: workflowModule,
 	}
 }

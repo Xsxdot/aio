@@ -9,6 +9,7 @@ import (
 	"github.com/xsxdot/aio/system/shorturl"
 	"github.com/xsxdot/aio/system/ssl"
 	"github.com/xsxdot/aio/system/user"
+	"github.com/xsxdot/aio/system/workflow"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -51,4 +52,6 @@ func Register(a *app.App, f *fiber.App) {
 	// 注册任务执行器组件路由
 	executor.RegisterRoutes(a.ExecutorModule, api, admin)
 
+	// 注册工作流组件路由
+	workflow.RegisterRoutes(a.WorkflowModule, api, admin)
 }

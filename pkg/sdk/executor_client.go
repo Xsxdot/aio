@@ -41,13 +41,16 @@ const (
 
 // SubmitJobRequest 提交任务请求（SDK 友好版）
 type SubmitJobRequest struct {
-	TargetService string // 目标服务名
-	Method        string // 方法名
-	ArgsJSON      string // 参数 JSON
-	RunAt         int64  // 执行时间（Unix 时间戳秒），0表示立即执行
-	MaxAttempts   int32  // 最大重试次数，默认3次
-	Priority      int32  // 优先级，数字越大优先级越高，默认0
-	DedupKey      string // 幂等键（必填）
+	TargetService    string // 目标服务名
+	Method           string // 方法名
+	ArgsJSON         string // 参数 JSON
+	RunAt            int64  // 执行时间（Unix 时间戳秒），0表示立即执行
+	MaxAttempts      int32  // 最大重试次数，默认3次
+	Priority         int32  // 优先级，数字越大优先级越高，默认0
+	DedupKey         string // 幂等键（必填）
+	RetryBackoffType string // exponential | fixed，默认 exponential
+	RetryIntervalSec int32  // 固定间隔秒数，仅 fixed 时有效
+	SequenceKey      string // 顺序键，同 key 的任务按顺序执行
 }
 
 // SubmitJob 提交任务
@@ -61,14 +64,17 @@ func (c *ExecutorClient) SubmitJob(ctx context.Context, req *SubmitJobRequest) (
 	}
 
 	pbReq := &executorpb.SubmitJobRequest{
-		Env:           c.env,
-		TargetService: req.TargetService,
-		Method:        req.Method,
-		ArgsJson:      req.ArgsJSON,
-		RunAt:         req.RunAt,
-		MaxAttempts:   req.MaxAttempts,
-		Priority:      req.Priority,
-		DedupKey:      req.DedupKey,
+		Env:              c.env,
+		TargetService:    req.TargetService,
+		Method:           req.Method,
+		ArgsJson:         req.ArgsJSON,
+		RunAt:            req.RunAt,
+		MaxAttempts:      req.MaxAttempts,
+		Priority:         req.Priority,
+		DedupKey:         req.DedupKey,
+		RetryBackoffType: req.RetryBackoffType,
+		RetryIntervalSec: req.RetryIntervalSec,
+		SequenceKey:      req.SequenceKey,
 	}
 
 	resp, err := c.service.SubmitJob(ctx, pbReq)
@@ -129,6 +135,27 @@ func WithMaxAttempts(maxAttempts int32) SubmitJobOption {
 func WithPriority(priority int32) SubmitJobOption {
 	return func(req *SubmitJobRequest) {
 		req.Priority = priority
+	}
+}
+
+// WithRetryBackoffType 设置重试退避类型（exponential | fixed）
+func WithRetryBackoffType(backoffType string) SubmitJobOption {
+	return func(req *SubmitJobRequest) {
+		req.RetryBackoffType = backoffType
+	}
+}
+
+// WithRetryIntervalSec 设置固定重试间隔秒数（仅 fixed 时有效）
+func WithRetryIntervalSec(sec int32) SubmitJobOption {
+	return func(req *SubmitJobRequest) {
+		req.RetryIntervalSec = sec
+	}
+}
+
+// WithSequenceKey 设置顺序键（同 key 任务串行执行）
+func WithSequenceKey(key string) SubmitJobOption {
+	return func(req *SubmitJobRequest) {
+		req.SequenceKey = key
 	}
 }
 
@@ -211,13 +238,16 @@ func (c *ExecutorClient) RenewLease(ctx context.Context, jobID int64, attemptNo 
 
 // AckJobRequest 确认任务请求（SDK 友好版）
 type AckJobRequest struct {
-	JobID      int64     // 任务ID
-	AttemptNo  int32     // 尝试次数（用于校验）
-	ConsumerID string    // 消费者ID
-	Status     AckStatus // 执行结果状态（SUCCEEDED/FAILED）
-	Error      string    // 错误信息（失败时）
-	ResultJSON string    // 结果 JSON（可选）
-	RetryAfter int32     // 重试延迟（秒），仅当status=FAILED时有效，0表示使用默认退避策略
+	JobID          int64     // 任务ID
+	AttemptNo      int32     // 尝试次数（用于校验）
+	ConsumerID     string    // 消费者ID
+	Status         AckStatus // 执行结果状态（SUCCEEDED/FAILED）
+	Error          string    // 错误信息（失败时）
+	ResultJSON     string    // 结果 JSON（可选）
+	RetryAfter     int32     // 重试延迟（秒），仅当status=FAILED时有效，0表示使用默认退避策略
+	ErrorType      string    // 错误类型（如 TimeoutError）
+	StopRetry      bool      // true 表示立即标记为 dead，不再重试
+	AddMaxAttempts int32     // 失败时增加的最大重试次数
 }
 
 // AckJob 确认任务执行结果
@@ -237,13 +267,16 @@ func (c *ExecutorClient) AckJob(ctx context.Context, req *AckJobRequest) error {
 	}
 
 	pbReq := &executorpb.AckJobRequest{
-		JobId:      req.JobID,
-		AttemptNo:  req.AttemptNo,
-		ConsumerId: req.ConsumerID,
-		Status:     pbStatus,
-		Error:      req.Error,
-		ResultJson: req.ResultJSON,
-		RetryAfter: req.RetryAfter,
+		JobId:          req.JobID,
+		AttemptNo:      req.AttemptNo,
+		ConsumerId:     req.ConsumerID,
+		Status:         pbStatus,
+		Error:          req.Error,
+		ResultJson:     req.ResultJSON,
+		RetryAfter:     req.RetryAfter,
+		ErrorType:      req.ErrorType,
+		StopRetry:      req.StopRetry,
+		AddMaxAttempts: req.AddMaxAttempts,
 	}
 
 	resp, err := c.service.AckJob(ctx, pbReq)

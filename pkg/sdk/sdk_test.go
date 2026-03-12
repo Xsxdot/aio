@@ -151,6 +151,7 @@ func TestClientStructure(t *testing.T) {
 	_ = client.ConfigClient
 	_ = client.ShortURL
 	_ = client.Executor
+	_ = client.Workflow
 
 	// 验证原有字段仍然存在
 	_ = client.Auth
@@ -358,4 +359,30 @@ func TestExecutorClientMethods(t *testing.T) {
 			t.Errorf("AckStatusFailed = %v, want FAILED", status)
 		}
 	})
+}
+
+// TestWorkflowClientMethods 测试 WorkflowClient 方法签名（编译期保障）
+func TestWorkflowClientMethods(t *testing.T) {
+	var client *WorkflowClient
+
+	// 验证方法存在（编译期检查）
+	_ = client.CreateDef
+	_ = client.StartWorkflow
+	_ = client.StartWorkflowWithJSON
+	_ = client.ReportNodeCompleted
+	_ = client.ReportNodeCompletedWithJSON
+	_ = client.RollbackToNode
+	_ = client.GetExecutionTrail
+
+	// 验证 ExecutionTrail 结构
+	trail := &ExecutionTrail{
+		InstanceID:    1,
+		Status:        "running",
+		CurrentState:  "{}",
+		ActiveNodeIDs: "[]",
+		Checkpoints:   []ExecutionTrailCheckpoint{},
+	}
+	if trail.InstanceID != 1 {
+		t.Errorf("ExecutionTrail.InstanceID = %v, want 1", trail.InstanceID)
+	}
 }

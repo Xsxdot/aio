@@ -9,6 +9,7 @@ import (
 	"github.com/xsxdot/aio/system/shorturl"
 	"github.com/xsxdot/aio/system/ssl"
 	"github.com/xsxdot/aio/system/user"
+	"github.com/xsxdot/aio/system/workflow"
 
 	"gorm.io/gorm"
 )
@@ -51,6 +52,11 @@ func AutoMigrate(db *gorm.DB) error {
 
 	// 任务执行器组件表迁移
 	if err := executor.AutoMigrate(db, log); err != nil {
+		return err
+	}
+
+	// 工作流组件表迁移
+	if err := workflow.AutoMigrate(db, log); err != nil {
 		return err
 	}
 

@@ -55,6 +55,11 @@ message SubmitJobRequest {
   int32 max_attempts = 6;       // 最大重试次数，默认3次
   string dedup_key = 7;         // 幂等键（可选）
   int32 priority = 8;           // 优先级，数字越大优先级越高，默认0
+  string retry_backoff_type = 9; // exponential | fixed，默认 exponential
+  int32 retry_interval_sec = 10; // 固定间隔秒数，仅 retry_backoff_type=fixed 时有效
+  string sequence_key = 11;     // 顺序键，同 key 的任务按顺序执行
+  string source = 12;           // 任务来源标识（如 workflow），非空表示需要触发完成回调
+  string callback_data = 13;    // 回调透传数据（JSON），由调用方自行约定格式
 }
 
 // SubmitJobResponse 提交任务响应
@@ -106,6 +111,9 @@ message AckJobRequest {
   string error = 5;             // 错误信息（失败时）
   string result_json = 6;       // 结果 JSON（可选）
   int32 retry_after = 7;        // 重试延迟（秒），仅当status=FAILED时有效，0表示使用默认退避策略
+  string error_type = 8;        // 错误类型（如 TimeoutError）
+  bool stop_retry = 9;          // true 表示立即标记为 dead，不再重试
+  int32 add_max_attempts = 10;  // 失败时增加的最大重试次数（如 +3 表示多 3 次机会）
 }
 
 // AckJobResponse 确认任务响应
@@ -138,6 +146,8 @@ message JobResponse {
   int64 created_at = 15;        // 创建时间
   int64 updated_at = 16;        // 更新时间
   string env = 17;              // 环境标识
+  string sequence_key = 18;     // 顺序键
+  string last_error_type = 19;  // 最后错误类型
 }
 
 // ListJobsRequest 列出任务请求

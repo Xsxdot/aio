@@ -54,13 +54,17 @@ func submitTask(appRoot *app.App) {
     // 提交任务
     jobID, err := appRoot.ExecutorModule.Client.SubmitJob(
         ctx,
+        base.ENV,                 // env
         "user-service",           // 目标服务名
         "SendEmailNotification",  // 方法名
-        `{"user_id": 123}`,      // 参数 JSON
+        `{"user_id": 123}`,       // 参数 JSON
         0,                        // 立即执行（或使用 Unix 时间戳延时执行）
         3,                        // 最大重试次数
         0,                        // 优先级（0为默认）
         "email:123:signup",       // 幂等键（必填）
+        "",                       // 重试策略：exponential（默认）| fixed
+        0,                        // 固定间隔秒数（仅 fixed 时有效）
+        "",                       // 顺序键（同 key 任务串行，空表示不限制）
     )
     
     if err != nil {

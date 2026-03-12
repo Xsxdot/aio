@@ -65,17 +65,26 @@ func (ctrl *ExecutorAdminController) SubmitJob(ctx *fiber.Ctx) error {
 		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
-	jobID, err := ctrl.app.JobService.SubmitJob(
-		util.Context(ctx),
-		req.Env,
-		req.TargetService,
-		req.Method,
-		req.ArgsJSON,
-		req.RunAt,
-		req.MaxAttempts,
-		req.Priority,
-		req.DedupKey,
-	)
+	rt := dto.RetryBackoffExponential
+	if strings.TrimSpace(req.RetryBackoffType) == "fixed" {
+		rt = dto.RetryBackoffFixed
+	}
+
+	jobID, err := ctrl.app.JobService.SubmitJob(util.Context(ctx), &dto.SubmitJobInput{
+		Env:              req.Env,
+		TargetService:    req.TargetService,
+		Method:           req.Method,
+		ArgsJSON:         req.ArgsJSON,
+		RunAt:            req.RunAt,
+		MaxAttempts:      req.MaxAttempts,
+		Priority:         req.Priority,
+		DedupKey:         req.DedupKey,
+		RetryBackoffType: rt,
+		RetryIntervalSec: req.RetryIntervalSec,
+		SequenceKey:      req.SequenceKey,
+		Source:           req.Source,
+		CallbackData:     req.CallbackData,
+	})
 	if err != nil {
 		return err
 	}

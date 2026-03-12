@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package xiaozhizhang.workflow.v1;
+
+option go_package = "github.com/xsxdot/aio/system/workflow/api/proto;proto";
+
+// WorkflowService 工作流服务
+service WorkflowService {
+  // CreateDef 创建工作流定义
+  rpc CreateDef(CreateDefRequest) returns (CreateDefResponse);
+
+  // StartWorkflow 启动工作流
+  rpc StartWorkflow(StartWorkflowRequest) returns (StartWorkflowResponse);
+
+  // ReportNodeCompleted 报告节点完成（含人工审核、外部回调）
+  rpc ReportNodeCompleted(ReportNodeCompletedRequest) returns (ReportNodeCompletedResponse);
+
+  // RollbackToNode 回滚到指定节点重新执行
+  rpc RollbackToNode(RollbackToNodeRequest) returns (RollbackToNodeResponse);
+
+  // GetExecutionTrail 获取执行轨迹
+  rpc GetExecutionTrail(GetExecutionTrailRequest) returns (GetExecutionTrailResponse);
+}
+
+// CreateDefRequest 创建工作流定义请求
+message CreateDefRequest {
+  string code = 1;        // 工作流编码（必填）
+  string name = 2;        // 工作流名称（必填）
+  string dag_json = 3;    // DAG 定义 JSON（必填）
+  int32 version = 4;      // 版本号，默认 1
+}
+
+// CreateDefResponse 创建工作流定义响应
+message CreateDefResponse {
+  int64 def_id = 1;  // 定义 ID
+}
+
+// StartWorkflowRequest 启动工作流请求
+message StartWorkflowRequest {
+  string def_code = 1;           // 工作流定义编码（必填）
+  string initial_data_json = 2; // 初始数据 JSON，可为空 "{}"
+  string env = 3;                // 环境标识（如 dev/prod/test），用于 Executor 任务隔离，空则用进程默认环境
+}
+
+// StartWorkflowResponse 启动工作流响应
+message StartWorkflowResponse {
+  int64 instance_id = 1;  // 工作流实例 ID
+}
+
+// ReportNodeCompletedRequest 报告节点完成请求
+message ReportNodeCompletedRequest {
+  int64 instance_id = 1;        // 工作流实例 ID（必填）
+  string node_id = 2;           // 节点 ID（必填）
+  string output_json = 3;       // 节点输出 JSON，可为空 "{}"
+  string env = 4;               // 环境标识（如 dev/prod/test），用于后续节点 Executor 任务隔离，空则用进程默认环境
+}
+
+// ReportNodeCompletedResponse 报告节点完成响应
+message ReportNodeCompletedResponse {
+  bool success = 1;   // 是否成功
+  string message = 2; // 消息
+}
+
+// RollbackToNodeRequest 回滚请求
+message RollbackToNodeRequest {
+  int64 instance_id = 1;    // 工作流实例 ID（必填）
+  string target_node_id = 2; // 目标节点 ID（必填）
+  string env = 3;           // 环境标识（如 dev/prod/test），用于 Executor 任务隔离，空则用进程默认环境
+}
+
+// RollbackToNodeResponse 回滚响应
+message RollbackToNodeResponse {
+  bool success = 1;   // 是否成功
+  string message = 2; // 消息
+}
+
+// GetExecutionTrailRequest 获取执行轨迹请求
+message GetExecutionTrailRequest {
+  int64 instance_id = 1;  // 工作流实例 ID（必填）
+}
+
+// GetExecutionTrailResponse 获取执行轨迹响应
+message GetExecutionTrailResponse {
+  int64 instance_id = 1;     // 工作流实例 ID
+  string status = 2;          // 状态
+  string current_state = 3;   // 当前状态 JSON
+  string active_node_ids = 4; // 活动节点 ID 列表（逗号分隔）
+  repeated ExecutionTrailCheckpoint checkpoints = 5;  // 检查点列表
+}
+
+// ExecutionTrailCheckpoint 轨迹中的单步快照
+message ExecutionTrailCheckpoint {
+  string node_id = 1;         // 节点 ID
+  string node_output_json = 2; // 节点输出 JSON
+  string state_after_json = 3; // 节点执行后状态 JSON
+  string created_at = 4;      // 创建时间
+}

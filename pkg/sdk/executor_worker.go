@@ -19,10 +19,13 @@ import (
 // - err: 错误信息（如果返回 JobFailedError，会使用其 RetryAfter）
 type JobHandler func(ctx context.Context, job *AcquiredJob) (result interface{}, err error)
 
-// JobFailedError 任务失败错误（带重试延迟）
+// JobFailedError 任务失败错误（带重试选项）
 type JobFailedError struct {
-	Message    string // 错误信息
-	RetryAfter int32  // 重试延迟（秒），0 表示使用默认退避策略
+	Message        string // 错误信息
+	RetryAfter     int32  // 重试延迟（秒），0 表示使用默认退避策略
+	ErrorType      string // 错误类型（如 TimeoutError）
+	StopRetry      bool   // true 表示立即标记为 dead，不再重试
+	AddMaxAttempts int32  // 增加的最大重试次数
 }
 
 // Error 实现 error 接口
@@ -430,9 +433,12 @@ func (w *ExecutorWorker) ackJob(ctx context.Context, job *AcquiredJob, result in
 		req.Status = AckStatusFailed
 		req.Error = handlerErr.Error()
 
-		// 检查是否是 JobFailedError（带 RetryAfter）
+		// 检查是否是 JobFailedError（带重试选项）
 		if jfe, ok := handlerErr.(*JobFailedError); ok {
 			req.RetryAfter = jfe.RetryAfter
+			req.ErrorType = jfe.ErrorType
+			req.StopRetry = jfe.StopRetry
+			req.AddMaxAttempts = jfe.AddMaxAttempts
 		}
 	} else {
 		// 任务成功

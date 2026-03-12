@@ -7,6 +7,7 @@ import (
 
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/executor/api/client"
+	"github.com/xsxdot/aio/system/executor/api/dto"
 	pb "github.com/xsxdot/aio/system/executor/api/proto"
 	"github.com/xsxdot/aio/system/executor/internal/app"
 	"github.com/xsxdot/aio/system/executor/internal/model"
@@ -59,17 +60,26 @@ func (s *ExecutorService) SubmitJob(ctx context.Context, req *pb.SubmitJobReques
 		return nil, status.Error(codes.InvalidArgument, "dedup_key 不能为空")
 	}
 
-	jobID, err := s.app.JobService.SubmitJob(
-		ctx,
-		req.Env,
-		req.TargetService,
-		req.Method,
-		req.ArgsJson,
-		req.RunAt,
-		req.MaxAttempts,
-		req.Priority,
-		req.DedupKey,
-	)
+	rt := dto.RetryBackoffExponential
+	if strings.TrimSpace(req.RetryBackoffType) == "fixed" {
+		rt = dto.RetryBackoffFixed
+	}
+
+	jobID, err := s.app.JobService.SubmitJob(ctx, &dto.SubmitJobInput{
+		Env:              req.Env,
+		TargetService:    req.TargetService,
+		Method:           req.Method,
+		ArgsJSON:         req.ArgsJson,
+		RunAt:            req.RunAt,
+		MaxAttempts:      req.MaxAttempts,
+		Priority:         req.Priority,
+		DedupKey:         req.DedupKey,
+		RetryBackoffType: rt,
+		RetryIntervalSec: req.RetryIntervalSec,
+		SequenceKey:      req.SequenceKey,
+		Source:           req.GetSource(),
+		CallbackData:     req.GetCallbackData(),
+	})
 	if err != nil {
 		s.log.WithErr(err).Error("提交任务失败")
 		return nil, status.Error(codes.Internal, err.Error())
@@ -106,14 +116,19 @@ func (s *ExecutorService) AcquireJob(ctx context.Context, req *pb.AcquireJobRequ
 		}, nil
 	}
 
-	// 返回任务信息
+	// 返回任务信息（LeaseUntil 在成功领取后由 DAO 设置，防御性判空）
+	leaseUntil := int64(0)
+	if job.LeaseUntil != nil {
+		leaseUntil = job.LeaseUntil.Unix()
+	}
+
 	return &pb.AcquireJobResponse{
 		JobId:         int64(job.ID),
 		AttemptNo:     job.Attempts,
 		TargetService: job.TargetService,
 		Method:        job.Method,
 		ArgsJson:      job.ArgsJSON,
-		LeaseUntil:    job.LeaseUntil.Unix(),
+		LeaseUntil:    leaseUntil,
 		Env:           job.Env,
 	}, nil
 }
@@ -167,6 +182,9 @@ func (s *ExecutorService) AckJob(ctx context.Context, req *pb.AckJobRequest) (*p
 		req.Error,
 		req.ResultJson,
 		req.RetryAfter,
+		req.StopRetry,
+		req.AddMaxAttempts,
+		req.ErrorType,
 	)
 	if err != nil {
 		s.log.WithErr(err).Error("确认任务失败")
@@ -311,7 +329,9 @@ func (s *ExecutorService) modelToProto(job *model.ExecutorJobModel) *pb.JobRespo
 		LeaseOwner:    job.LeaseOwner,
 		DedupKey:      job.DedupKey,
 		LastError:     job.LastError,
+		LastErrorType: job.LastErrorType,
 		ResultJson:    job.ResultJSON,
+		SequenceKey:   job.SequenceKey,
 		CreatedAt:     job.CreatedAt.Unix(),
 		UpdatedAt:     job.UpdatedAt.Unix(),
 	}

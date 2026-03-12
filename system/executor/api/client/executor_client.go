@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 
+	"github.com/xsxdot/aio/system/executor/api/dto"
 	"github.com/xsxdot/aio/system/executor/internal/app"
 	"github.com/xsxdot/aio/system/executor/internal/model"
 )
@@ -20,10 +21,8 @@ func NewExecutorClient(a *app.App) *ExecutorClient {
 }
 
 // SubmitJob 提交任务（env 必填）
-func (c *ExecutorClient) SubmitJob(ctx context.Context, env, targetService, method, argsJSON string,
-	runAt int64, maxAttempts, priority int32, dedupKey string) (uint64, error) {
-
-	return c.app.JobService.SubmitJob(ctx, env, targetService, method, argsJSON, runAt, maxAttempts, priority, dedupKey)
+func (c *ExecutorClient) SubmitJob(ctx context.Context, req *dto.SubmitJobInput) (uint64, error) {
+	return c.app.JobService.SubmitJob(ctx, req)
 }
 
 // GetJob 获取任务详情
@@ -34,6 +33,23 @@ func (c *ExecutorClient) GetJob(ctx context.Context, jobID uint64) (*model.Execu
 // CancelJob 取消任务
 func (c *ExecutorClient) CancelJob(ctx context.Context, jobID uint64) error {
 	return c.app.JobService.CancelJob(ctx, jobID)
+}
+
+// GetJobByDedupKey 根据环境+幂等键获取任务（用于 Workflow 回滚时取消正在执行的任务）
+func (c *ExecutorClient) GetJobByDedupKey(ctx context.Context, env, dedupKey string) (*model.ExecutorJobModel, error) {
+	return c.app.JobService.GetJobByDedupKey(ctx, env, dedupKey)
+}
+
+// CancelJobByDedupKey 根据环境+幂等键取消任务（用于 Workflow 回滚时取消正在执行的任务）
+func (c *ExecutorClient) CancelJobByDedupKey(ctx context.Context, env, dedupKey string) error {
+	job, err := c.app.JobService.GetJobByDedupKey(ctx, env, dedupKey)
+	if err != nil || job == nil {
+		return err
+	}
+	if job.Status == model.JobStatusPending || job.Status == model.JobStatusRunning {
+		return c.CancelJob(ctx, uint64(job.ID))
+	}
+	return nil
 }
 
 // RequeueJob 重新入队任务

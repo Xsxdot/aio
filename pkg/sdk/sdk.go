@@ -45,6 +45,8 @@ type Client struct {
 	ShortURL *ShortURLClient
 	// Executor 任务执行器客户端
 	Executor *ExecutorClient
+	// Workflow 工作流客户端
+	Workflow *WorkflowClient
 }
 
 // New 创建 SDK 客户端
@@ -107,6 +109,9 @@ func New(config Config) (*Client, error) {
 	// 初始化 Executor 客户端
 	executorClient := newExecutorClient(conn, config.Env)
 	client.Executor = executorClient
+
+	// 初始化 Workflow 客户端
+	client.Workflow = newWorkflowClient(conn)
 
 	return client, nil
 }
