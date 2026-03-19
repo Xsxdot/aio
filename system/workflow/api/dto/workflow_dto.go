@@ -34,6 +34,14 @@ type RollbackRequest struct {
 	Env          string `json:"env"` // 环境标识（如 dev/prod/test），空则用进程默认环境
 }
 
+// SignalRequest 信号请求（Human-in-the-loop 热更新干预，instance_id 来自 URL 路径）
+type SignalRequest struct {
+	SignalName string                 `json:"signal_name" validate:"required"` // 如 "patch_product_image"
+	Payload    map[string]interface{} `json:"payload"`                         // 补传数据，合并入 state
+	WakeupNode string                 `json:"wakeup_node"`                    // 唤醒的目标节点，空则不唤醒
+	Env        string                 `json:"env"`                            // 环境标识，空则用实例 env
+}
+
 // ExecutionTrail 执行轨迹（用于前端绘制执行过程）
 type ExecutionTrail struct {
 	InstanceID    int64                      `json:"instance_id"`

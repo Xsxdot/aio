@@ -56,21 +56,22 @@ func (d *ExecutorJobDAO) AcquireJob(ctx context.Context, env, targetService, met
 
 	err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 1. 检查该 consumer 是否已有未到期租约的任务（保证同 consumer 不并行）
-		var existingJob model.ExecutorJobModel
-		err := tx.Where("lease_owner = ? AND lease_until > ?", consumerID, now).
-			First(&existingJob).Error
-		if err == nil {
+		// 使用 Find 代替 First，避免「无记录」时 GORM 默认 logger 打印 record not found
+		var existingJobs []model.ExecutorJobModel
+		if err := tx.Where("lease_owner = ? AND lease_until > ?", consumerID, now).
+			Limit(1).Find(&existingJobs).Error; err != nil {
+			return err
+		}
+		if len(existingJobs) > 0 {
 			// 已有任务在执行中
 			return gorm.ErrRecordNotFound
-		} else if err != gorm.ErrRecordNotFound {
-			return err
 		}
 
 		// 2. 查找可领取的任务（按优先级降序，next_run_at升序）
 		// 条件：env匹配 AND target_service匹配 AND method匹配（如果指定） AND (状态为pending OR (状态为running但租约已过期)) AND next_run_at <= now
 		// 顺序执行：若任务有 sequence_key，且存在同 key 的 running 任务（租约未过期），则排除
 		var candidateIDs []uint64
-		err = tx.Raw(`
+		err := tx.Raw(`
 			SELECT j.id FROM aio_executor_jobs j
 			WHERE j.env = ?
 			  AND j.target_service = ?

@@ -17,8 +17,8 @@ type Certificate struct {
 	IssuedAt        *time.Time        `json:"issued_at" comment:"签发时间"`
 	LastRenewAt     *time.Time        `json:"last_renew_at" comment:"最后续期时间"`
 	RenewBeforeDays int               `gorm:"default:30;not null" json:"renew_before_days" comment:"提前多少天续期"`
-	FullchainPem    string            `gorm:"type:longtext" json:"fullchain_pem" comment:"完整证书链 PEM（Nginx fullchain.pem）"`
-	PrivkeyPem      string            `gorm:"type:longtext" json:"privkey_pem" comment:"私钥 PEM（Nginx privkey.pem）"`
+	FullchainPem    string            `gorm:"type:text" json:"fullchain_pem" comment:"完整证书链 PEM（Nginx fullchain.pem）"`
+	PrivkeyPem      string            `gorm:"type:text" json:"privkey_pem" comment:"私钥 PEM（Nginx privkey.pem）"`
 	AcmeAccountURL  string            `gorm:"size:500" json:"acme_account_url" comment:"ACME 账户 URL"`
 	AcmeAccountKey  string            `gorm:"type:text" json:"acme_account_key" comment:"ACME 账户私钥（加密存储）"`
 	CertURL         string            `gorm:"size:500" json:"cert_url" comment:"证书资源 URL"`

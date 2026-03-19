@@ -37,6 +37,43 @@ func (d *WorkflowDefDao) FindByCode(ctx context.Context, code string) (*model.Wo
 	return &item, nil
 }
 
+// FindByCodeAndVersion 根据 code 和 version 查询定义
+func (d *WorkflowDefDao) FindByCodeAndVersion(ctx context.Context, code string, version int32) (*model.WorkflowDefModel, error) {
+	var item model.WorkflowDefModel
+	err := d.db.WithContext(ctx).Where("code = ? AND version = ?", code, version).First(&item).Error
+	if err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+// ListDefs 分页列出定义，支持 code 模糊匹配
+func (d *WorkflowDefDao) ListDefs(ctx context.Context, codeLike string, pageNum, pageSize int32) ([]*model.WorkflowDefModel, int64, error) {
+	if pageNum <= 0 {
+		pageNum = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+
+	db := d.db.WithContext(ctx).Model(&model.WorkflowDefModel{})
+	if codeLike != "" {
+		db = db.Where("code LIKE ?", "%"+codeLike+"%")
+	}
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var items []*model.WorkflowDefModel
+	offset := (pageNum - 1) * pageSize
+	if err := db.Order("code asc, version desc").Offset(int(offset)).Limit(int(pageSize)).Find(&items).Error; err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
 // FindByIdWithTx 在事务内根据 ID 查询定义
 func (d *WorkflowDefDao) FindByIdWithTx(ctx context.Context, tx *gorm.DB, id int64) (*model.WorkflowDefModel, error) {
 	var item model.WorkflowDefModel

@@ -3,9 +3,11 @@ package dao
 import (
 	"context"
 	"time"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
+	"github.com/xsxdot/aio/pkg/db/dialect"
 	"github.com/xsxdot/aio/system/ssl/internal/model"
 
 	"gorm.io/gorm"
@@ -39,12 +41,18 @@ func (d *CertificateDao) FindCertificatesToRenew(ctx context.Context) ([]model.C
 	// 1. 自动续期开启
 	// 2. 状态为 active
 	// 3. 过期时间 - 当前时间 <= 续期提前天数
-	err := d.db.WithContext(ctx).
+	query := d.db.WithContext(ctx).
 		Where("auto_renew = ?", 1).
 		Where("status = ?", model.CertificateStatusActive).
-		Where("expires_at IS NOT NULL").
-		Where("TIMESTAMPDIFF(DAY, ?, expires_at) <= renew_before_days", now).
-		Find(&certificates).Error
+		Where("expires_at IS NOT NULL")
+
+	if dialect.IsPostgres(d.db) {
+		query = query.Where("(expires_at::date - ?::date) <= renew_before_days", now)
+	} else {
+		query = query.Where("TIMESTAMPDIFF(DAY, ?, expires_at) <= renew_before_days", now)
+	}
+
+	err := query.Find(&certificates).Error
 
 	if err != nil {
 		d.log.WithErr(err).Error("查询需要续期的证书失败")

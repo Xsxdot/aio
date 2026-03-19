@@ -19,7 +19,7 @@ type ShortLink struct {
 	MaxVisits    *int64      `gorm:"comment:最大访问次数（NULL表示无限制）" json:"maxVisits" comment:"最大访问次数"`
 	VisitCount   int64       `gorm:"type:bigint;not null;default:0;comment:访问次数" json:"visitCount" comment:"访问次数"`
 	SuccessCount int64       `gorm:"type:bigint;not null;default:0;comment:成功上报次数" json:"successCount" comment:"成功上报次数"`
-	Enabled      bool        `gorm:"type:tinyint(1);not null;default:1;comment:是否启用" json:"enabled" comment:"是否启用"`
+	Enabled      bool        `gorm:"not null;default:true;comment:是否启用" json:"enabled" comment:"是否启用"`
 	Comment      string      `gorm:"type:varchar(500);comment:备注" json:"comment" comment:"备注"`
 }
 

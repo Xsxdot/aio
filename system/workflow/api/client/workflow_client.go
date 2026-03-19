@@ -46,6 +46,73 @@ func (c *WorkflowClient) GetExecutionTrail(ctx context.Context, instanceID int64
 	return toDTO(trail), nil
 }
 
+// GetDef 查询定义，version=0 表示最新版本
+func (c *WorkflowClient) GetDef(ctx context.Context, code string, version int32) (*app.WorkflowDefModel, error) {
+	return c.app.GetDefByCodeAndVersion(ctx, code, version)
+}
+
+// ListDefs 分页列出定义
+func (c *WorkflowClient) ListDefs(ctx context.Context, codeLike string, pageNum, pageSize int32) ([]*app.WorkflowDefModel, int64, error) {
+	return c.app.ListDefs(ctx, codeLike, pageNum, pageSize)
+}
+
+// CreateIfNotExists 幂等创建定义
+func (c *WorkflowClient) CreateIfNotExists(ctx context.Context, code, name, dagJSON string, version int32) (defID int64, created bool, err error) {
+	return c.app.CreateIfNotExists(ctx, code, name, dagJSON, version)
+}
+
+// GetInstance 获取实例详情（含 def_code）
+func (c *WorkflowClient) GetInstance(ctx context.Context, instanceID int64) (*app.WorkflowInstanceModel, string, error) {
+	inst, err := c.app.GetInstance(ctx, instanceID)
+	if err != nil {
+		return nil, "", err
+	}
+	if inst == nil {
+		return nil, "", nil
+	}
+	def, err := c.app.GetDefByID(ctx, inst.DefID)
+	if err != nil {
+		return inst, "", nil
+	}
+	defCode := ""
+	if def != nil {
+		defCode = def.Code
+	}
+	return inst, defCode, nil
+}
+
+// GetInstanceStatus 获取实例状态
+func (c *WorkflowClient) GetInstanceStatus(ctx context.Context, instanceID int64) (string, error) {
+	inst, err := c.app.GetInstance(ctx, instanceID)
+	if err != nil {
+		return "", err
+	}
+	if inst == nil {
+		return "", nil
+	}
+	return string(inst.Status), nil
+}
+
+// ListInstances 分页列出实例
+func (c *WorkflowClient) ListInstances(ctx context.Context, filter *app.ListInstancesFilter, pageNum, pageSize int32) ([]*app.WorkflowInstanceModel, int64, error) {
+	return c.app.ListInstances(ctx, filter, pageNum, pageSize)
+}
+
+// CancelInstance 取消实例
+func (c *WorkflowClient) CancelInstance(ctx context.Context, instanceID int64) error {
+	return c.app.CancelInstance(ctx, instanceID)
+}
+
+// RetryNode 重试节点
+func (c *WorkflowClient) RetryNode(ctx context.Context, instanceID int64, nodeID string) error {
+	return c.app.RetryNode(ctx, instanceID, nodeID)
+}
+
+// SendSignal 发送信号（Human-in-the-loop），合并 Payload 入状态，可选唤醒指定节点
+func (c *WorkflowClient) SendSignal(ctx context.Context, instanceID int64, signalName string, payload map[string]interface{}, wakeupNode string, env string) error {
+	return c.app.SendSignal(ctx, instanceID, signalName, payload, wakeupNode, env)
+}
+
 func toDTO(t *app.ExecutionTrail) *dto.ExecutionTrail {
 	if t == nil {
 		return nil

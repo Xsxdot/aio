@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -168,14 +169,12 @@ func (s *ExecutorJobService) AckJob(ctx context.Context, jobID uint64, attemptNo
 	status model.JobStatus, errorMsg, resultJSON string, retryAfter int32,
 	stopRetry bool, addMaxAttempts int32, errorType string) error {
 
-	// 成功时需在 Ack 前获取 Source、CallbackData（用于回调）
+	// Ack 前获取 Source、CallbackData（成功和最终失败时均需回调）
 	var source, callbackData string
-	if status == model.JobStatusSucceeded {
-		job, err := s.dao.GetByID(ctx, jobID)
-		if err == nil && job.Source != "" {
-			source = job.Source
-			callbackData = job.CallbackData
-		}
+	job, preErr := s.dao.GetByID(ctx, jobID)
+	if preErr == nil && job.Source != "" {
+		source = job.Source
+		callbackData = job.CallbackData
 	}
 
 	err := s.dao.AckJob(ctx, jobID, attemptNo, consumerID, status, errorMsg, resultJSON, retryAfter,
@@ -196,6 +195,21 @@ func (s *ExecutorJobService) AckJob(ctx context.Context, jobID uint64, attemptNo
 		s.mu.RUnlock()
 		if handler != nil {
 			handler.OnJobCompleted(ctx, jobID, callbackData, resultJSON)
+		}
+		return nil
+	}
+
+	// 最终失败（重试耗尽或 stopRetry）时，Workflow 等组件需要收到回调以走 error 边
+	if status == model.JobStatusFailed && source != "" {
+		jobAfter, errAfter := s.dao.GetByID(ctx, jobID)
+		if errAfter == nil && jobAfter.Status == model.JobStatusDead {
+			s.mu.RLock()
+			handler := s.handlers[source]
+			s.mu.RUnlock()
+			if handler != nil {
+				errorPayloadBytes, _ := json.Marshal(map[string]string{"error_msg": errorMsg})
+				handler.OnJobCompleted(ctx, jobID, callbackData, string(errorPayloadBytes))
+			}
 		}
 	}
 

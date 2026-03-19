@@ -2,9 +2,11 @@ package dao
 
 import (
 	"context"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
+	"github.com/xsxdot/aio/pkg/db/dialect"
 	"github.com/xsxdot/aio/system/config/internal/model"
 
 	"gorm.io/gorm"
@@ -28,10 +30,18 @@ func NewConfigItemDao(db *gorm.DB, log *logger.Log) *ConfigItemDao {
 	}
 }
 
+// keyCol 返回保留字 key 列的双兼容引用：MySQL 用反引号，PostgreSQL 用双引号
+func (d *ConfigItemDao) keyCol() string {
+	if dialect.IsPostgres(d.db) {
+		return `"key"`
+	}
+	return "`key`"
+}
+
 // FindByKey 根据配置键查询
 func (d *ConfigItemDao) FindByKey(ctx context.Context, key string) (*model.ConfigItemModel, error) {
 	var item model.ConfigItemModel
-	err := d.db.WithContext(ctx).Where("`key` = ?", key).First(&item).Error
+	err := d.db.WithContext(ctx).Where(d.keyCol()+" = ?", key).First(&item).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, d.err.New("配置项不存在", err).WithCode(errorc.ErrorCodeNotFound)
@@ -44,7 +54,7 @@ func (d *ConfigItemDao) FindByKey(ctx context.Context, key string) (*model.Confi
 // FindByKeyLike 根据配置键模糊查询
 func (d *ConfigItemDao) FindByKeyLike(ctx context.Context, keyPattern string) ([]*model.ConfigItemModel, error) {
 	var items []*model.ConfigItemModel
-	err := d.db.WithContext(ctx).Where("`key` LIKE ?", "%"+keyPattern+"%").Find(&items).Error
+	err := d.db.WithContext(ctx).Where(d.keyCol()+" LIKE ?", "%"+keyPattern+"%").Find(&items).Error
 	if err != nil {
 		return nil, d.err.New("模糊查询配置项失败", err).DB()
 	}
@@ -54,7 +64,7 @@ func (d *ConfigItemDao) FindByKeyLike(ctx context.Context, keyPattern string) ([
 // FindByKeyPrefix 根据配置键前缀查询
 func (d *ConfigItemDao) FindByKeyPrefix(ctx context.Context, prefix string) ([]*model.ConfigItemModel, error) {
 	var items []*model.ConfigItemModel
-	err := d.db.WithContext(ctx).Where("`key` LIKE ?", prefix+"%").Find(&items).Error
+	err := d.db.WithContext(ctx).Where(d.keyCol()+" LIKE ?", prefix+"%").Find(&items).Error
 	if err != nil {
 		return nil, d.err.New("按前缀查询配置项失败", err).DB()
 	}
@@ -67,7 +77,7 @@ func (d *ConfigItemDao) FindPageByKeyLike(ctx context.Context, page *mvc.Page, k
 	var total int64
 
 	db := d.db.WithContext(ctx).Model(&model.ConfigItemModel{})
-	db = db.Where("`key` LIKE ?", "%"+keyPattern+"%")
+	db = db.Where(d.keyCol()+" LIKE ?", "%"+keyPattern+"%")
 
 	// 统计总数
 	err := db.Count(&total).Error
@@ -112,7 +122,7 @@ func (d *ConfigItemDao) FindAll(ctx context.Context) ([]*model.ConfigItemModel, 
 // FindByKeys 根据多个配置键查询
 func (d *ConfigItemDao) FindByKeys(ctx context.Context, keys []string) ([]*model.ConfigItemModel, error) {
 	var items []*model.ConfigItemModel
-	err := d.db.WithContext(ctx).Where("`key` IN ?", keys).Find(&items).Error
+	err := d.db.WithContext(ctx).Where(d.keyCol()+" IN ?", keys).Find(&items).Error
 	if err != nil {
 		return nil, d.err.New("批量查询配置项失败", err).DB()
 	}
@@ -122,7 +132,7 @@ func (d *ConfigItemDao) FindByKeys(ctx context.Context, keys []string) ([]*model
 // ExistsByKey 检查配置键是否存在
 func (d *ConfigItemDao) ExistsByKey(ctx context.Context, key string) (bool, error) {
 	var count int64
-	err := d.db.WithContext(ctx).Model(&model.ConfigItemModel{}).Where("`key` = ?", key).Count(&count).Error
+	err := d.db.WithContext(ctx).Model(&model.ConfigItemModel{}).Where(d.keyCol()+" = ?", key).Count(&count).Error
 	if err != nil {
 		return false, d.err.New("检查配置键是否存在失败", err).DB()
 	}

@@ -76,7 +76,7 @@ func DefaultSchedulerConfig() *SchedulerConfig {
 		LockKey:           "aio/scheduler/leader",
 		LockTTL:           30 * time.Second,
 		LockRetryInterval: 5 * time.Second,
-		MaxWorkers:        10,
+		MaxWorkers:        30,
 	}
 }
 

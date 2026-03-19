@@ -13,6 +13,7 @@ import (
 )
 
 type Database struct {
+	Type     string `yaml:"type" json:"type,omitempty"` // mysql 或 postgres，默认 mysql
 	Host     string `yaml:"host" json:"host,omitempty"`
 	Port     int64  `yaml:"port" json:"port,omitempty"`
 	User     string `yaml:"user" json:"user,omitempty"`

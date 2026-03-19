@@ -8,6 +8,7 @@ const (
 	NodeTypeTask      NodeType = "task"
 	NodeTypeApproval  NodeType = "approval"
 	NodeTypeCondition NodeType = "condition"
+	NodeTypeMap       NodeType = "map"
 )
 
 // DAG 工作流有向无环图定义
@@ -23,11 +24,22 @@ type Node struct {
 	Config map[string]interface{} `json:"config"` // 节点特定配置，例如 service, method
 }
 
+// EdgeType 边类型：空/success 成功走此边, error 失败走此边, always 无论成功失败都走
+type EdgeType string
+
+const (
+	EdgeTypeSuccess EdgeType = "" // 默认
+	EdgeTypeError   EdgeType = "error"
+	EdgeTypeAlways  EdgeType = "always"
+)
+
 // Edge 边定义
 type Edge struct {
-	From      string `json:"from"`
-	To        string `json:"to"`
-	Condition string `json:"condition"` // 表达式，为空表示无条件执行
+	From       string   `json:"from"`
+	To         string   `json:"to"`
+	Condition  string   `json:"condition"`  // 表达式，为空表示无条件执行
+	Type       EdgeType `json:"type"`       // ""(默认成功走此边), "error"(失败走此边), "always"(无论成功失败都走)
+	IsLoopback bool     `json:"is_loopback"` // 明确标记为合法回退边，放行环路检测
 }
 
 // GetNode 获取节点
@@ -92,10 +104,13 @@ func (d *DAG) Validate() error {
 	return nil
 }
 
-// detectCycle 使用 DFS 检测有向图中是否存在环
+// detectCycle 使用 DFS 检测有向图中是否存在环，IsLoopback 的边不参与环路检测
 func (d *DAG) detectCycle() error {
 	adj := make(map[string][]string)
 	for _, e := range d.Edges {
+		if e.IsLoopback {
+			continue
+		}
 		adj[e.From] = append(adj[e.From], e.To)
 	}
 	state := make(map[string]int) // 0=未访问 1=访问中 2=已完成

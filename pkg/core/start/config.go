@@ -137,6 +137,22 @@ func (c *Configures) EnableLocker(rdb *redis.Client) *redislock.Client {
 	return redislock.New(rdb)
 }
 
+// EnableDB 根据配置的 db.type 返回 MySQL 或 PostgreSQL 连接，默认 mysql
+func (c *Configures) EnableDB() *gorm.DB {
+	dbType := c.Config.Database.Type
+	if dbType == "" {
+		dbType = "mysql"
+	}
+	switch dbType {
+	case "postgres":
+		return c.EnablePg()
+	case "mysql":
+		fallthrough
+	default:
+		return c.EnableMysql()
+	}
+}
+
 func (c *Configures) EnablePg() *gorm.DB {
 	db, err := config.InitPg(c.Config.Database, c.Config.Proxy)
 	if err != nil {

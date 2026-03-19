@@ -30,7 +30,7 @@ func (d *GormDaoImpl[T]) WithTx(tx interface{}) IBaseDao[T] {
 }
 
 func (d *GormDaoImpl[T]) Create(ctx context.Context, entity *T) error {
-	err := d.db.WithContext(ctx).Create(entity).Error
+	err := ExtractDB(ctx, d.db).Create(entity).Error
 	if err != nil {
 		return errorc.New("数据库操作失败", err).DB()
 	}
@@ -38,7 +38,7 @@ func (d *GormDaoImpl[T]) Create(ctx context.Context, entity *T) error {
 }
 
 func (d *GormDaoImpl[T]) CreateBatch(ctx context.Context, entities []*T) error {
-	err := d.db.WithContext(ctx).Create(entities).Error
+	err := ExtractDB(ctx, d.db).Create(entities).Error
 	if err != nil {
 		return errorc.New("批量创建记录失败", err).DB()
 	}
@@ -46,7 +46,7 @@ func (d *GormDaoImpl[T]) CreateBatch(ctx context.Context, entities []*T) error {
 }
 
 func (d *GormDaoImpl[T]) DeleteById(ctx context.Context, id interface{}) error {
-	result := d.db.WithContext(ctx).Delete(new(T), id)
+	result := ExtractDB(ctx, d.db).Delete(new(T), id)
 	if result.Error != nil {
 		return errorc.New("删除记录失败", result.Error).DB()
 	}
@@ -57,7 +57,7 @@ func (d *GormDaoImpl[T]) DeleteById(ctx context.Context, id interface{}) error {
 }
 
 func (d *GormDaoImpl[T]) DeleteByIds(ctx context.Context, ids []interface{}) (int64, error) {
-	result := d.db.WithContext(ctx).Delete(new(T), ids)
+	result := ExtractDB(ctx, d.db).Delete(new(T), ids)
 	if result.Error != nil {
 		return 0, errorc.New("批量删除记录失败", result.Error).DB()
 	}
@@ -68,7 +68,7 @@ func (d *GormDaoImpl[T]) DeleteByIds(ctx context.Context, ids []interface{}) (in
 }
 
 func (d *GormDaoImpl[T]) DeleteByColumn(ctx context.Context, column string, value interface{}) error {
-	result := d.db.WithContext(ctx).Where(column+" = ?", value).Delete(new(T))
+	result := ExtractDB(ctx, d.db).Where(column+" = ?", value).Delete(new(T))
 	if result.Error != nil {
 		return errorc.New("批量删除记录失败", result.Error).DB()
 	}
@@ -79,7 +79,7 @@ func (d *GormDaoImpl[T]) DeleteByColumn(ctx context.Context, column string, valu
 }
 
 func (d *GormDaoImpl[T]) DeleteByMap(ctx context.Context, conditions map[string]interface{}) error {
-	result := d.db.WithContext(ctx).Where(conditions).Delete(new(T))
+	result := ExtractDB(ctx, d.db).Where(conditions).Delete(new(T))
 	if result.Error != nil {
 		return errorc.New("批量删除记录失败", result.Error).DB()
 	}
@@ -90,7 +90,7 @@ func (d *GormDaoImpl[T]) DeleteByMap(ctx context.Context, conditions map[string]
 }
 
 func (d *GormDaoImpl[T]) UpdateById(ctx context.Context, id interface{}, entity *T) (int64, error) {
-	result := d.db.WithContext(ctx).Model(new(T)).Where("id = ?", id).Updates(entity)
+	result := ExtractDB(ctx, d.db).Model(new(T)).Where("id = ?", id).Updates(entity)
 	err := result.Error
 	if err != nil {
 		return 0, errorc.New("更新记录失败", err).DB()
@@ -103,7 +103,7 @@ func (d *GormDaoImpl[T]) UpdateById(ctx context.Context, id interface{}, entity 
 }
 
 func (d *GormDaoImpl[T]) UpdateByIds(ctx context.Context, ids []interface{}, entity *T) (int64, error) {
-	result := d.db.WithContext(ctx).Model(new(T)).Where("id IN ?", ids).Updates(entity)
+	result := ExtractDB(ctx, d.db).Model(new(T)).Where("id IN ?", ids).Updates(entity)
 	err := result.Error
 	if err != nil {
 		return 0, errorc.New("更新记录失败", err).DB()
@@ -116,7 +116,7 @@ func (d *GormDaoImpl[T]) UpdateByIds(ctx context.Context, ids []interface{}, ent
 }
 
 func (d *GormDaoImpl[T]) UpdateByColumn(ctx context.Context, column string, value interface{}, entity *T) (int64, error) {
-	result := d.db.WithContext(ctx).Model(new(T)).Where(column+" = ?", value).Updates(entity)
+	result := ExtractDB(ctx, d.db).Model(new(T)).Where(column+" = ?", value).Updates(entity)
 	err := result.Error
 	if err != nil {
 		return 0, errorc.New("更新记录失败", err).DB()
@@ -129,7 +129,7 @@ func (d *GormDaoImpl[T]) UpdateByColumn(ctx context.Context, column string, valu
 }
 
 func (d *GormDaoImpl[T]) UpdateByMap(ctx context.Context, conditions map[string]interface{}, entity *T) (int64, error) {
-	result := d.db.WithContext(ctx).Model(new(T)).Where(conditions).Updates(entity)
+	result := ExtractDB(ctx, d.db).Model(new(T)).Where(conditions).Updates(entity)
 	err := result.Error
 	if err != nil {
 		return 0, errorc.New("更新记录失败", err).DB()
@@ -143,7 +143,7 @@ func (d *GormDaoImpl[T]) UpdateByMap(ctx context.Context, conditions map[string]
 
 func (d *GormDaoImpl[T]) FindById(ctx context.Context, id interface{}) (*T, error) {
 	var entity T
-	err := d.db.WithContext(ctx).First(&entity, id).Error
+	err := ExtractDB(ctx, d.db).First(&entity, id).Error
 	if err != nil {
 		return nil, errorc.New("查询记录失败", err).DB()
 	}
@@ -152,7 +152,7 @@ func (d *GormDaoImpl[T]) FindById(ctx context.Context, id interface{}) (*T, erro
 
 func (d *GormDaoImpl[T]) FindByIds(ctx context.Context, ids []interface{}) ([]*T, error) {
 	var entities []*T
-	err := d.db.WithContext(ctx).Find(&entities, ids).Error
+	err := ExtractDB(ctx, d.db).Find(&entities, ids).Error
 	if err != nil {
 		return nil, errorc.New("批量查询记录失败", err).DB()
 	}
@@ -161,7 +161,7 @@ func (d *GormDaoImpl[T]) FindByIds(ctx context.Context, ids []interface{}) ([]*T
 
 func (d *GormDaoImpl[T]) FindByColumn(ctx context.Context, column string, value interface{}) ([]*T, error) {
 	var entities []*T
-	err := d.db.WithContext(ctx).Where(column+" = ?", value).Find(&entities).Error
+	err := ExtractDB(ctx, d.db).Where(column+" = ?", value).Find(&entities).Error
 	if err != nil {
 		return nil, errorc.New("查询记录失败", err).DB()
 	}
@@ -170,7 +170,7 @@ func (d *GormDaoImpl[T]) FindByColumn(ctx context.Context, column string, value 
 
 func (d *GormDaoImpl[T]) FindByUserId(ctx context.Context, userId interface{}) ([]*T, error) {
 	var entities []*T
-	err := d.db.WithContext(ctx).Where("user_id = ?", userId).Find(&entities).Error
+	err := ExtractDB(ctx, d.db).Where("user_id = ?", userId).Find(&entities).Error
 	if err != nil {
 		return nil, errorc.New("查询记录失败", err).DB()
 	}
@@ -179,7 +179,7 @@ func (d *GormDaoImpl[T]) FindByUserId(ctx context.Context, userId interface{}) (
 
 func (d *GormDaoImpl[T]) FindOneByColumn(ctx context.Context, column string, value interface{}) (*T, error) {
 	var entity T
-	err := d.db.WithContext(ctx).Where(column+" = ?", value).First(&entity).Error
+	err := ExtractDB(ctx, d.db).Where(column+" = ?", value).First(&entity).Error
 	if err != nil {
 		return nil, errorc.New("查询记录失败", err).DB()
 	}
@@ -188,7 +188,7 @@ func (d *GormDaoImpl[T]) FindOneByColumn(ctx context.Context, column string, val
 
 func (d *GormDaoImpl[T]) FindByMap(ctx context.Context, conditions map[string]interface{}) ([]*T, error) {
 	var entities []*T
-	err := d.db.WithContext(ctx).Where(conditions).Find(&entities).Error
+	err := ExtractDB(ctx, d.db).Where(conditions).Find(&entities).Error
 	if err != nil {
 		return nil, errorc.New("查询记录失败", err).DB()
 	}
@@ -197,7 +197,7 @@ func (d *GormDaoImpl[T]) FindByMap(ctx context.Context, conditions map[string]in
 
 func (d *GormDaoImpl[T]) FindOneByMap(ctx context.Context, conditions map[string]interface{}) (*T, error) {
 	var entity T
-	err := d.db.WithContext(ctx).Where(conditions).First(&entity).Error
+	err := ExtractDB(ctx, d.db).Where(conditions).First(&entity).Error
 	if err != nil {
 		return nil, errorc.New("查询记录失败", err).DB()
 	}
@@ -206,7 +206,7 @@ func (d *GormDaoImpl[T]) FindOneByMap(ctx context.Context, conditions map[string
 
 func (d *GormDaoImpl[T]) FindList(ctx context.Context, condition *T) ([]*T, error) {
 	var entities []*T
-	err := d.db.WithContext(ctx).Where(condition).Find(&entities).Error
+	err := ExtractDB(ctx, d.db).Where(condition).Find(&entities).Error
 	if err != nil {
 		return nil, errorc.New("查询记录失败", err).DB()
 	}
@@ -217,7 +217,7 @@ func (d *GormDaoImpl[T]) FindPage(ctx context.Context, page *Page, condition *T)
 	var entities []*T
 	var total int64
 
-	db := d.db.WithContext(ctx).Model(new(T))
+	db := ExtractDB(ctx, d.db).Model(new(T))
 	if condition != nil {
 		db = db.Where(condition)
 	}
@@ -258,7 +258,7 @@ func (d *GormDaoImpl[T]) FindPageByMap(ctx context.Context, page *Page, conditio
 	var entities []*T
 	var total int64
 
-	db := d.db.WithContext(ctx).Model(new(T))
+	db := ExtractDB(ctx, d.db).Model(new(T))
 	if condition != nil {
 		db = db.Where(condition)
 	}
@@ -297,7 +297,7 @@ func (d *GormDaoImpl[T]) FindPageByMap(ctx context.Context, page *Page, conditio
 
 func (d *GormDaoImpl[T]) Count(ctx context.Context, condition *T) (int64, error) {
 	var count int64
-	err := d.db.WithContext(ctx).Model(new(T)).Where(condition).Count(&count).Error
+	err := ExtractDB(ctx, d.db).Model(new(T)).Where(condition).Count(&count).Error
 	if err != nil {
 		return 0, errorc.New("查询记录失败", err).DB()
 	}
@@ -306,7 +306,7 @@ func (d *GormDaoImpl[T]) Count(ctx context.Context, condition *T) (int64, error)
 
 func (d *GormDaoImpl[T]) CountByMap(ctx context.Context, conditions map[string]interface{}) (int64, error) {
 	var count int64
-	err := d.db.WithContext(ctx).Model(new(T)).Where(conditions).Count(&count).Error
+	err := ExtractDB(ctx, d.db).Model(new(T)).Where(conditions).Count(&count).Error
 	if err != nil {
 		return 0, errorc.New("查询记录失败", err).DB()
 	}

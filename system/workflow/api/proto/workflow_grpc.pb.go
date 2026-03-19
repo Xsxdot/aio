@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v3.11.1
-// source: workflow.proto
+// source: system/workflow/api/proto/workflow.proto
 
 package proto
 
@@ -24,6 +24,14 @@ const (
 	WorkflowService_ReportNodeCompleted_FullMethodName = "/xiaozhizhang.workflow.v1.WorkflowService/ReportNodeCompleted"
 	WorkflowService_RollbackToNode_FullMethodName      = "/xiaozhizhang.workflow.v1.WorkflowService/RollbackToNode"
 	WorkflowService_GetExecutionTrail_FullMethodName   = "/xiaozhizhang.workflow.v1.WorkflowService/GetExecutionTrail"
+	WorkflowService_GetDef_FullMethodName              = "/xiaozhizhang.workflow.v1.WorkflowService/GetDef"
+	WorkflowService_ListDefs_FullMethodName            = "/xiaozhizhang.workflow.v1.WorkflowService/ListDefs"
+	WorkflowService_CreateIfNotExists_FullMethodName   = "/xiaozhizhang.workflow.v1.WorkflowService/CreateIfNotExists"
+	WorkflowService_GetInstance_FullMethodName         = "/xiaozhizhang.workflow.v1.WorkflowService/GetInstance"
+	WorkflowService_GetInstanceStatus_FullMethodName   = "/xiaozhizhang.workflow.v1.WorkflowService/GetInstanceStatus"
+	WorkflowService_ListInstances_FullMethodName       = "/xiaozhizhang.workflow.v1.WorkflowService/ListInstances"
+	WorkflowService_CancelInstance_FullMethodName      = "/xiaozhizhang.workflow.v1.WorkflowService/CancelInstance"
+	WorkflowService_RetryNode_FullMethodName           = "/xiaozhizhang.workflow.v1.WorkflowService/RetryNode"
 )
 
 // WorkflowServiceClient is the client API for WorkflowService service.
@@ -32,16 +40,19 @@ const (
 //
 // WorkflowService 工作流服务
 type WorkflowServiceClient interface {
-	// CreateDef 创建工作流定义
 	CreateDef(ctx context.Context, in *CreateDefRequest, opts ...grpc.CallOption) (*CreateDefResponse, error)
-	// StartWorkflow 启动工作流
 	StartWorkflow(ctx context.Context, in *StartWorkflowRequest, opts ...grpc.CallOption) (*StartWorkflowResponse, error)
-	// ReportNodeCompleted 报告节点完成（含人工审核、外部回调）
 	ReportNodeCompleted(ctx context.Context, in *ReportNodeCompletedRequest, opts ...grpc.CallOption) (*ReportNodeCompletedResponse, error)
-	// RollbackToNode 回滚到指定节点重新执行
 	RollbackToNode(ctx context.Context, in *RollbackToNodeRequest, opts ...grpc.CallOption) (*RollbackToNodeResponse, error)
-	// GetExecutionTrail 获取执行轨迹
 	GetExecutionTrail(ctx context.Context, in *GetExecutionTrailRequest, opts ...grpc.CallOption) (*GetExecutionTrailResponse, error)
+	GetDef(ctx context.Context, in *GetDefRequest, opts ...grpc.CallOption) (*GetDefResponse, error)
+	ListDefs(ctx context.Context, in *ListDefsRequest, opts ...grpc.CallOption) (*ListDefsResponse, error)
+	CreateIfNotExists(ctx context.Context, in *CreateIfNotExistsRequest, opts ...grpc.CallOption) (*CreateIfNotExistsResponse, error)
+	GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error)
+	GetInstanceStatus(ctx context.Context, in *GetInstanceStatusRequest, opts ...grpc.CallOption) (*GetInstanceStatusResponse, error)
+	ListInstances(ctx context.Context, in *ListInstancesRequest, opts ...grpc.CallOption) (*ListInstancesResponse, error)
+	CancelInstance(ctx context.Context, in *CancelInstanceRequest, opts ...grpc.CallOption) (*CancelInstanceResponse, error)
+	RetryNode(ctx context.Context, in *RetryNodeRequest, opts ...grpc.CallOption) (*RetryNodeResponse, error)
 }
 
 type workflowServiceClient struct {
@@ -102,22 +113,105 @@ func (c *workflowServiceClient) GetExecutionTrail(ctx context.Context, in *GetEx
 	return out, nil
 }
 
+func (c *workflowServiceClient) GetDef(ctx context.Context, in *GetDefRequest, opts ...grpc.CallOption) (*GetDefResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetDefResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_GetDef_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowServiceClient) ListDefs(ctx context.Context, in *ListDefsRequest, opts ...grpc.CallOption) (*ListDefsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListDefsResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_ListDefs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowServiceClient) CreateIfNotExists(ctx context.Context, in *CreateIfNotExistsRequest, opts ...grpc.CallOption) (*CreateIfNotExistsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateIfNotExistsResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_CreateIfNotExists_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowServiceClient) GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetInstanceResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_GetInstance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowServiceClient) GetInstanceStatus(ctx context.Context, in *GetInstanceStatusRequest, opts ...grpc.CallOption) (*GetInstanceStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetInstanceStatusResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_GetInstanceStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowServiceClient) ListInstances(ctx context.Context, in *ListInstancesRequest, opts ...grpc.CallOption) (*ListInstancesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListInstancesResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_ListInstances_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowServiceClient) CancelInstance(ctx context.Context, in *CancelInstanceRequest, opts ...grpc.CallOption) (*CancelInstanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CancelInstanceResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_CancelInstance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowServiceClient) RetryNode(ctx context.Context, in *RetryNodeRequest, opts ...grpc.CallOption) (*RetryNodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RetryNodeResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_RetryNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkflowServiceServer is the server API for WorkflowService service.
 // All implementations must embed UnimplementedWorkflowServiceServer
 // for forward compatibility.
 //
 // WorkflowService 工作流服务
 type WorkflowServiceServer interface {
-	// CreateDef 创建工作流定义
 	CreateDef(context.Context, *CreateDefRequest) (*CreateDefResponse, error)
-	// StartWorkflow 启动工作流
 	StartWorkflow(context.Context, *StartWorkflowRequest) (*StartWorkflowResponse, error)
-	// ReportNodeCompleted 报告节点完成（含人工审核、外部回调）
 	ReportNodeCompleted(context.Context, *ReportNodeCompletedRequest) (*ReportNodeCompletedResponse, error)
-	// RollbackToNode 回滚到指定节点重新执行
 	RollbackToNode(context.Context, *RollbackToNodeRequest) (*RollbackToNodeResponse, error)
-	// GetExecutionTrail 获取执行轨迹
 	GetExecutionTrail(context.Context, *GetExecutionTrailRequest) (*GetExecutionTrailResponse, error)
+	GetDef(context.Context, *GetDefRequest) (*GetDefResponse, error)
+	ListDefs(context.Context, *ListDefsRequest) (*ListDefsResponse, error)
+	CreateIfNotExists(context.Context, *CreateIfNotExistsRequest) (*CreateIfNotExistsResponse, error)
+	GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error)
+	GetInstanceStatus(context.Context, *GetInstanceStatusRequest) (*GetInstanceStatusResponse, error)
+	ListInstances(context.Context, *ListInstancesRequest) (*ListInstancesResponse, error)
+	CancelInstance(context.Context, *CancelInstanceRequest) (*CancelInstanceResponse, error)
+	RetryNode(context.Context, *RetryNodeRequest) (*RetryNodeResponse, error)
 	mustEmbedUnimplementedWorkflowServiceServer()
 }
 
@@ -142,6 +236,30 @@ func (UnimplementedWorkflowServiceServer) RollbackToNode(context.Context, *Rollb
 }
 func (UnimplementedWorkflowServiceServer) GetExecutionTrail(context.Context, *GetExecutionTrailRequest) (*GetExecutionTrailResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetExecutionTrail not implemented")
+}
+func (UnimplementedWorkflowServiceServer) GetDef(context.Context, *GetDefRequest) (*GetDefResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetDef not implemented")
+}
+func (UnimplementedWorkflowServiceServer) ListDefs(context.Context, *ListDefsRequest) (*ListDefsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListDefs not implemented")
+}
+func (UnimplementedWorkflowServiceServer) CreateIfNotExists(context.Context, *CreateIfNotExistsRequest) (*CreateIfNotExistsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateIfNotExists not implemented")
+}
+func (UnimplementedWorkflowServiceServer) GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetInstance not implemented")
+}
+func (UnimplementedWorkflowServiceServer) GetInstanceStatus(context.Context, *GetInstanceStatusRequest) (*GetInstanceStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetInstanceStatus not implemented")
+}
+func (UnimplementedWorkflowServiceServer) ListInstances(context.Context, *ListInstancesRequest) (*ListInstancesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListInstances not implemented")
+}
+func (UnimplementedWorkflowServiceServer) CancelInstance(context.Context, *CancelInstanceRequest) (*CancelInstanceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CancelInstance not implemented")
+}
+func (UnimplementedWorkflowServiceServer) RetryNode(context.Context, *RetryNodeRequest) (*RetryNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RetryNode not implemented")
 }
 func (UnimplementedWorkflowServiceServer) mustEmbedUnimplementedWorkflowServiceServer() {}
 func (UnimplementedWorkflowServiceServer) testEmbeddedByValue()                         {}
@@ -254,6 +372,150 @@ func _WorkflowService_GetExecutionTrail_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkflowService_GetDef_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDefRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).GetDef(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_GetDef_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).GetDef(ctx, req.(*GetDefRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowService_ListDefs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDefsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).ListDefs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_ListDefs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).ListDefs(ctx, req.(*ListDefsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowService_CreateIfNotExists_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateIfNotExistsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).CreateIfNotExists(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_CreateIfNotExists_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).CreateIfNotExists(ctx, req.(*CreateIfNotExistsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowService_GetInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetInstanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).GetInstance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_GetInstance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).GetInstance(ctx, req.(*GetInstanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowService_GetInstanceStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetInstanceStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).GetInstanceStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_GetInstanceStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).GetInstanceStatus(ctx, req.(*GetInstanceStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowService_ListInstances_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListInstancesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).ListInstances(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_ListInstances_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).ListInstances(ctx, req.(*ListInstancesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowService_CancelInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelInstanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).CancelInstance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_CancelInstance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).CancelInstance(ctx, req.(*CancelInstanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowService_RetryNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RetryNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).RetryNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_RetryNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).RetryNode(ctx, req.(*RetryNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WorkflowService_ServiceDesc is the grpc.ServiceDesc for WorkflowService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -281,7 +543,39 @@ var WorkflowService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetExecutionTrail",
 			Handler:    _WorkflowService_GetExecutionTrail_Handler,
 		},
+		{
+			MethodName: "GetDef",
+			Handler:    _WorkflowService_GetDef_Handler,
+		},
+		{
+			MethodName: "ListDefs",
+			Handler:    _WorkflowService_ListDefs_Handler,
+		},
+		{
+			MethodName: "CreateIfNotExists",
+			Handler:    _WorkflowService_CreateIfNotExists_Handler,
+		},
+		{
+			MethodName: "GetInstance",
+			Handler:    _WorkflowService_GetInstance_Handler,
+		},
+		{
+			MethodName: "GetInstanceStatus",
+			Handler:    _WorkflowService_GetInstanceStatus_Handler,
+		},
+		{
+			MethodName: "ListInstances",
+			Handler:    _WorkflowService_ListInstances_Handler,
+		},
+		{
+			MethodName: "CancelInstance",
+			Handler:    _WorkflowService_CancelInstance_Handler,
+		},
+		{
+			MethodName: "RetryNode",
+			Handler:    _WorkflowService_RetryNode_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "workflow.proto",
+	Metadata: "system/workflow/api/proto/workflow.proto",
 }

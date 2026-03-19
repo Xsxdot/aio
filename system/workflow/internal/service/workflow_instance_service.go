@@ -37,3 +37,8 @@ func (s *WorkflowInstanceService) FindByIdForUpdate(ctx context.Context, tx *gor
 func (s *WorkflowInstanceService) SaveWithTx(ctx context.Context, tx *gorm.DB, entity *model.WorkflowInstanceModel) error {
 	return s.dao.SaveWithTx(ctx, tx, entity)
 }
+
+// ListInstances 分页列出实例
+func (s *WorkflowInstanceService) ListInstances(ctx context.Context, filter *dao.ListInstancesFilter, pageNum, pageSize int32) ([]*model.WorkflowInstanceModel, int64, error) {
+	return s.dao.ListInstances(ctx, filter, pageNum, pageSize)
+}

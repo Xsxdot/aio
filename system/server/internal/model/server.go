@@ -12,7 +12,7 @@ type ServerModel struct {
 	IntranetHost     string      `gorm:"type:varchar(255);comment:内网地址" json:"intranetHost" comment:"内网地址"`
 	ExtranetHost     string      `gorm:"type:varchar(255);comment:外网地址" json:"extranetHost" comment:"外网地址"`
 	AgentGrpcAddress string      `gorm:"type:varchar(255);comment:Agent gRPC 地址（预留）" json:"agentGrpcAddress" comment:"Agent gRPC 地址"`
-	Enabled          bool        `gorm:"type:tinyint(1);not null;default:1;comment:是否启用" json:"enabled" comment:"是否启用"`
+	Enabled          bool        `gorm:"not null;default:true;comment:是否启用" json:"enabled" comment:"是否启用"`
 	Tags             common.JSON `gorm:"serializer:json;comment:标签（JSON）" json:"tags" comment:"标签"`
 	Comment          string      `gorm:"type:varchar(500);comment:备注" json:"comment" comment:"备注"`
 }

@@ -36,6 +36,20 @@ func (s *WorkflowDefService) FindByCode(ctx context.Context, code string) (*mode
 	return def, nil
 }
 
+// FindByCodeAndVersion 根据 code 和 version 查询定义
+func (s *WorkflowDefService) FindByCodeAndVersion(ctx context.Context, code string, version int32) (*model.WorkflowDefModel, error) {
+	def, err := s.dao.FindByCodeAndVersion(ctx, code, version)
+	if err != nil {
+		return nil, s.err.New("查询工作流定义失败", err).DB()
+	}
+	return def, nil
+}
+
+// ListDefs 分页列出定义
+func (s *WorkflowDefService) ListDefs(ctx context.Context, codeLike string, pageNum, pageSize int32) ([]*model.WorkflowDefModel, int64, error) {
+	return s.dao.ListDefs(ctx, codeLike, pageNum, pageSize)
+}
+
 // FindByIdWithTx 在事务内根据 ID 查询定义
 func (s *WorkflowDefService) FindByIdWithTx(ctx context.Context, tx *gorm.DB, id int64) (*model.WorkflowDefModel, error) {
 	def, err := s.dao.FindByIdWithTx(ctx, tx, id)
@@ -44,3 +58,4 @@ func (s *WorkflowDefService) FindByIdWithTx(ctx context.Context, tx *gorm.DB, id
 	}
 	return def, nil
 }
+

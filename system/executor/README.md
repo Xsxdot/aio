@@ -225,6 +225,52 @@ func executeWithHeartbeat(client pb.ExecutorServiceClient, jobID int64, attemptN
 }
 ```
 
+#### 2.4 使用 SDK Worker（推荐）
+
+SDK 提供两种 Worker 实现，无需手写轮询与续租逻辑：
+
+**ExecutorWorker（基础版）**：单任务串行执行，每轮询周期最多执行 1 个任务。
+
+```go
+import "github.com/xsxdot/aio/pkg/sdk"
+
+client := appRoot.ExecutorModule.Client
+worker, err := client.NewWorker(&sdk.WorkerConfig{
+    TargetService:   "user-service",
+    ConsumerID:       "worker-1",
+    LeaseDuration:   30,
+    TaskTimeout:     25 * time.Second,
+    PollInterval:    1 * time.Second,
+})
+worker.Register("SendEmailNotification", func(ctx context.Context, job *sdk.AcquiredJob) (interface{}, error) {
+    // 处理任务...
+    return nil, nil
+})
+worker.Start()
+defer worker.Stop()
+```
+
+**ConcurrentExecutorWorker（并发版）**：单轮询 + ConsumerID 池，适合 I/O 等待型任务。
+
+- **每轮最多 1 次 `AcquireJob` 调用**，空闲时不会产生 N 次拉取
+- **任务等待期间可继续拉取新任务**，最多同时执行 `MaxConcurrent` 个
+- 适合 HTTP/RPC、DB 查询等大部分时间在等待的场景
+
+```go
+import "github.com/xsxdot/aio/pkg/sdk"
+
+client := appRoot.ExecutorModule.Client
+cfg := sdk.DefaultConcurrentWorkerConfig("user-service")
+cfg.MaxConcurrent = 10 // 可按需调整
+worker, err := client.NewConcurrentWorker(cfg)
+worker.Register("CallExternalAPI", func(ctx context.Context, job *sdk.AcquiredJob) (interface{}, error) {
+    // 耗时但多属等待的 HTTP 调用
+    return callExternalAPI(job.ArgsJSON)
+})
+worker.Start()
+defer worker.Stop()
+```
+
 ### 3. 管理接口（HTTP）
 
 所有管理接口都需要管理员权限。

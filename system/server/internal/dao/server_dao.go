@@ -2,9 +2,12 @@ package dao
 
 import (
 	"context"
+	"fmt"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
+	"github.com/xsxdot/aio/pkg/db/dialect"
 	"github.com/xsxdot/aio/system/server/internal/model"
 
 	"gorm.io/gorm"
@@ -70,9 +73,13 @@ func (d *ServerDao) QueryWithPage(ctx context.Context, name string, tag string, 
 		query = query.Where("name LIKE ?", "%"+name+"%")
 	}
 
-	// 标签过滤
+	// 标签过滤（双兼容：MySQL JSON_CONTAINS / PostgreSQL jsonb @>）
 	if tag != "" {
-		query = query.Where("JSON_CONTAINS(tags, ?)", "\""+tag+"\"")
+		if dialect.IsPostgres(d.db) {
+			query = query.Where("tags::jsonb @> ?::jsonb", fmt.Sprintf(`["%s"]`, tag))
+		} else {
+			query = query.Where("JSON_CONTAINS(tags, ?)", "\""+tag+"\"")
+		}
 	}
 
 	// 启用状态过滤

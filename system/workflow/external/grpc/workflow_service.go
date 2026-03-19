@@ -9,6 +9,7 @@ import (
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/workflow/api/client"
 	pb "github.com/xsxdot/aio/system/workflow/api/proto"
+	"github.com/xsxdot/aio/system/workflow/internal/app"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -225,4 +226,195 @@ func (s *WorkflowService) GetExecutionTrail(ctx context.Context, req *pb.GetExec
 		ActiveNodeIds:  trail.ActiveNodeIDs,
 		Checkpoints:    checkpoints,
 	}, nil
+}
+
+// GetDef 查询定义，version=0 表示最新版本
+func (s *WorkflowService) GetDef(ctx context.Context, req *pb.GetDefRequest) (*pb.GetDefResponse, error) {
+	if strings.TrimSpace(req.Code) == "" {
+		return nil, status.Error(codes.InvalidArgument, "code 不能为空")
+	}
+	def, err := s.client.GetDef(ctx, req.Code, req.Version)
+	if err != nil {
+		s.log.WithErr(err).Error("查询工作流定义失败")
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if def == nil {
+		return &pb.GetDefResponse{NotFound: true}, nil
+	}
+	return &pb.GetDefResponse{
+		DefId:   def.ID,
+		Code:    def.Code,
+		Version: def.Version,
+		Name:    def.Name,
+		DagJson: def.DAGJSON,
+	}, nil
+}
+
+// ListDefs 分页列出定义
+func (s *WorkflowService) ListDefs(ctx context.Context, req *pb.ListDefsRequest) (*pb.ListDefsResponse, error) {
+	pageNum, pageSize := req.PageNum, req.PageSize
+	if pageNum <= 0 {
+		pageNum = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	items, total, err := s.client.ListDefs(ctx, req.CodeLike, pageNum, pageSize)
+	if err != nil {
+		s.log.WithErr(err).Error("列出工作流定义失败")
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	pbItems := make([]*pb.GetDefResponse, len(items))
+	for i, d := range items {
+		pbItems[i] = &pb.GetDefResponse{
+			DefId:   d.ID,
+			Code:    d.Code,
+			Version: d.Version,
+			Name:    d.Name,
+			DagJson: d.DAGJSON,
+		}
+	}
+	return &pb.ListDefsResponse{Items: pbItems, Total: total}, nil
+}
+
+// CreateIfNotExists 幂等创建定义
+func (s *WorkflowService) CreateIfNotExists(ctx context.Context, req *pb.CreateIfNotExistsRequest) (*pb.CreateIfNotExistsResponse, error) {
+	if strings.TrimSpace(req.Code) == "" {
+		return nil, status.Error(codes.InvalidArgument, "code 不能为空")
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		return nil, status.Error(codes.InvalidArgument, "name 不能为空")
+	}
+	if strings.TrimSpace(req.DagJson) == "" {
+		return nil, status.Error(codes.InvalidArgument, "dag_json 不能为空")
+	}
+	version := req.Version
+	if version <= 0 {
+		version = 1
+	}
+	defID, created, err := s.client.CreateIfNotExists(ctx, req.Code, req.Name, req.DagJson, version)
+	if err != nil {
+		s.log.WithErr(err).Error("幂等创建工作流定义失败")
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pb.CreateIfNotExistsResponse{DefId: defID, Created: created}, nil
+}
+
+// GetInstance 获取实例详情
+func (s *WorkflowService) GetInstance(ctx context.Context, req *pb.GetInstanceRequest) (*pb.GetInstanceResponse, error) {
+	if req.InstanceId <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "instance_id 不能为空")
+	}
+	inst, defCode, err := s.client.GetInstance(ctx, req.InstanceId)
+	if err != nil {
+		s.log.WithErr(err).Error("获取实例失败")
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if inst == nil {
+		return &pb.GetInstanceResponse{NotFound: true}, nil
+	}
+	createdAt := ""
+	if !inst.CreatedAt.IsZero() {
+		createdAt = inst.CreatedAt.Format("2006-01-02 15:04:05")
+	}
+	return &pb.GetInstanceResponse{
+		InstanceId:    inst.ID,
+		DefId:         inst.DefID,
+		DefCode:       defCode,
+		DefVersion:    inst.DefVersion,
+		Env:           inst.Env,
+		Status:        string(inst.Status),
+		InitialState:  inst.InitialState,
+		CurrentState:  inst.CurrentState,
+		ActiveNodeIds: inst.ActiveNodeIDs,
+		CreatedAt:     createdAt,
+	}, nil
+}
+
+// GetInstanceStatus 轻量查询实例状态
+func (s *WorkflowService) GetInstanceStatus(ctx context.Context, req *pb.GetInstanceStatusRequest) (*pb.GetInstanceStatusResponse, error) {
+	if req.InstanceId <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "instance_id 不能为空")
+	}
+	statusStr, err := s.client.GetInstanceStatus(ctx, req.InstanceId)
+	if err != nil {
+		s.log.WithErr(err).Error("获取实例状态失败")
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if statusStr == "" {
+		return &pb.GetInstanceStatusResponse{NotFound: true}, nil
+	}
+	return &pb.GetInstanceStatusResponse{Status: statusStr}, nil
+}
+
+// ListInstances 分页列出实例
+func (s *WorkflowService) ListInstances(ctx context.Context, req *pb.ListInstancesRequest) (*pb.ListInstancesResponse, error) {
+	pageNum, pageSize := req.PageNum, req.PageSize
+	if pageNum <= 0 {
+		pageNum = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	filter := &app.ListInstancesFilter{
+		DefCode:       req.DefCode,
+		Status:        req.Status,
+		CreatedAfter:  req.CreatedAfter,
+		CreatedBefore: req.CreatedBefore,
+	}
+	items, total, err := s.client.ListInstances(ctx, filter, pageNum, pageSize)
+	if err != nil {
+		s.log.WithErr(err).Error("列出实例失败")
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	pbItems := make([]*pb.GetInstanceResponse, len(items))
+	for i, inst := range items {
+		_, defCode, _ := s.client.GetInstance(ctx, inst.ID)
+		createdAt := ""
+		if !inst.CreatedAt.IsZero() {
+			createdAt = inst.CreatedAt.Format("2006-01-02 15:04:05")
+		}
+		pbItems[i] = &pb.GetInstanceResponse{
+			InstanceId:    inst.ID,
+			DefId:         inst.DefID,
+			DefCode:       defCode,
+			DefVersion:    inst.DefVersion,
+			Env:           inst.Env,
+			Status:        string(inst.Status),
+			InitialState:  inst.InitialState,
+			CurrentState:  inst.CurrentState,
+			ActiveNodeIds: inst.ActiveNodeIDs,
+			CreatedAt:     createdAt,
+		}
+	}
+	return &pb.ListInstancesResponse{Items: pbItems, Total: total}, nil
+}
+
+// CancelInstance 取消实例
+func (s *WorkflowService) CancelInstance(ctx context.Context, req *pb.CancelInstanceRequest) (*pb.CancelInstanceResponse, error) {
+	if req.InstanceId <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "instance_id 不能为空")
+	}
+	err := s.client.CancelInstance(ctx, req.InstanceId)
+	if err != nil {
+		s.log.WithErr(err).Error("取消实例失败")
+		return &pb.CancelInstanceResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &pb.CancelInstanceResponse{Success: true, Message: "取消成功"}, nil
+}
+
+// RetryNode 重试失败节点
+func (s *WorkflowService) RetryNode(ctx context.Context, req *pb.RetryNodeRequest) (*pb.RetryNodeResponse, error) {
+	if req.InstanceId <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "instance_id 不能为空")
+	}
+	if strings.TrimSpace(req.NodeId) == "" {
+		return nil, status.Error(codes.InvalidArgument, "node_id 不能为空")
+	}
+	err := s.client.RetryNode(ctx, req.InstanceId, req.NodeId)
+	if err != nil {
+		s.log.WithErr(err).Error("重试节点失败")
+		return &pb.RetryNodeResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &pb.RetryNodeResponse{Success: true, Message: "重试成功"}, nil
 }

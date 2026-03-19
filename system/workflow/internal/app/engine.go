@@ -5,14 +5,295 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/expr-lang/expr"
 	"github.com/xsxdot/aio/base"
+	errorc "github.com/xsxdot/aio/pkg/core/err"
 	executorDto "github.com/xsxdot/aio/system/executor/api/dto"
 	"github.com/xsxdot/aio/system/workflow/internal/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+// workflowStateData 和 workflowStateSys 用于新结构的 data、_sys 段
+type workflowStateData map[string]interface{}
+type workflowStateSys map[string]interface{}
+
+// parseWorkflowState 解析 CurrentState：新结构 {"data":{...},"_sys":{...}} 或旧结构（整段为 data）
+func parseWorkflowState(raw string) (workflowStateData, workflowStateSys, error) {
+	var top map[string]interface{}
+	if raw != "" {
+		if err := json.Unmarshal([]byte(raw), &top); err != nil {
+			return nil, nil, err
+		}
+	}
+	if top == nil {
+		top = make(map[string]interface{})
+	}
+	dataVal, hasData := top["data"]
+	sysVal, hasSys := top["_sys"]
+	if hasData {
+		if m, ok := dataVal.(map[string]interface{}); ok {
+			sys := make(workflowStateSys)
+			if hasSys && sysVal != nil {
+				if sm, ok := sysVal.(map[string]interface{}); ok {
+					sys = sm
+				}
+			}
+			return workflowStateData(m), sys, nil
+		}
+	}
+	return workflowStateData(top), make(workflowStateSys), nil
+}
+
+// serializeWorkflowState 序列化 state 为 JSON
+func serializeWorkflowState(data workflowStateData, sys workflowStateSys) (string, error) {
+	if data == nil {
+		data = make(workflowStateData)
+	}
+	if sys == nil {
+		sys = make(workflowStateSys)
+	}
+	top := map[string]interface{}{"data": data, "_sys": sys}
+	b, err := json.Marshal(top)
+	return string(b), err
+}
+
+// stateUpdateMode 状态更新模式
+const (
+	stateUpdateOverwrite  = "overwrite"
+	stateUpdateAppend     = "append"
+	stateUpdateDeepMerge  = "deep_merge"
+)
+
+// applyStateReducer 根据节点配置将 output 合并进 data（overwrite/append/deep_merge）
+func applyStateReducer(data workflowStateData, output map[string]interface{}, nodeConfig map[string]interface{}) {
+	if data == nil || output == nil {
+		return
+	}
+	mode := stateUpdateOverwrite
+	if m, ok := nodeConfig["state_update_mode"].(string); ok && m != "" {
+		mode = m
+	}
+	outputKey, hasOutputKey := nodeConfig["output_key"].(string)
+
+	switch mode {
+	case stateUpdateAppend:
+		if hasOutputKey {
+			existing := data[outputKey]
+			var arr []interface{}
+			if s, ok := existing.([]interface{}); ok {
+				arr = s
+			}
+			data[outputKey] = append(arr, output)
+		} else {
+			for k, v := range output {
+				existing := data[k]
+				if s, ok := existing.([]interface{}); ok {
+					data[k] = append(s, v)
+				} else {
+					// 修复：强制包装为数组，保证下一次能继续 append
+					data[k] = []interface{}{v}
+				}
+			}
+		}
+	case stateUpdateDeepMerge:
+		for k, v := range output {
+			if existing, ok := data[k]; ok && existing != nil && v != nil {
+				if em, ok := existing.(map[string]interface{}); ok {
+					if vm, ok := v.(map[string]interface{}); ok {
+						data[k] = deepMergeMaps(em, vm)
+						continue
+					}
+				}
+			}
+			data[k] = v
+		}
+	default:
+		for k, v := range output {
+			data[k] = v
+		}
+	}
+}
+
+func deepMergeMaps(base, override map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{})
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range override {
+		if v == nil {
+			out[k] = v
+			continue
+		}
+		if existing, ok := out[k]; ok && existing != nil {
+			if em, ok := existing.(map[string]interface{}); ok {
+				if vm, ok := v.(map[string]interface{}); ok {
+					out[k] = deepMergeMaps(em, vm)
+					continue
+				}
+			}
+		}
+		out[k] = v
+	}
+	return out
+}
+
+// getValueAtPath 按简单点分隔路径从 data 中取值，支持数组
+func getValueAtPath(data map[string]interface{}, path string) interface{} {
+	if data == nil || path == "" {
+		return nil
+	}
+	parts := strings.Split(path, ".")
+	cur := interface{}(data)
+	for _, key := range parts {
+		if cur == nil {
+			return nil
+		}
+		if m, ok := cur.(map[string]interface{}); ok {
+			cur = m[key]
+		} else {
+			return nil
+		}
+	}
+	return cur
+}
+
+// setValueAtPath 按简单点分隔路径设置 data 中的值，如 "state.key" 或 "key"
+func setValueAtPath(data map[string]interface{}, path string, value interface{}) {
+	if data == nil || path == "" {
+		return
+	}
+	parts := strings.Split(path, ".")
+	if len(parts) == 1 {
+		data[path] = value
+		return
+	}
+	cur := map[string]interface{}(data)
+	for i := 0; i < len(parts)-1; i++ {
+		key := parts[i]
+		nextVal, ok := cur[key]
+		if !ok || nextVal == nil {
+			next := make(map[string]interface{})
+			cur[key] = next
+			cur = next
+		} else if m, ok := nextVal.(map[string]interface{}); ok {
+			cur = m
+		} else {
+			next := make(map[string]interface{})
+			cur[key] = next
+			cur = next
+		}
+	}
+	cur[parts[len(parts)-1]] = value
+}
+
+// handleMapSubTaskCompleted 处理 Map 节点的子任务回调，聚合结果，计数器归零时写 output_path 并触发下游
+func (a *App) handleMapSubTaskCompleted(tx *gorm.DB, instance *model.WorkflowInstanceModel, nodeID string, subID int, output map[string]interface{}, data workflowStateData, sys workflowStateSys, dag *model.DAG, nextNodeIDs *[]string) (bool, error) {
+	_, hasErrorMsg := output["error_msg"]
+	if hasErrorMsg {
+		return false, nil
+	}
+	mapCounters, _ := sys["map_counters"].(map[string]interface{})
+	mapResults, _ := sys["map_results"].(map[string]interface{})
+	if mapCounters == nil || mapResults == nil {
+		return true, nil // 修复：说明整个 Map 节点已被之前的 Error 熔断抛弃，安全吞掉后续的孤儿回调
+	}
+	countVal, exists := mapCounters[nodeID]
+	if !exists {
+		return true, nil // 修复：同上，安全吞掉
+	}
+	var count int
+	switch v := countVal.(type) {
+	case float64:
+		count = int(v)
+	case int:
+		count = v
+	case int64:
+		count = int(v)
+	default:
+		return true, nil // 修复：类型异常也应抛弃，不能漏下去
+	}
+	resultsRaw := mapResults[nodeID]
+	resultsArr, ok := resultsRaw.([]interface{})
+	if !ok || resultsArr == nil || subID < 0 || subID >= len(resultsArr) {
+		return true, nil // 修复：无效结果也应吞掉，防止幽灵触发
+	}
+	resultsArr[subID] = output
+	count--
+	mapCounters[nodeID] = count
+	newStateStr, _ := serializeWorkflowState(data, sys)
+	instance.CurrentState = newStateStr
+	if count > 0 {
+		return true, tx.Save(instance).Error
+	}
+	node := dag.GetNode(nodeID)
+	if node == nil {
+		return true, nil
+	}
+	outputPath, _ := node.Config["output_path"].(string)
+	if outputPath != "" {
+		setValueAtPath(data, outputPath, resultsArr)
+	}
+	delete(mapCounters, nodeID)
+	delete(mapResults, nodeID)
+	newStateStr, _ = serializeWorkflowState(data, sys)
+	instance.CurrentState = newStateStr
+	var activeNodes []string
+	if instance.ActiveNodeIDs != "" {
+		_ = json.Unmarshal([]byte(instance.ActiveNodeIDs), &activeNodes)
+	}
+	newActiveNodes := make([]string, 0)
+	for _, n := range activeNodes {
+		if n != nodeID {
+			newActiveNodes = append(newActiveNodes, n)
+		}
+	}
+	outputBytes, _ := json.Marshal(map[string]interface{}{"merged": resultsArr})
+	if err := tx.Create(&model.WorkflowCheckpointModel{
+		InstanceID: instance.ID,
+		NodeID:     nodeID,
+		NodeOutput: string(outputBytes),
+		StateAfter: newStateStr,
+	}).Error; err != nil {
+		return true, err
+	}
+	outEdges := dag.GetOutgoingEdges(nodeID)
+	for _, edge := range outEdges {
+		if edge.Type == model.EdgeTypeError {
+			continue
+		}
+		pass, err := a.evaluateCondition(edge.Condition, data)
+		if err != nil {
+			a.log.WithErr(err).Errorf("评估 map 下游边 %s->%s 条件失败", edge.From, edge.To)
+			continue
+		}
+		if pass {
+			var cpCount int64
+			tx.Model(&model.WorkflowCheckpointModel{}).
+				Where("instance_id = ? AND node_id = ?", instance.ID, edge.To).
+				Count(&cpCount)
+			inActive := false
+			for _, an := range newActiveNodes {
+				if an == edge.To {
+					inActive = true
+					break
+				}
+			}
+			if cpCount == 0 && !inActive {
+				*nextNodeIDs = append(*nextNodeIDs, edge.To)
+				newActiveNodes = append(newActiveNodes, edge.To)
+			}
+		}
+	}
+	activeNodesBytes, _ := json.Marshal(newActiveNodes)
+	instance.ActiveNodeIDs = string(activeNodesBytes)
+	if len(newActiveNodes) == 0 {
+		instance.Status = model.InstanceStatusCompleted
+	}
+	return true, tx.Save(instance).Error
+}
 
 // StartWorkflow 启动一个新的工作流实例，任一起始节点触发失败则将实例标记为 FAILED
 // env 用于 Executor 任务隔离，空则用 base.ENV
@@ -40,9 +321,9 @@ func (a *App) StartWorkflow(ctx context.Context, defCode string, initialData map
 		activeNodeIDs = append(activeNodeIDs, n.ID)
 	}
 
-	initialDataJSON, err := json.Marshal(initialData)
+	stateStr, err := serializeWorkflowState(workflowStateData(initialData), make(workflowStateSys))
 	if err != nil {
-		return 0, a.err.New("序列化初始数据失败", err)
+		return 0, a.err.New("序列化初始状态失败", err)
 	}
 	activeNodesJSON, err := json.Marshal(activeNodeIDs)
 	if err != nil {
@@ -54,8 +335,8 @@ func (a *App) StartWorkflow(ctx context.Context, defCode string, initialData map
 		DefVersion:    def.Version,
 		Env:           env,
 		Status:        model.InstanceStatusRunning,
-		InitialState:  string(initialDataJSON),
-		CurrentState:  string(initialDataJSON),
+		InitialState:  stateStr,
+		CurrentState:  stateStr,
 		ActiveNodeIDs: string(activeNodesJSON),
 	}
 
@@ -80,7 +361,12 @@ func (a *App) StartWorkflow(ctx context.Context, defCode string, initialData map
 
 // ReportNodeCompleted 报告节点执行完成，引擎将自动推进状态机
 // env 用于触发后续节点时 Executor 任务隔离，空则用实例存储的 Env，再空则用 base.ENV
-func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID string, output map[string]interface{}, env string) error {
+// subJobID 为 Map 子任务时传入（>=0），否则传 -1 或不传
+func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID string, output map[string]interface{}, env string, subJobID ...int) error {
+	subID := -1
+	if len(subJobID) > 0 {
+		subID = subJobID[0]
+	}
 	var nextNodeIDs []string
 	var instance model.WorkflowInstanceModel
 	var dag model.DAG
@@ -104,24 +390,149 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 			instance.Status = model.InstanceStatusRunning
 		}
 
-		// 2. 更新 CurrentState
-		var currentState map[string]interface{}
-		if instance.CurrentState != "" {
-			if err := json.Unmarshal([]byte(instance.CurrentState), &currentState); err != nil {
-				return fmt.Errorf("解析 CurrentState 失败: %w", err)
+		// 2. 解析 CurrentState（data/_sys）、获取 DAG（需在边选择前加载）
+		data, sys, err := parseWorkflowState(instance.CurrentState)
+		if err != nil {
+			return fmt.Errorf("解析 CurrentState 失败: %w", err)
+		}
+		if data == nil {
+			data = make(workflowStateData)
+		}
+		if sys == nil {
+			sys = make(workflowStateSys)
+		}
+
+		var def model.WorkflowDefModel
+		if err := tx.Where("id = ?", instance.DefID).First(&def).Error; err != nil {
+			return err
+		}
+		if err := json.Unmarshal([]byte(def.DAGJSON), &dag); err != nil {
+			return fmt.Errorf("解析 DAG 失败: %w", err)
+		}
+
+		// 3. Map 子任务回调：聚合结果，计数器归零时写 output_path 并触发下游
+		if subID >= 0 {
+			handled, err := a.handleMapSubTaskCompleted(tx, &instance, nodeID, subID, output, data, sys, &dag, &nextNodeIDs)
+			if err != nil {
+				return err
+			}
+			if handled {
+				return nil
 			}
 		}
-		if currentState == nil {
-			currentState = make(map[string]interface{})
+
+		// 4. 检测是否为 Executor 最终失败回调（带 error_msg），走 error 边或置实例 FAILED
+		_, hasErrorMsg := output["error_msg"]
+		if hasErrorMsg {
+			// 修复：如果是 Map 节点的子任务报错，立即清除 Latch 计数，防止幽灵并发
+			if subID >= 0 {
+				if counters, ok := sys["map_counters"].(map[string]interface{}); ok {
+					delete(counters, nodeID)
+				}
+				if results, ok := sys["map_results"].(map[string]interface{}); ok {
+					delete(results, nodeID)
+				}
+			}
+			outEdges := dag.GetOutgoingEdges(nodeID)
+			var errorEdges []model.Edge
+			for _, e := range outEdges {
+				if e.Type == model.EdgeTypeError || e.Type == model.EdgeTypeAlways {
+					errorEdges = append(errorEdges, e)
+				}
+			}
+			if len(errorEdges) == 0 {
+				instance.Status = model.InstanceStatusFailed
+				activeNodesBytes, _ := json.Marshal([]string{})
+				instance.ActiveNodeIDs = string(activeNodesBytes)
+				outputBytes, _ := json.Marshal(output)
+				_ = tx.Create(&model.WorkflowCheckpointModel{
+					InstanceID: instance.ID,
+					NodeID:     nodeID,
+					NodeOutput: string(outputBytes),
+					StateAfter: instance.CurrentState,
+				}).Error
+				if err := tx.Save(&instance).Error; err != nil {
+					return err
+				}
+				return nil
+			}
+			for k, v := range output {
+				data[k] = v
+			}
+			newStateStr, _ := serializeWorkflowState(data, sys)
+			instance.CurrentState = newStateStr
+
+			var activeNodes []string
+			if instance.ActiveNodeIDs != "" {
+				_ = json.Unmarshal([]byte(instance.ActiveNodeIDs), &activeNodes)
+			}
+			newActiveNodes := make([]string, 0)
+			for _, n := range activeNodes {
+				if n != nodeID {
+					newActiveNodes = append(newActiveNodes, n)
+				}
+			}
+
+			for _, edge := range errorEdges {
+				pass, err := a.evaluateCondition(edge.Condition, data)
+				if err != nil {
+					a.log.WithErr(err).Errorf("评估 error 边 %s->%s 条件失败", edge.From, edge.To)
+					continue
+				}
+				if pass {
+					var cpCount int64
+					tx.Model(&model.WorkflowCheckpointModel{}).
+						Where("instance_id = ? AND node_id = ?", instance.ID, edge.To).
+						Count(&cpCount)
+					inActive := false
+					for _, an := range newActiveNodes {
+						if an == edge.To {
+							inActive = true
+							break
+						}
+					}
+					if cpCount == 0 && !inActive {
+						nextNodeIDs = append(nextNodeIDs, edge.To)
+						newActiveNodes = append(newActiveNodes, edge.To)
+					}
+				}
+			}
+
+			outputBytes, _ := json.Marshal(output)
+			if err := tx.Create(&model.WorkflowCheckpointModel{
+				InstanceID: instance.ID,
+				NodeID:     nodeID,
+				NodeOutput: string(outputBytes),
+				StateAfter: newStateStr,
+			}).Error; err != nil {
+				return err
+			}
+
+			activeNodesBytes, _ := json.Marshal(newActiveNodes)
+			instance.ActiveNodeIDs = string(activeNodesBytes)
+			if len(newActiveNodes) == 0 {
+				// 修复：因为是 error 触发的流转，如果无路可走，说明降级失败，应彻底宕机
+				instance.Status = model.InstanceStatusFailed
+			}
+			if err := tx.Save(&instance).Error; err != nil {
+				return err
+			}
+			return nil
 		}
 
-		for k, v := range output {
-			currentState[k] = v
+		// 4. 正常成功路径：使用 state_update_mode 合并状态，排除 error 边
+		node := dag.GetNode(nodeID)
+		var nodeConfig map[string]interface{}
+		if node != nil {
+			nodeConfig = node.Config
 		}
-		newStateBytes, _ := json.Marshal(currentState)
-		instance.CurrentState = string(newStateBytes)
+		applyStateReducer(data, output, nodeConfig)
+		newStateStr, err := serializeWorkflowState(data, sys)
+		if err != nil {
+			return fmt.Errorf("序列化状态失败: %w", err)
+		}
+		instance.CurrentState = newStateStr
 
-		// 3. 更新 ActiveNodeIDs
 		var activeNodes []string
 		if instance.ActiveNodeIDs != "" {
 			if err := json.Unmarshal([]byte(instance.ActiveNodeIDs), &activeNodes); err != nil {
@@ -135,41 +546,31 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 			}
 		}
 
-		// 4. 保存 Checkpoint
 		outputBytes, _ := json.Marshal(output)
-		checkpoint := &model.WorkflowCheckpointModel{
+		if err := tx.Create(&model.WorkflowCheckpointModel{
 			InstanceID: instance.ID,
 			NodeID:     nodeID,
 			NodeOutput: string(outputBytes),
-			StateAfter: string(newStateBytes),
-		}
-		if err := tx.Create(checkpoint).Error; err != nil {
+			StateAfter: newStateStr,
+		}).Error; err != nil {
 			return err
-		}
-
-		// 5. 获取 DAG 解析下一步
-		var def model.WorkflowDefModel
-		if err := tx.Where("id = ?", instance.DefID).First(&def).Error; err != nil {
-			return err
-		}
-		if err := json.Unmarshal([]byte(def.DAGJSON), &dag); err != nil {
-			return fmt.Errorf("解析 DAG 失败: %w", err)
 		}
 
 		outEdges := dag.GetOutgoingEdges(nodeID)
 		for _, edge := range outEdges {
-			pass, err := a.evaluateCondition(edge.Condition, currentState)
+			if edge.Type == model.EdgeTypeError {
+				continue
+			}
+			pass, err := a.evaluateCondition(edge.Condition, data)
 			if err != nil {
 				a.log.WithErr(err).Errorf("评估边 %s->%s 条件失败", edge.From, edge.To)
 				continue
 			}
 			if pass {
-				// 防止重复触发
 				var cpCount int64
 				tx.Model(&model.WorkflowCheckpointModel{}).
 					Where("instance_id = ? AND node_id = ?", instance.ID, edge.To).
 					Count(&cpCount)
-
 				inActive := false
 				for _, an := range newActiveNodes {
 					if an == edge.To {
@@ -177,7 +578,6 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 						break
 					}
 				}
-
 				if cpCount == 0 && !inActive {
 					nextNodeIDs = append(nextNodeIDs, edge.To)
 					newActiveNodes = append(newActiveNodes, edge.To)
@@ -185,7 +585,6 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 			}
 		}
 
-		// 6. 保存实例状态
 		activeNodesBytes, _ := json.Marshal(newActiveNodes)
 		instance.ActiveNodeIDs = string(activeNodesBytes)
 		if len(newActiveNodes) == 0 {
@@ -209,6 +608,12 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 		if node != nil {
 			if err := a.triggerNode(ctx, &instance, node, &dag, env); err != nil {
 				a.log.WithErr(err).Errorf("触发后续节点 %s 失败", node.ID)
+
+				// 修复：防假死机制。如果无法触发下个节点，将实例挂起为 FAILED
+				instance.Status = model.InstanceStatusFailed
+				if _, updErr := a.InstanceService.UpdateById(ctx, instance.ID, &instance); updErr != nil {
+					a.log.WithErr(updErr).Errorf("尝试将假死实例置为 FAILED 失败: %d", instance.ID)
+				}
 			}
 		}
 	}
@@ -266,6 +671,116 @@ func (a *App) triggerNode(ctx context.Context, instance *model.WorkflowInstanceM
 	case model.NodeTypeCondition:
 		// 路由网关节点，不执行实际操作，立即计算后续分支
 		return a.ReportNodeCompleted(ctx, instance.ID, node.ID, nil, env)
+
+	case model.NodeTypeMap:
+		return a.triggerMapNode(ctx, instance, node, dag, env)
+	}
+	return nil
+}
+
+// triggerMapNode 触发 Map 节点：根据 items_path 获取数组，派发 N 个子任务，初始化 Latch
+func (a *App) triggerMapNode(ctx context.Context, instance *model.WorkflowInstanceModel, node *model.Node, dag *model.DAG, env string) error {
+	if env == "" {
+		env = base.ENV
+	}
+	itemsPath, _ := node.Config["items_path"].(string)
+	if itemsPath == "" {
+		return a.err.New("Map 节点缺少 items_path 配置", nil)
+	}
+	data, sys, err := parseWorkflowState(instance.CurrentState)
+	if err != nil {
+		return a.err.New("解析状态失败", err)
+	}
+	if data == nil {
+		data = make(workflowStateData)
+	}
+	if sys == nil {
+		sys = make(workflowStateSys)
+	}
+	itemsRaw := getValueAtPath(data, itemsPath)
+	itemsArr, ok := itemsRaw.([]interface{})
+	if !ok || len(itemsArr) == 0 {
+		return a.err.New("Map 节点 items_path 对应值非数组或为空", nil)
+	}
+	N := len(itemsArr)
+	iteratorConf, _ := node.Config["iterator"].(map[string]interface{})
+	var serviceName, methodName string
+	if iteratorConf != nil {
+		if s, ok := iteratorConf["service"].(string); ok {
+			serviceName = s
+		}
+		if m, ok := iteratorConf["method"].(string); ok {
+			methodName = m
+		}
+	}
+	if serviceName == "" || methodName == "" {
+		return a.err.New("Map 节点 iterator 缺少 service 或 method", nil)
+	}
+	itemAlias, _ := node.Config["item_alias"].(string)
+	if itemAlias == "" {
+		itemAlias = "item"
+	}
+	if mapCounters, ok := sys["map_counters"].(map[string]interface{}); ok {
+		if mapCounters == nil {
+			mapCounters = make(map[string]interface{})
+			sys["map_counters"] = mapCounters
+		}
+		mapCounters[node.ID] = N
+	} else {
+		sys["map_counters"] = map[string]interface{}{node.ID: N}
+	}
+	results := make([]interface{}, N)
+	if mapResults, ok := sys["map_results"].(map[string]interface{}); ok {
+		if mapResults == nil {
+			mapResults = make(map[string]interface{})
+			sys["map_results"] = mapResults
+		}
+		mapResults[node.ID] = results
+	} else {
+		sys["map_results"] = map[string]interface{}{node.ID: results}
+	}
+	newStateStr, err := serializeWorkflowState(data, sys)
+	if err != nil {
+		return a.err.New("序列化状态失败", err)
+	}
+	instance.CurrentState = newStateStr
+	if _, err := a.InstanceService.UpdateById(ctx, instance.ID, instance); err != nil {
+		return a.err.New("更新实例状态失败", err)
+	}
+	for i := 0; i < N; i++ {
+		item := itemsArr[i]
+		subPayload := map[string]interface{}{
+			"instance_id": instance.ID,
+			"node_id":     node.ID,
+			"state":       instance.CurrentState,
+			"config":      node.Config,
+			itemAlias:     item,
+		}
+		payloadBytes, _ := json.Marshal(subPayload)
+		callbackDataBytes, _ := json.Marshal(map[string]interface{}{
+			"instance_id": instance.ID,
+			"node_id":     node.ID,
+			"env":         env,
+			"sub_job_id":  i,
+		})
+		callbackData := string(callbackDataBytes)
+		dedupKey := fmt.Sprintf("wf_%d_node_%s_sub_%d", instance.ID, node.ID, i)
+		_, err := a.ExecutorClient.SubmitJob(ctx, &executorDto.SubmitJobInput{
+			Env:              env,
+			TargetService:    serviceName,
+			Method:           methodName,
+			ArgsJSON:         string(payloadBytes),
+			RunAt:            0,
+			MaxAttempts:      3,
+			Priority:         0,
+			DedupKey:         dedupKey,
+			RetryBackoffType: executorDto.RetryBackoffExponential,
+			Source:           "workflow",
+			CallbackData:     callbackData,
+		})
+		if err != nil {
+			return a.err.New("提交 Map 子任务到 Executor 失败", err)
+		}
 	}
 	return nil
 }
@@ -371,7 +886,9 @@ func (a *App) RollbackToNode(ctx context.Context, instanceID int64, targetNodeID
 			return err
 		}
 
-		for i, cp := range checkpoints {
+		// 修复：从最新的检查点开始往回找，保留循环节点多次执行后的最新数据
+		for i := len(checkpoints) - 1; i >= 0; i-- {
+			cp := checkpoints[i]
 			if cp.NodeID == targetNodeID {
 				deleteFromIndex = i
 				if i == 0 {
@@ -495,7 +1012,7 @@ func (a *App) GetExecutionTrail(ctx context.Context, instanceID int64) (*Executi
 			NodeID:     cp.NodeID,
 			NodeOutput: nodeOutput,
 			StateAfter: stateAfter,
-			CreatedAt:  cp.CreatedAt.Format("2006-01-02 15:04:05"),
+			CreatedAt:  cp.CreatedAt.Format(time.RFC3339),
 		})
 	}
 
@@ -506,4 +1023,205 @@ func (a *App) GetExecutionTrail(ctx context.Context, instanceID int64) (*Executi
 		ActiveNodeIDs: instance.ActiveNodeIDs,
 		Checkpoints:   trail,
 	}, nil
+}
+
+// CancelInstance 取消运行中的实例（仅 RUNNING/WAITING 可取消）
+func (a *App) CancelInstance(ctx context.Context, instanceID int64) error {
+	instance, err := a.InstanceService.FindById(ctx, instanceID)
+	if err != nil {
+		return a.err.New("获取实例失败", err)
+	}
+	if instance.Status != model.InstanceStatusRunning && instance.Status != model.InstanceStatusWaiting {
+		return a.err.New("只有运行中或等待中的实例才能取消", nil).WithCode(errorc.ErrorCodeValid)
+	}
+	instance.Status = model.InstanceStatusCanceled
+	if _, err := a.InstanceService.UpdateById(ctx, instance.ID, instance); err != nil {
+		return a.err.New("更新实例状态失败", err)
+	}
+	env := instance.Env
+	if env == "" {
+		env = base.ENV
+	}
+	var activeNodes []string
+	if instance.ActiveNodeIDs != "" {
+		_ = json.Unmarshal([]byte(instance.ActiveNodeIDs), &activeNodes)
+	}
+	for _, nodeID := range activeNodes {
+		dedupKey := fmt.Sprintf("wf_%d_node_%s", instanceID, nodeID)
+		_ = a.ExecutorClient.CancelJobByDedupKey(ctx, env, dedupKey)
+	}
+	return nil
+}
+
+// RetryNode 重试失败节点（仅 FAILED 实例可重试）
+func (a *App) RetryNode(ctx context.Context, instanceID int64, nodeID string) error {
+	var instance *model.WorkflowInstanceModel
+	var dag model.DAG
+	var stateToRestore string
+	var deleteFromIndex int = -1
+
+	err := base.DB.Transaction(func(tx *gorm.DB) error {
+		inst, err := a.InstanceService.FindByIdForUpdate(ctx, tx, instanceID)
+		if err != nil {
+			return err
+		}
+		instance = inst
+		if instance.Status != model.InstanceStatusFailed {
+			return fmt.Errorf("只有失败状态的实例才能重试节点: %s", instance.Status)
+		}
+		def, err := a.DefService.FindByIdWithTx(ctx, tx, instance.DefID)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal([]byte(def.DAGJSON), &dag); err != nil {
+			return fmt.Errorf("解析DAG失败: %w", err)
+		}
+		if dag.GetNode(nodeID) == nil {
+			return fmt.Errorf("目标节点不存在: %s", nodeID)
+		}
+		checkpoints, err := a.CheckpointService.ListByInstanceIDOrderByCreatedAscWithTx(ctx, tx, instanceID)
+		if err != nil {
+			return err
+		}
+		// 修复：RetryNode 也必须逆序查找最新检查点，与 RollbackToNode 一致
+		for i := len(checkpoints) - 1; i >= 0; i-- {
+			cp := checkpoints[i]
+			if cp.NodeID == nodeID {
+				deleteFromIndex = i
+				if i == 0 {
+					stateToRestore = instance.InitialState
+				} else {
+					stateToRestore = checkpoints[i-1].StateAfter
+				}
+				break
+			}
+		}
+		startNodes := dag.GetStartNodes()
+		for _, sn := range startNodes {
+			if sn.ID == nodeID {
+				stateToRestore = instance.InitialState
+				deleteFromIndex = 0
+				break
+			}
+		}
+		if deleteFromIndex < 0 {
+			return fmt.Errorf("目标节点尚未执行过，无法重试")
+		}
+		if deleteFromIndex < len(checkpoints) {
+			if err := a.CheckpointService.DeleteFromIndexWithTx(ctx, tx, instanceID, deleteFromIndex); err != nil {
+				return err
+			}
+		}
+		instance.CurrentState = stateToRestore
+		instance.ActiveNodeIDs = fmt.Sprintf(`["%s"]`, nodeID)
+		instance.Status = model.InstanceStatusRunning
+		return a.InstanceService.SaveWithTx(ctx, tx, instance)
+	})
+	if err != nil {
+		return a.err.New("重试节点失败", err)
+	}
+	env := instance.Env
+	if env == "" {
+		env = base.ENV
+	}
+	node := dag.GetNode(nodeID)
+	if node != nil {
+		return a.triggerNode(ctx, instance, node, &dag, env)
+	}
+	return nil
+}
+
+// SendSignal 接收外部信号，合并 Payload 入 state，可选唤醒指定节点继续执行
+func (a *App) SendSignal(ctx context.Context, instanceID int64, signalName string, payload map[string]interface{}, wakeupNode string, env string) error {
+	var instance model.WorkflowInstanceModel
+	var dag model.DAG
+
+	err := base.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", instanceID).First(&instance).Error; err != nil {
+			return err
+		}
+		if instance.Status != model.InstanceStatusCompleted && instance.Status != model.InstanceStatusWaiting {
+			return fmt.Errorf("只有 COMPLETED 或 WAITING 状态的实例才能接收信号: %s", instance.Status)
+		}
+		if env == "" && instance.Env != "" {
+			env = instance.Env
+		}
+		if env == "" {
+			env = base.ENV
+		}
+
+		data, sys, err := parseWorkflowState(instance.CurrentState)
+		if err != nil {
+			return fmt.Errorf("解析状态失败: %w", err)
+		}
+		if data == nil {
+			data = make(workflowStateData)
+		}
+		if sys == nil {
+			sys = make(workflowStateSys)
+		}
+
+		for k, v := range payload {
+			data[k] = v
+		}
+		newStateStr, err := serializeWorkflowState(data, sys)
+		if err != nil {
+			return err
+		}
+		instance.CurrentState = newStateStr
+		if instance.Status == model.InstanceStatusCompleted {
+			instance.Status = model.InstanceStatusWaiting
+		}
+
+		signalOutput := map[string]interface{}{
+			"_signal":     true,
+			"signal_name": signalName,
+			"payload":     payload,
+		}
+		outputBytes, _ := json.Marshal(signalOutput)
+		if err := tx.Create(&model.WorkflowCheckpointModel{
+			InstanceID: instance.ID,
+			NodeID:     "_signal_" + signalName,
+			NodeOutput: string(outputBytes),
+			StateAfter: newStateStr,
+		}).Error; err != nil {
+			return err
+		}
+
+		if wakeupNode != "" {
+			var def model.WorkflowDefModel
+			if err := tx.Where("id = ?", instance.DefID).First(&def).Error; err != nil {
+				return err
+			}
+			if err := json.Unmarshal([]byte(def.DAGJSON), &dag); err != nil {
+				return fmt.Errorf("解析 DAG 失败: %w", err)
+			}
+			node := dag.GetNode(wakeupNode)
+			if node == nil {
+				return fmt.Errorf("唤醒节点不存在: %s", wakeupNode)
+			}
+			instance.ActiveNodeIDs = fmt.Sprintf(`["%s"]`, wakeupNode)
+			// 优化：节点已触发并投递给 Executor，语义上应为 RUNNING
+			instance.Status = model.InstanceStatusRunning
+		}
+		return tx.Save(&instance).Error
+	})
+	if err != nil {
+		return a.err.New("发送信号失败", err)
+	}
+
+	if wakeupNode != "" {
+		node := dag.GetNode(wakeupNode)
+		if node != nil {
+			envToUse := env
+			if envToUse == "" && instance.Env != "" {
+				envToUse = instance.Env
+			}
+			if envToUse == "" {
+				envToUse = base.ENV
+			}
+			return a.triggerNode(ctx, &instance, node, &dag, envToUse)
+		}
+	}
+	return nil
 }

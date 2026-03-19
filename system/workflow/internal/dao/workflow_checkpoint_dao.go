@@ -6,6 +6,7 @@ import (
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
+	"github.com/xsxdot/aio/pkg/db/dialect"
 	"github.com/xsxdot/aio/system/workflow/internal/model"
 
 	"gorm.io/gorm"
@@ -68,15 +69,31 @@ func (d *WorkflowCheckpointDao) DeleteFromIndexWithTx(ctx context.Context, tx *g
 	return d.deleteFromIndexDB(ctx, tx, instanceID, fromIndex)
 }
 
-// deleteFromIndexDB 使用 ROW_NUMBER 子查询直接删除，避免加载全表到内存
-func (d *WorkflowCheckpointDao) deleteFromIndexDB(ctx context.Context, db *gorm.DB, instanceID int64, fromIndex int) error {
-	return db.WithContext(ctx).Exec(`
-		DELETE FROM aio_workflow_checkpoint 
-		WHERE id IN (
-			SELECT id FROM (
-				SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) - 1 as rn 
-				FROM aio_workflow_checkpoint 
-				WHERE instance_id = ?
-			) ranked WHERE rn >= ?
-		)`, instanceID, fromIndex).Error
+// deleteFromIndexDB 按 index 删除 checkpoint。PostgreSQL/MySQL 8+ 使用 ROW_NUMBER；MySQL 5.7 使用 load-then-delete 兜底
+func (d *WorkflowCheckpointDao) deleteFromIndexDB(ctx context.Context, gdb *gorm.DB, instanceID int64, fromIndex int) error {
+	if dialect.IsPostgres(gdb) {
+		// PostgreSQL 与 MySQL 8+ 支持 ROW_NUMBER()
+		return gdb.WithContext(ctx).Exec(`
+			DELETE FROM aio_workflow_checkpoint 
+			WHERE id IN (
+				SELECT id FROM (
+					SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) - 1 as rn 
+					FROM aio_workflow_checkpoint 
+					WHERE instance_id = ?
+				) ranked WHERE rn >= ?
+			)`, instanceID, fromIndex).Error
+	}
+	// MySQL 5.7 不支持 ROW_NUMBER，使用 load-then-delete 兜底
+	var ids []uint
+	if err := gdb.WithContext(ctx).Model(&model.WorkflowCheckpointModel{}).
+		Where("instance_id = ?", instanceID).
+		Order("created_at ASC").
+		Offset(fromIndex).
+		Pluck("id", &ids).Error; err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return gdb.WithContext(ctx).Where("id IN ?", ids).Delete(&model.WorkflowCheckpointModel{}).Error
 }

@@ -12,7 +12,7 @@ type ShortVisit struct {
 	IP        string    `gorm:"type:varchar(100);comment:访问者IP" json:"ip" comment:"访问者IP"`
 	UserAgent string    `gorm:"type:varchar(500);comment:User-Agent" json:"userAgent" comment:"User-Agent"`
 	Referer   string    `gorm:"type:varchar(500);comment:Referer" json:"referer" comment:"Referer"`
-	VisitedAt time.Time `gorm:"type:datetime;not null;index;comment:访问时间" json:"visitedAt" comment:"访问时间"`
+	VisitedAt time.Time `gorm:"not null;index;comment:访问时间" json:"visitedAt" comment:"访问时间"`
 }
 
 // TableName 设置表名

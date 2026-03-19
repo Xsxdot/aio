@@ -34,6 +34,7 @@ func (ctrl *WorkflowAdminController) RegisterRoutes(admin fiber.Router) {
 
 	router.Post("/defs", base.AdminAuth.RequireAdminAuth("admin:workflow:create"), ctrl.CreateDef)
 	router.Post("/instances/:id/rollback", base.AdminAuth.RequireAdminAuth("admin:workflow:update"), ctrl.Rollback)
+	router.Post("/instances/:id/signal", base.AdminAuth.RequireAdminAuth("admin:workflow:update"), ctrl.SendSignal)
 	router.Get("/instances/:id", base.AdminAuth.RequireAdminAuth("admin:workflow:read"), ctrl.GetInstance)
 	router.Get("/instances/:id/trail", base.AdminAuth.RequireAdminAuth("admin:workflow:read"), ctrl.GetExecutionTrail)
 }
@@ -76,6 +77,31 @@ func (ctrl *WorkflowAdminController) Rollback(c *fiber.Ctx) error {
 		return err
 	}
 	return result.OK(c, fiber.Map{"msg": "回滚成功"})
+}
+
+func (ctrl *WorkflowAdminController) SendSignal(c *fiber.Ctx) error {
+	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
+	if err != nil {
+		return ctrl.err.New("实例ID参数错误", err).WithTraceID(util.Context(c))
+	}
+	var req dto.SignalRequest
+	if err := c.BodyParser(&req); err != nil {
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(c)).ToLog(ctrl.log.GetLogger())
+	}
+	if errMsg, err := utils.Validate(&req); err != nil {
+		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(c)).ToLog(ctrl.log.GetLogger())
+	}
+	if req.Payload == nil {
+		req.Payload = make(map[string]interface{})
+	}
+	env := req.Env
+	if env == "" {
+		env = base.ENV
+	}
+	if err := ctrl.app.SendSignal(util.Context(c), id, req.SignalName, req.Payload, req.WakeupNode, env); err != nil {
+		return err
+	}
+	return result.OK(c, fiber.Map{"msg": "信号已发送"})
 }
 
 func (ctrl *WorkflowAdminController) GetInstance(c *fiber.Ctx) error {

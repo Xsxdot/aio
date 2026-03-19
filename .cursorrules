@@ -191,7 +191,7 @@ system/<component>/
   - **[MUST]** DAO 不得自行管理事务，只接收由上层传入的 `*gorm.DB`（例如 App 层传入的 tx）。
 
 - **存储技术**
-  - **[MUST]** ORM 使用 GORM，数据库使用 MySql（如需更换需统一评审）。
+  - **[MUST]** ORM 使用 GORM，数据库支持 MySQL 与 PostgreSQL，通过配置 `db.type` 切换。
 
 ---
 
@@ -317,11 +317,19 @@ system/<component>/
     ```
 ### 3. 事务、缓存与数据库
 
-- **[MUST]** ORM 使用 GORM，数据库为 MySQL。
+- **[MUST]** ORM 使用 GORM，数据库支持 MySQL 与 PostgreSQL，通过配置切换。
 - **[MUST]** 所有数据库操作必须有错误处理。
 - **[MUST]** 复杂操作使用事务，由 App 层统一管理（见上文 App 规范）。
 - **[SHOULD]** 合理使用 `base.RDB` 作为缓存，避免滥用全量查询。
 - **[SHOULD]** 合理使用 `base.Cache` 作为缓存，避免滥用全量查询,这是redis官方封装的缓存包,用法如base.Cache.Once(*cache.Item)。
+
+### 数据库双兼容（MySQL / PostgreSQL）
+
+- **[MUST]** 项目同时支持 MySQL 和 PostgreSQL，通过配置 `db.type`（mysql/postgres）切换，不得在代码中写死单一数据库。
+- **[MUST]** Model 的 gorm 标签必须使用双兼容类型：禁止 `longtext`、`tinyint(1)`、`datetime` 等 MySQL 专有类型；改用 `text`、bool（不写 type）、`time.Time`（不写 type）等通用类型。
+- **[MUST]** DAO 中若使用原生 SQL 或数据库函数，必须兼容两种数据库：通过 `pkg/db/dialect.DialectName(db)` 判断 dialect，对 `mysql` 和 `postgres` 分别编写等效逻辑；或优先使用 GORM 的跨库 API（如 `clause.OnConflict`）。
+- **[MUST]** 新增 DAO 方法时，如包含 `JSON_CONTAINS`、`TIMESTAMPDIFF`、`ROW_NUMBER` 等仅部分数据库支持的语法，必须先实现 dialect 分支并通过 MySQL、PostgreSQL 双环境测试。
+- **[SHOULD]** 使用 `pkg/db/dialect.IsMySQL(db)` / `pkg/db/dialect.IsPostgres(db)` 做分支判断，保持风格统一。
 
 ### 4. 任务调度与定时任务（`pkg/scheduler`）
 

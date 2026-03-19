@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
@@ -48,10 +49,10 @@ func (s *ServerService) Create(ctx context.Context, req *dto.CreateServerRequest
 	if extranetHost == "" {
 		extranetHost = req.Host
 	}
-	
+
 	server := &model.ServerModel{
 		Name:             req.Name,
-		Host:             extranetHost,        // 兼容字段，与外网地址保持一致
+		Host:             extranetHost, // 兼容字段，与外网地址保持一致
 		IntranetHost:     req.IntranetHost,
 		ExtranetHost:     extranetHost,
 		AgentGrpcAddress: req.AgentGrpcAddress,
@@ -105,7 +106,7 @@ func (s *ServerService) Update(ctx context.Context, id int64, req *dto.UpdateSer
 		server.Host = *req.Host
 		server.ExtranetHost = *req.Host
 	}
-	
+
 	if req.IntranetHost != nil {
 		server.IntranetHost = *req.IntranetHost
 	}

@@ -16,8 +16,8 @@ type ServerStatusModel struct {
 	Load5        float64      `gorm:"type:decimal(10,2);comment:5 分钟负载" json:"load5" comment:"5 分钟负载"`
 	Load15       float64      `gorm:"type:decimal(10,2);comment:15 分钟负载" json:"load15" comment:"15 分钟负载"`
 	DiskItems    []DiskItem   `gorm:"serializer:json;comment:磁盘信息（JSON）" json:"diskItems" comment:"磁盘信息"`
-	CollectedAt  time.Time    `gorm:"type:datetime;comment:采集时间" json:"collectedAt" comment:"采集时间"`
-	ReportedAt   time.Time   `gorm:"type:datetime;comment:上报时间" json:"reportedAt" comment:"上报时间"`
+	CollectedAt  time.Time    `gorm:"comment:采集时间" json:"collectedAt" comment:"采集时间"`
+	ReportedAt   time.Time   `gorm:"comment:上报时间" json:"reportedAt" comment:"上报时间"`
 	ErrorMessage string      `gorm:"type:varchar(1000);comment:错误信息" json:"errorMessage" comment:"错误信息"`
 }
 

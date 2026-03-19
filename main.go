@@ -45,7 +45,7 @@ func main() {
 		configures.Logger.Panic(err)
 	}
 
-	base.DB = configures.EnableMysql()
+	base.DB = configures.EnableDB()
 
 	// 执行数据库迁移
 	if err := db.AutoMigrate(base.DB); err != nil {
