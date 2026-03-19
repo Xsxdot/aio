@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	errorc "github.com/xsxdot/aio/pkg/core/err"
@@ -12,8 +11,6 @@ import (
 	"github.com/xsxdot/aio/system/workflow/internal/dao"
 	"github.com/xsxdot/aio/system/workflow/internal/model"
 	"github.com/xsxdot/aio/system/workflow/internal/service"
-
-	"gorm.io/gorm"
 )
 
 // 类型别名，供 api/client 等层使用
@@ -114,7 +111,7 @@ func (a *App) CreateIfNotExists(ctx context.Context, code, name, dagJSON string,
 	if findErr == nil && existing != nil {
 		return existing.ID, false, nil
 	}
-	if findErr != nil && !errors.Is(findErr, gorm.ErrRecordNotFound) {
+	if findErr != nil && !errorc.IsNotFound(findErr) {
 		return 0, false, findErr
 	}
 	id, err := a.CreateDef(ctx, code, name, dagJSON, version)

@@ -17,6 +17,10 @@ type Error struct {
 	FuncName string `json:"-"`
 }
 
+func (e *Error) Unwrap() error {
+	return e.Cause
+}
+
 func (e *Error) formatStack() string {
 	if e.Stack == "" {
 		return ""
