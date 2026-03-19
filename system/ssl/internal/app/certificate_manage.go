@@ -100,7 +100,7 @@ func (a *App) IssueCertificate(ctx context.Context, req *IssueCertificateRequest
 	}
 
 	// 6. 保存证书到数据库
-	if err := a.CertificateDao.Create(ctx, certificate); err != nil {
+	if err := a.CertificateSvc.Create(ctx, certificate); err != nil {
 		return nil, a.err.New("保存证书失败", err)
 	}
 
@@ -141,27 +141,27 @@ func (a *App) RenewCertificate(ctx context.Context, certificateID uint) error {
 	a.log.WithField("certificate_id", certificateID).Info("开始续期证书")
 
 	// 1. 获取证书记录
-	cert, err := a.CertificateDao.FindById(ctx, certificateID)
+	cert, err := a.CertificateSvc.FindById(ctx, certificateID)
 	if err != nil {
 		return a.err.New("获取证书记录失败", err)
 	}
 
 	// 2. 更新状态为续期中
-	if err := a.CertificateDao.UpdateStatus(ctx, certificateID, model.CertificateStatusRenewing); err != nil {
+	if err := a.CertificateSvc.UpdateStatus(ctx, certificateID, model.CertificateStatusRenewing); err != nil {
 		return a.err.New("更新证书状态失败", err)
 	}
 
 	// 3. 获取 DNS 凭证（解密）
 	dnsCredential, err := a.DnsCredSvc.GetDecrypted(ctx, cert.DnsCredentialID)
 	if err != nil {
-		a.updateCertError(ctx, certificateID, "获取 DNS 凭证失败: "+err.Error())
+		a.CertificateSvc.UpdateCertError(ctx, certificateID, "获取 DNS 凭证失败: "+err.Error())
 		return a.err.New("获取 DNS 凭证失败", err)
 	}
 
 	// 4. 解密账户私钥
 	accountKey, err := a.CryptoService.Decrypt(cert.AcmeAccountKey)
 	if err != nil {
-		a.updateCertError(ctx, certificateID, "解密账户私钥失败: "+err.Error())
+		a.CertificateSvc.UpdateCertError(ctx, certificateID, "解密账户私钥失败: "+err.Error())
 		return a.err.New("解密账户私钥失败", err)
 	}
 
@@ -179,7 +179,7 @@ func (a *App) RenewCertificate(ctx context.Context, certificateID uint) error {
 	// 6. 调用 ACME 服务续期证书
 	acmeResp, err := a.AcmeService.RenewCertificate(acmeReq, cert.FullchainPem, cert.PrivkeyPem)
 	if err != nil {
-		a.updateCertError(ctx, certificateID, "ACME 续期失败: "+err.Error())
+		a.CertificateSvc.UpdateCertError(ctx, certificateID, "ACME 续期失败: "+err.Error())
 		return a.err.New("ACME 续期证书失败", err)
 	}
 
@@ -193,7 +193,7 @@ func (a *App) RenewCertificate(ctx context.Context, certificateID uint) error {
 	cert.Status = model.CertificateStatusActive
 	cert.LastError = ""
 
-	if _, err := a.CertificateDao.UpdateById(ctx, certificateID, cert); err != nil {
+	if _, err := a.CertificateSvc.UpdateById(ctx, certificateID, cert); err != nil {
 		return a.err.New("更新证书记录失败", err)
 	}
 
@@ -235,7 +235,7 @@ func (a *App) RenewDueCertificates(ctx context.Context) error {
 	a.log.Info("开始扫描需要续期的证书")
 
 	// 1. 查询需要续期的证书
-	certs, err := a.CertificateDao.FindCertificatesToRenew(ctx)
+	certs, err := a.CertificateSvc.FindCertificatesToRenew(ctx)
 	if err != nil {
 		return a.err.New("查询需要续期的证书失败", err)
 	}
@@ -264,23 +264,9 @@ func (a *App) RenewDueCertificates(ctx context.Context) error {
 	return nil
 }
 
-// updateCertError 更新证书错误信息
-func (a *App) updateCertError(ctx context.Context, certificateID uint, errMsg string) {
-	err := base.DB.WithContext(ctx).Model(&model.Certificate{}).
-		Where("id = ?", certificateID).
-		Updates(map[string]interface{}{
-			"status":     model.CertificateStatusFailed,
-			"last_error": errMsg,
-		}).Error
-
-	if err != nil {
-		a.log.WithErr(err).WithField("certificate_id", certificateID).Error("更新证书错误信息失败")
-	}
-}
-
 // GetCertificate 获取证书详情
 func (a *App) GetCertificate(ctx context.Context, id uint) (*model.Certificate, error) {
-	return a.CertificateDao.FindById(ctx, id)
+	return a.CertificateSvc.FindById(ctx, id)
 }
 
 // ListCertificates 查询证书列表
@@ -289,7 +275,7 @@ func (a *App) ListCertificates(ctx context.Context, page, pageSize int) ([]model
 		PageNum: page,
 		Size:    pageSize,
 	}
-	certs, total, err := a.CertificateDao.FindPage(ctx, pageInfo, nil)
+	certs, total, err := a.CertificateSvc.FindPage(ctx, pageInfo, nil)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -303,30 +289,10 @@ func (a *App) ListCertificates(ctx context.Context, page, pageSize int) ([]model
 
 // DeleteCertificate 删除证书
 func (a *App) DeleteCertificate(ctx context.Context, id uint) error {
-	cert, err := a.CertificateDao.FindById(ctx, id)
+	cert, err := a.CertificateSvc.FindById(ctx, id)
 	if err != nil {
 		return a.err.New("获取证书失败", err)
 	}
 
-	// 删除证书及相关部署历史
-	tx := base.DB.WithContext(ctx).Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-
-	// 删除部署历史
-	if err := tx.Where("certificate_id = ?", id).Delete(&model.DeployHistory{}).Error; err != nil {
-		tx.Rollback()
-		return a.err.New("删除部署历史失败", err)
-	}
-
-	// 删除证书
-	if err := tx.Delete(cert).Error; err != nil {
-		tx.Rollback()
-		return a.err.New("删除证书失败", err)
-	}
-
-	return tx.Commit().Error
+	return a.CertificateSvc.DeleteCertificateWithHistory(ctx, cert)
 }

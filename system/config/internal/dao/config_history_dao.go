@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
@@ -31,7 +32,7 @@ func NewConfigHistoryDao(db *gorm.DB, log *logger.Log) *ConfigHistoryDao {
 // FindByConfigKey 根据配置键查询历史记录
 func (d *ConfigHistoryDao) FindByConfigKey(ctx context.Context, configKey string) ([]*model.ConfigHistoryModel, error) {
 	var histories []*model.ConfigHistoryModel
-	err := d.db.WithContext(ctx).
+	err := mvc.ExtractDB(ctx, d.db).
 		Where("config_key = ?", configKey).
 		Order("version DESC").
 		Find(&histories).Error
@@ -44,7 +45,7 @@ func (d *ConfigHistoryDao) FindByConfigKey(ctx context.Context, configKey string
 // FindByConfigKeyAndVersion 根据配置键和版本号查询
 func (d *ConfigHistoryDao) FindByConfigKeyAndVersion(ctx context.Context, configKey string, version int64) (*model.ConfigHistoryModel, error) {
 	var history model.ConfigHistoryModel
-	err := d.db.WithContext(ctx).
+	err := mvc.ExtractDB(ctx, d.db).
 		Where("config_key = ? AND version = ?", configKey, version).
 		First(&history).Error
 	if err != nil {
@@ -59,7 +60,7 @@ func (d *ConfigHistoryDao) FindByConfigKeyAndVersion(ctx context.Context, config
 // FindLatestByConfigKey 查询配置的最新历史记录
 func (d *ConfigHistoryDao) FindLatestByConfigKey(ctx context.Context, configKey string) (*model.ConfigHistoryModel, error) {
 	var history model.ConfigHistoryModel
-	err := d.db.WithContext(ctx).
+	err := mvc.ExtractDB(ctx, d.db).
 		Where("config_key = ?", configKey).
 		Order("version DESC").
 		First(&history).Error
@@ -75,7 +76,7 @@ func (d *ConfigHistoryDao) FindLatestByConfigKey(ctx context.Context, configKey 
 // CountByConfigKey 统计配置的历史版本数
 func (d *ConfigHistoryDao) CountByConfigKey(ctx context.Context, configKey string) (int64, error) {
 	var count int64
-	err := d.db.WithContext(ctx).
+	err := mvc.ExtractDB(ctx, d.db).
 		Model(&model.ConfigHistoryModel{}).
 		Where("config_key = ?", configKey).
 		Count(&count).Error
@@ -87,7 +88,7 @@ func (d *ConfigHistoryDao) CountByConfigKey(ctx context.Context, configKey strin
 
 // DeleteByConfigKey 删除配置的所有历史记录
 func (d *ConfigHistoryDao) DeleteByConfigKey(ctx context.Context, configKey string) error {
-	err := d.db.WithContext(ctx).
+	err := mvc.ExtractDB(ctx, d.db).
 		Where("config_key = ?", configKey).
 		Delete(&model.ConfigHistoryModel{}).Error
 	if err != nil {

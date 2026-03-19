@@ -32,7 +32,7 @@ func NewLinkDao(db *gorm.DB, log *logger.Log) *LinkDao {
 // FindByDomainAndCode 根据域名ID和短码查找
 func (d *LinkDao) FindByDomainAndCode(ctx context.Context, domainID int64, code string) (*model.ShortLink, error) {
 	var result model.ShortLink
-	err := d.DB.WithContext(ctx).Where("domain_id = ? AND code = ?", domainID, code).First(&result).Error
+	err := mvc.ExtractDB(ctx, d.DB).Where("domain_id = ? AND code = ?", domainID, code).First(&result).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, d.err.New("短链接不存在", err).NotFound()
@@ -45,7 +45,7 @@ func (d *LinkDao) FindByDomainAndCode(ctx context.Context, domainID int64, code 
 // FindByCode 根据短码查找（任意域名）
 func (d *LinkDao) FindByCode(ctx context.Context, code string) (*model.ShortLink, error) {
 	var result model.ShortLink
-	err := d.DB.WithContext(ctx).Where("code = ?", code).First(&result).Error
+	err := mvc.ExtractDB(ctx, d.DB).Where("code = ?", code).First(&result).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, d.err.New("短链接不存在", err).NotFound()
@@ -58,7 +58,7 @@ func (d *LinkDao) FindByCode(ctx context.Context, code string) (*model.ShortLink
 // ExistsByDomainAndCode 检查短码是否已存在
 func (d *LinkDao) ExistsByDomainAndCode(ctx context.Context, domainID int64, code string) (bool, error) {
 	var count int64
-	err := d.DB.WithContext(ctx).Model(&model.ShortLink{}).
+	err := mvc.ExtractDB(ctx, d.DB).Model(&model.ShortLink{}).
 		Where("domain_id = ? AND code = ?", domainID, code).Count(&count).Error
 	if err != nil {
 		return false, d.err.New("检查短码是否存在失败", err).DB()
@@ -68,7 +68,7 @@ func (d *LinkDao) ExistsByDomainAndCode(ctx context.Context, domainID int64, cod
 
 // IncrementVisitCount 原子递增访问次数
 func (d *LinkDao) IncrementVisitCount(ctx context.Context, id int64) error {
-	err := d.DB.WithContext(ctx).Model(&model.ShortLink{}).
+	err := mvc.ExtractDB(ctx, d.DB).Model(&model.ShortLink{}).
 		Where("id = ?", id).
 		UpdateColumn("visit_count", gorm.Expr("visit_count + ?", 1)).Error
 	if err != nil {
@@ -79,7 +79,7 @@ func (d *LinkDao) IncrementVisitCount(ctx context.Context, id int64) error {
 
 // IncrementSuccessCount 原子递增成功次数
 func (d *LinkDao) IncrementSuccessCount(ctx context.Context, id int64) error {
-	err := d.DB.WithContext(ctx).Model(&model.ShortLink{}).
+	err := mvc.ExtractDB(ctx, d.DB).Model(&model.ShortLink{}).
 		Where("id = ?", id).
 		UpdateColumn("success_count", gorm.Expr("success_count + ?", 1)).Error
 	if err != nil {
@@ -93,7 +93,7 @@ func (d *LinkDao) ListByDomainWithPage(ctx context.Context, domainID int64, page
 	var results []*model.ShortLink
 	var total int64
 
-	query := d.DB.WithContext(ctx).Model(&model.ShortLink{}).Where("domain_id = ?", domainID)
+	query := mvc.ExtractDB(ctx, d.DB).Model(&model.ShortLink{}).Where("domain_id = ?", domainID)
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, d.err.New("统计短链接数量失败", err).DB()
@@ -107,7 +107,3 @@ func (d *LinkDao) ListByDomainWithPage(ctx context.Context, domainID int64, page
 
 	return results, total, nil
 }
-
-
-
-

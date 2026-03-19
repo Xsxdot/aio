@@ -51,7 +51,7 @@ func (d *WorkflowCheckpointDao) ListByInstanceIDOrderByCreatedAscWithTx(ctx cont
 
 func (d *WorkflowCheckpointDao) listByInstanceIDOrderByCreatedAscDB(ctx context.Context, db *gorm.DB, instanceID int64) ([]*model.WorkflowCheckpointModel, error) {
 	var list []*model.WorkflowCheckpointModel
-	err := db.WithContext(ctx).Where("instance_id = ?", instanceID).
+	err := mvc.ExtractDB(ctx, d.db).Where("instance_id = ?", instanceID).
 		Order("created_at ASC").
 		Find(&list).Error
 	if err != nil {
@@ -73,7 +73,7 @@ func (d *WorkflowCheckpointDao) DeleteFromIndexWithTx(ctx context.Context, tx *g
 func (d *WorkflowCheckpointDao) deleteFromIndexDB(ctx context.Context, gdb *gorm.DB, instanceID int64, fromIndex int) error {
 	if dialect.IsPostgres(gdb) {
 		// PostgreSQL 与 MySQL 8+ 支持 ROW_NUMBER()
-		return gdb.WithContext(ctx).Exec(`
+		return mvc.ExtractDB(ctx, d.db).Exec(`
 			DELETE FROM aio_workflow_checkpoint 
 			WHERE id IN (
 				SELECT id FROM (
@@ -85,7 +85,7 @@ func (d *WorkflowCheckpointDao) deleteFromIndexDB(ctx context.Context, gdb *gorm
 	}
 	// MySQL 5.7 不支持 ROW_NUMBER，使用 load-then-delete 兜底
 	var ids []uint
-	if err := gdb.WithContext(ctx).Model(&model.WorkflowCheckpointModel{}).
+	if err := mvc.ExtractDB(ctx, d.db).Model(&model.WorkflowCheckpointModel{}).
 		Where("instance_id = ?", instanceID).
 		Order("created_at ASC").
 		Offset(fromIndex).
@@ -95,5 +95,5 @@ func (d *WorkflowCheckpointDao) deleteFromIndexDB(ctx context.Context, gdb *gorm
 	if len(ids) == 0 {
 		return nil
 	}
-	return gdb.WithContext(ctx).Where("id IN ?", ids).Delete(&model.WorkflowCheckpointModel{}).Error
+	return mvc.ExtractDB(ctx, d.db).Where("id IN ?", ids).Delete(&model.WorkflowCheckpointModel{}).Error
 }

@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
@@ -31,7 +32,7 @@ func NewServerStatusDao(db *gorm.DB, log *logger.Log) *ServerStatusDao {
 // FindByServerID 根据服务器 ID 查询状态
 func (d *ServerStatusDao) FindByServerID(ctx context.Context, serverID int64) (*model.ServerStatusModel, error) {
 	var status model.ServerStatusModel
-	err := d.db.WithContext(ctx).Where("server_id = ?", serverID).First(&status).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("server_id = ?", serverID).First(&status).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, d.err.New("服务器状态不存在", err).NotFound()
@@ -45,33 +46,33 @@ func (d *ServerStatusDao) FindByServerID(ctx context.Context, serverID int64) (*
 func (d *ServerStatusDao) UpsertByServerID(ctx context.Context, status *model.ServerStatusModel) error {
 	// 先查询是否存在
 	var existing model.ServerStatusModel
-	err := d.db.WithContext(ctx).Where("server_id = ?", status.ServerID).First(&existing).Error
-	
+	err := mvc.ExtractDB(ctx, d.db).Where("server_id = ?", status.ServerID).First(&existing).Error
+
 	if err == gorm.ErrRecordNotFound {
 		// 不存在，插入
-		if err := d.db.WithContext(ctx).Create(status).Error; err != nil {
+		if err := mvc.ExtractDB(ctx, d.db).Create(status).Error; err != nil {
 			return d.err.New("创建服务器状态失败", err).DB()
 		}
 		return nil
 	}
-	
+
 	if err != nil {
 		return d.err.New("查询服务器状态失败", err).DB()
 	}
-	
+
 	// 存在，更新
 	status.ID = existing.ID
-	if err := d.db.WithContext(ctx).Model(&existing).Updates(status).Error; err != nil {
+	if err := mvc.ExtractDB(ctx, d.db).Model(&existing).Updates(status).Error; err != nil {
 		return d.err.New("更新服务器状态失败", err).DB()
 	}
-	
+
 	return nil
 }
 
 // ListByServerIDs 批量查询多个服务器的状态
 func (d *ServerStatusDao) ListByServerIDs(ctx context.Context, serverIDs []int64) (map[int64]*model.ServerStatusModel, error) {
 	var statusList []*model.ServerStatusModel
-	err := d.db.WithContext(ctx).Where("server_id IN ?", serverIDs).Find(&statusList).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("server_id IN ?", serverIDs).Find(&statusList).Error
 	if err != nil {
 		return nil, d.err.New("批量查询服务器状态失败", err).DB()
 	}
@@ -84,4 +85,3 @@ func (d *ServerStatusDao) ListByServerIDs(ctx context.Context, serverIDs []int64
 
 	return statusMap, nil
 }
-

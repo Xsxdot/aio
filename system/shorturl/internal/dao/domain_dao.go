@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
@@ -31,7 +32,7 @@ func NewDomainDao(db *gorm.DB, log *logger.Log) *DomainDao {
 // FindByDomain 根据域名查找
 func (d *DomainDao) FindByDomain(ctx context.Context, domain string) (*model.ShortDomain, error) {
 	var result model.ShortDomain
-	err := d.DB.WithContext(ctx).Where("domain = ?", domain).First(&result).Error
+	err := mvc.ExtractDB(ctx, d.DB).Where("domain = ?", domain).First(&result).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, d.err.New("域名不存在", err).NotFound()
@@ -44,7 +45,7 @@ func (d *DomainDao) FindByDomain(ctx context.Context, domain string) (*model.Sho
 // FindDefault 查找默认域名
 func (d *DomainDao) FindDefault(ctx context.Context) (*model.ShortDomain, error) {
 	var result model.ShortDomain
-	err := d.DB.WithContext(ctx).Where("is_default = ? AND enabled = ?", true, true).First(&result).Error
+	err := mvc.ExtractDB(ctx, d.DB).Where("is_default = ? AND enabled = ?", true, true).First(&result).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, d.err.New("未配置默认域名", err).NotFound()
@@ -57,12 +58,9 @@ func (d *DomainDao) FindDefault(ctx context.Context) (*model.ShortDomain, error)
 // ListEnabled 查询所有启用的域名
 func (d *DomainDao) ListEnabled(ctx context.Context) ([]*model.ShortDomain, error) {
 	var results []*model.ShortDomain
-	err := d.DB.WithContext(ctx).Where("enabled = ?", true).Find(&results).Error
+	err := mvc.ExtractDB(ctx, d.DB).Where("enabled = ?", true).Find(&results).Error
 	if err != nil {
 		return nil, d.err.New("查询域名列表失败", err).DB()
 	}
 	return results, nil
 }
-
-
-

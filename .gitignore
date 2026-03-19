@@ -162,7 +162,7 @@ yarn.lock
 tmp/
 
 # Delve debugger
-__debug_bin
+__debug_bin*
 
 # Project specific
 example/output/

@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"time"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/shorturl/internal/dao"
+	"github.com/xsxdot/aio/system/shorturl/internal/model"
 )
 
 // StatsService 统计服务
@@ -66,6 +68,44 @@ func (s *StatsService) GetDailyStats(ctx context.Context, linkID int64, days int
 	}
 
 	return stats, nil
+}
+
+// CreateVisit 记录一条访问
+func (s *StatsService) CreateVisit(ctx context.Context, visit *model.ShortVisit) error {
+	if err := s.VisitDao.Create(ctx, visit); err != nil {
+		s.log.WithErr(err).Error("创建访问记录失败")
+		// 不阻断流程，记录失败仅打日志
+		return err
+	}
+	return nil
+}
+
+// CreateSuccessEvent 记录一次成功事件（带幂等判断）
+func (s *StatsService) CreateSuccessEvent(ctx context.Context, event *model.ShortSuccessEvent) error {
+	if event.EventID != "" {
+		exists, err := s.SuccessEventDao.ExistsByEventID(ctx, event.EventID)
+		if err != nil {
+			return err
+		}
+		if exists {
+			s.log.WithField("event_id", event.EventID).Info("事件ID已存在，跳过重复上报")
+			return nil // 幂等，不报错
+		}
+	}
+	if err := s.SuccessEventDao.Create(ctx, event); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ListRecentVisits 获取最近的访问记录
+func (s *StatsService) ListRecentVisits(ctx context.Context, linkID int64, limit int) ([]*model.ShortVisit, error) {
+	return s.VisitDao.ListByLinkID(ctx, linkID, limit)
+}
+
+// ListRecentSuccess 获取最近的成功事件
+func (s *StatsService) ListRecentSuccess(ctx context.Context, linkID int64, limit int) ([]*model.ShortSuccessEvent, error) {
+	return s.SuccessEventDao.ListByLinkID(ctx, linkID, limit)
 }
 
 

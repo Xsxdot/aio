@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/xsxdot/aio/base"
+	"github.com/xsxdot/aio/pkg/core/mvc"
 	"github.com/xsxdot/aio/system/executor/internal/model"
 
 	"gorm.io/gorm"
@@ -23,13 +24,13 @@ func NewExecutorJobAttemptDAO() *ExecutorJobAttemptDAO {
 
 // Create 创建尝试记录
 func (d *ExecutorJobAttemptDAO) Create(ctx context.Context, attempt *model.ExecutorJobAttemptModel) error {
-	return d.db.WithContext(ctx).Create(attempt).Error
+	return mvc.ExtractDB(ctx, d.db).Create(attempt).Error
 }
 
 // ListByJobID 根据任务ID列出所有尝试记录
 func (d *ExecutorJobAttemptDAO) ListByJobID(ctx context.Context, jobID uint64) ([]*model.ExecutorJobAttemptModel, error) {
 	var attempts []*model.ExecutorJobAttemptModel
-	err := d.db.WithContext(ctx).
+	err := mvc.ExtractDB(ctx, d.db).
 		Where("job_id = ?", jobID).
 		Order("attempt_no DESC").
 		Find(&attempts).Error

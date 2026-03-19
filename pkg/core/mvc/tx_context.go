@@ -16,7 +16,7 @@ func WithTxToContext(ctx context.Context, tx *gorm.DB) context.Context {
 // ExtractDB 优先从 context 中提取事务连接，如果不存在事务，会自动降级 fallback 到传入的 defaultDB 并附加 ctx
 func ExtractDB(ctx context.Context, defaultDB *gorm.DB) *gorm.DB {
 	if tx, ok := ctx.Value(txKey{}).(*gorm.DB); ok {
-		return tx
+		return tx.WithContext(ctx)
 	}
 	return defaultDB.WithContext(ctx)
 }

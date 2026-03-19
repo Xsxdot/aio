@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
@@ -31,7 +32,7 @@ func NewClientCredentialDao(db *gorm.DB, log *logger.Log) *ClientCredentialDao {
 // FindByClientKey 根据客户端 key 查询
 func (d *ClientCredentialDao) FindByClientKey(ctx context.Context, clientKey string) (*model.ClientCredential, error) {
 	var client model.ClientCredential
-	err := d.db.WithContext(ctx).Where("client_key = ?", clientKey).First(&client).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("client_key = ?", clientKey).First(&client).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, d.err.New("客户端不存在", err).WithCode(errorc.ErrorCodeNotFound)
@@ -44,7 +45,7 @@ func (d *ClientCredentialDao) FindByClientKey(ctx context.Context, clientKey str
 // ExistsByClientKey 检查客户端 key 是否存在
 func (d *ClientCredentialDao) ExistsByClientKey(ctx context.Context, clientKey string) (bool, error) {
 	var count int64
-	err := d.db.WithContext(ctx).Model(&model.ClientCredential{}).
+	err := mvc.ExtractDB(ctx, d.db).Model(&model.ClientCredential{}).
 		Where("client_key = ?", clientKey).Count(&count).Error
 	if err != nil {
 		return false, d.err.New("检查客户端 key 是否存在失败", err).DB()
@@ -54,7 +55,7 @@ func (d *ClientCredentialDao) ExistsByClientKey(ctx context.Context, clientKey s
 
 // UpdateSecret 更新客户端 secret
 func (d *ClientCredentialDao) UpdateSecret(ctx context.Context, id int64, secretHash string) error {
-	err := d.db.WithContext(ctx).Model(&model.ClientCredential{}).
+	err := mvc.ExtractDB(ctx, d.db).Model(&model.ClientCredential{}).
 		Where("id = ?", id).
 		Update("client_secret", secretHash).Error
 	if err != nil {
@@ -65,7 +66,7 @@ func (d *ClientCredentialDao) UpdateSecret(ctx context.Context, id int64, secret
 
 // UpdateStatus 更新客户端状态
 func (d *ClientCredentialDao) UpdateStatus(ctx context.Context, id int64, status int8) error {
-	err := d.db.WithContext(ctx).Model(&model.ClientCredential{}).
+	err := mvc.ExtractDB(ctx, d.db).Model(&model.ClientCredential{}).
 		Where("id = ?", id).
 		Update("status", status).Error
 	if err != nil {
@@ -77,7 +78,7 @@ func (d *ClientCredentialDao) UpdateStatus(ctx context.Context, id int64, status
 // FindAllActive 查询所有启用且未过期的客户端
 func (d *ClientCredentialDao) FindAllActive(ctx context.Context) ([]*model.ClientCredential, error) {
 	var clients []*model.ClientCredential
-	err := d.db.WithContext(ctx).
+	err := mvc.ExtractDB(ctx, d.db).
 		Where("status = ?", model.ClientCredentialStatusEnabled).
 		Where("(expires_at IS NULL OR expires_at > NOW())").
 		Find(&clients).Error
@@ -96,6 +97,3 @@ func (d *ClientCredentialDao) WithTx(tx *gorm.DB) *ClientCredentialDao {
 		db:       tx,
 	}
 }
-
-
-

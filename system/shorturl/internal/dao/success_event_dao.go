@@ -3,6 +3,7 @@ package dao
 import (
 	"context"
 	"time"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
@@ -32,7 +33,7 @@ func NewSuccessEventDao(db *gorm.DB, log *logger.Log) *SuccessEventDao {
 // ListByLinkID 查询指定链接的成功事件记录
 func (d *SuccessEventDao) ListByLinkID(ctx context.Context, linkID int64, limit int) ([]*model.ShortSuccessEvent, error) {
 	var results []*model.ShortSuccessEvent
-	err := d.db.WithContext(ctx).Where("link_id = ?", linkID).
+	err := mvc.ExtractDB(ctx, d.db).Where("link_id = ?", linkID).
 		Order("created_at DESC").Limit(limit).Find(&results).Error
 	if err != nil {
 		return nil, d.err.New("查询成功事件记录失败", err).DB()
@@ -43,7 +44,7 @@ func (d *SuccessEventDao) ListByLinkID(ctx context.Context, linkID int64, limit 
 // CountByLinkID 统计指定链接的成功次数
 func (d *SuccessEventDao) CountByLinkID(ctx context.Context, linkID int64) (int64, error) {
 	var count int64
-	err := d.db.WithContext(ctx).Model(&model.ShortSuccessEvent{}).
+	err := mvc.ExtractDB(ctx, d.db).Model(&model.ShortSuccessEvent{}).
 		Where("link_id = ?", linkID).Count(&count).Error
 	if err != nil {
 		return 0, d.err.New("统计成功次数失败", err).DB()
@@ -59,7 +60,7 @@ func (d *SuccessEventDao) CountByLinkIDAndDateRange(ctx context.Context, linkID 
 	}
 	var results []DailyCount
 
-	err := d.db.WithContext(ctx).Model(&model.ShortSuccessEvent{}).
+	err := mvc.ExtractDB(ctx, d.db).Model(&model.ShortSuccessEvent{}).
 		Select("DATE(created_at) as date, COUNT(*) as count").
 		Where("link_id = ? AND created_at >= ? AND created_at < ?", linkID, startDate, endDate).
 		Group("DATE(created_at)").
@@ -83,17 +84,10 @@ func (d *SuccessEventDao) ExistsByEventID(ctx context.Context, eventID string) (
 		return false, nil
 	}
 	var count int64
-	err := d.db.WithContext(ctx).Model(&model.ShortSuccessEvent{}).
+	err := mvc.ExtractDB(ctx, d.db).Model(&model.ShortSuccessEvent{}).
 		Where("event_id = ?", eventID).Count(&count).Error
 	if err != nil {
 		return false, d.err.New("检查事件ID是否存在失败", err).DB()
 	}
 	return count > 0, nil
 }
-
-
-
-
-
-
-

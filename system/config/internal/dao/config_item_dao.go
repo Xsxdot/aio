@@ -41,7 +41,7 @@ func (d *ConfigItemDao) keyCol() string {
 // FindByKey 根据配置键查询
 func (d *ConfigItemDao) FindByKey(ctx context.Context, key string) (*model.ConfigItemModel, error) {
 	var item model.ConfigItemModel
-	err := d.db.WithContext(ctx).Where(d.keyCol()+" = ?", key).First(&item).Error
+	err := mvc.ExtractDB(ctx, d.db).Where(d.keyCol()+" = ?", key).First(&item).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, d.err.New("配置项不存在", err).WithCode(errorc.ErrorCodeNotFound)
@@ -54,7 +54,7 @@ func (d *ConfigItemDao) FindByKey(ctx context.Context, key string) (*model.Confi
 // FindByKeyLike 根据配置键模糊查询
 func (d *ConfigItemDao) FindByKeyLike(ctx context.Context, keyPattern string) ([]*model.ConfigItemModel, error) {
 	var items []*model.ConfigItemModel
-	err := d.db.WithContext(ctx).Where(d.keyCol()+" LIKE ?", "%"+keyPattern+"%").Find(&items).Error
+	err := mvc.ExtractDB(ctx, d.db).Where(d.keyCol()+" LIKE ?", "%"+keyPattern+"%").Find(&items).Error
 	if err != nil {
 		return nil, d.err.New("模糊查询配置项失败", err).DB()
 	}
@@ -64,7 +64,7 @@ func (d *ConfigItemDao) FindByKeyLike(ctx context.Context, keyPattern string) ([
 // FindByKeyPrefix 根据配置键前缀查询
 func (d *ConfigItemDao) FindByKeyPrefix(ctx context.Context, prefix string) ([]*model.ConfigItemModel, error) {
 	var items []*model.ConfigItemModel
-	err := d.db.WithContext(ctx).Where(d.keyCol()+" LIKE ?", prefix+"%").Find(&items).Error
+	err := mvc.ExtractDB(ctx, d.db).Where(d.keyCol()+" LIKE ?", prefix+"%").Find(&items).Error
 	if err != nil {
 		return nil, d.err.New("按前缀查询配置项失败", err).DB()
 	}
@@ -76,7 +76,7 @@ func (d *ConfigItemDao) FindPageByKeyLike(ctx context.Context, page *mvc.Page, k
 	var items []*model.ConfigItemModel
 	var total int64
 
-	db := d.db.WithContext(ctx).Model(&model.ConfigItemModel{})
+	db := mvc.ExtractDB(ctx, d.db).Model(&model.ConfigItemModel{})
 	db = db.Where(d.keyCol()+" LIKE ?", "%"+keyPattern+"%")
 
 	// 统计总数
@@ -112,7 +112,7 @@ func (d *ConfigItemDao) FindPageByKeyLike(ctx context.Context, page *mvc.Page, k
 // FindAll 查询所有配置项
 func (d *ConfigItemDao) FindAll(ctx context.Context) ([]*model.ConfigItemModel, error) {
 	var items []*model.ConfigItemModel
-	err := d.db.WithContext(ctx).Find(&items).Error
+	err := mvc.ExtractDB(ctx, d.db).Find(&items).Error
 	if err != nil {
 		return nil, d.err.New("查询所有配置项失败", err).DB()
 	}
@@ -122,7 +122,7 @@ func (d *ConfigItemDao) FindAll(ctx context.Context) ([]*model.ConfigItemModel, 
 // FindByKeys 根据多个配置键查询
 func (d *ConfigItemDao) FindByKeys(ctx context.Context, keys []string) ([]*model.ConfigItemModel, error) {
 	var items []*model.ConfigItemModel
-	err := d.db.WithContext(ctx).Where(d.keyCol()+" IN ?", keys).Find(&items).Error
+	err := mvc.ExtractDB(ctx, d.db).Where(d.keyCol()+" IN ?", keys).Find(&items).Error
 	if err != nil {
 		return nil, d.err.New("批量查询配置项失败", err).DB()
 	}
@@ -132,7 +132,7 @@ func (d *ConfigItemDao) FindByKeys(ctx context.Context, keys []string) ([]*model
 // ExistsByKey 检查配置键是否存在
 func (d *ConfigItemDao) ExistsByKey(ctx context.Context, key string) (bool, error) {
 	var count int64
-	err := d.db.WithContext(ctx).Model(&model.ConfigItemModel{}).Where(d.keyCol()+" = ?", key).Count(&count).Error
+	err := mvc.ExtractDB(ctx, d.db).Model(&model.ConfigItemModel{}).Where(d.keyCol()+" = ?", key).Count(&count).Error
 	if err != nil {
 		return false, d.err.New("检查配置键是否存在失败", err).DB()
 	}
@@ -141,7 +141,7 @@ func (d *ConfigItemDao) ExistsByKey(ctx context.Context, key string) (bool, erro
 
 // IncrementVersion 增加版本号
 func (d *ConfigItemDao) IncrementVersion(ctx context.Context, id int64) error {
-	err := d.db.WithContext(ctx).Model(&model.ConfigItemModel{}).
+	err := mvc.ExtractDB(ctx, d.db).Model(&model.ConfigItemModel{}).
 		Where("id = ?", id).
 		UpdateColumn("version", gorm.Expr("version + 1")).Error
 	if err != nil {

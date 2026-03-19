@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"time"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
@@ -95,53 +95,37 @@ func (s *LinkService) ValidateLink(link *model.ShortLink, password string) error
 	return nil
 }
 
-// RecordVisit 记录访问（需配合 DAO 的原子递增）
-func (s *LinkService) RecordVisit(ctx context.Context, linkID int64, visitDao *dao.VisitDao, ip, ua, referer string) error {
-	// 创建访问记录
-	visit := &model.ShortVisit{
-		LinkID:    linkID,
-		IP:        ip,
-		UserAgent: ua,
-		Referer:   referer,
-		VisitedAt: time.Now(),
-	}
-
-	if err := visitDao.Create(ctx, visit); err != nil {
-		s.log.WithErr(err).Error("创建访问记录失败")
-		// 不阻断流程，记录失败仅打日志
-	}
-
-	// 原子递增访问次数
+// IncrementVisitCount 增加访问次数
+func (s *LinkService) IncrementVisitCount(ctx context.Context, linkID int64) error {
 	return s.Dao.IncrementVisitCount(ctx, linkID)
 }
 
-// RecordSuccess 记录成功上报
-func (s *LinkService) RecordSuccess(ctx context.Context, linkID int64, successDao *dao.SuccessEventDao, eventID string, attrs map[string]interface{}) error {
-	// 检查eventID是否已存在（幂等）
-	if eventID != "" {
-		exists, err := successDao.ExistsByEventID(ctx, eventID)
-		if err != nil {
-			return err
-		}
-		if exists {
-			s.log.WithField("event_id", eventID).Info("事件ID已存在，跳过重复上报")
-			return nil // 幂等，不报错
-		}
-	}
-
-	// 创建成功事件
-	event := &model.ShortSuccessEvent{
-		LinkID:  linkID,
-		EventID: eventID,
-		Attrs:   attrs,
-	}
-
-	if err := successDao.Create(ctx, event); err != nil {
-		return err
-	}
-
-	// 原子递增成功次数
+// IncrementSuccessCount 增加成功次数
+func (s *LinkService) IncrementSuccessCount(ctx context.Context, linkID int64) error {
 	return s.Dao.IncrementSuccessCount(ctx, linkID)
+}
+
+// ExistsByDomainAndCode 检查域下短码是否存在
+func (s *LinkService) ExistsByDomainAndCode(ctx context.Context, domainID int64, code string) (bool, error) {
+	return s.Dao.ExistsByDomainAndCode(ctx, domainID, code)
+}
+
+// FindByDomainAndCode 根据域名和短码查找短链接
+func (s *LinkService) FindByDomainAndCode(ctx context.Context, domainID int64, code string) (*model.ShortLink, error) {
+	return s.Dao.FindByDomainAndCode(ctx, domainID, code)
+}
+
+// Save 保存短链接实体
+func (s *LinkService) Save(ctx context.Context, link *model.ShortLink) error {
+	if err := s.Dao.DB.WithContext(ctx).Save(link).Error; err != nil {
+		return s.err.New("保存短链接失败", err).DB()
+	}
+	return nil
+}
+
+// FindByCode 根据短码查找短链接
+func (s *LinkService) FindByCode(ctx context.Context, code string) (*model.ShortLink, error) {
+	return s.Dao.FindByCode(ctx, code)
 }
 
 

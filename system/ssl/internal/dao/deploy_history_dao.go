@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
@@ -31,7 +32,7 @@ func NewDeployHistoryDao(db *gorm.DB, log *logger.Log) *DeployHistoryDao {
 // FindByCertificateID 根据证书 ID 查询部署历史
 func (d *DeployHistoryDao) FindByCertificateID(ctx context.Context, certificateID uint, limit int) ([]model.DeployHistory, error) {
 	var histories []model.DeployHistory
-	query := d.db.WithContext(ctx).Where("certificate_id = ?", certificateID).Order("id DESC")
+	query := mvc.ExtractDB(ctx, d.db).Where("certificate_id = ?", certificateID).Order("id DESC")
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
@@ -46,7 +47,7 @@ func (d *DeployHistoryDao) FindByCertificateID(ctx context.Context, certificateI
 // FindByDeployTargetID 根据部署目标 ID 查询部署历史
 func (d *DeployHistoryDao) FindByDeployTargetID(ctx context.Context, deployTargetID uint, limit int) ([]model.DeployHistory, error) {
 	var histories []model.DeployHistory
-	query := d.db.WithContext(ctx).Where("deploy_target_id = ?", deployTargetID).Order("id DESC")
+	query := mvc.ExtractDB(ctx, d.db).Where("deploy_target_id = ?", deployTargetID).Order("id DESC")
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
@@ -61,7 +62,7 @@ func (d *DeployHistoryDao) FindByDeployTargetID(ctx context.Context, deployTarge
 // FindByStatus 根据状态查询部署历史
 func (d *DeployHistoryDao) FindByStatus(ctx context.Context, status model.DeployStatus, limit int) ([]model.DeployHistory, error) {
 	var histories []model.DeployHistory
-	query := d.db.WithContext(ctx).Where("status = ?", status).Order("id DESC")
+	query := mvc.ExtractDB(ctx, d.db).Where("status = ?", status).Order("id DESC")
 	if limit > 0 {
 		query = query.Limit(limit)
 	}

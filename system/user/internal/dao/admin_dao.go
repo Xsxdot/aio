@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
@@ -31,7 +32,7 @@ func NewAdminDao(db *gorm.DB, log *logger.Log) *AdminDao {
 // FindByAccount 根据账号查询管理员
 func (d *AdminDao) FindByAccount(ctx context.Context, account string) (*model.Admin, error) {
 	var admin model.Admin
-	err := d.db.WithContext(ctx).Where("account = ?", account).First(&admin).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("account = ?", account).First(&admin).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, d.err.New("管理员不存在", err).WithCode(errorc.ErrorCodeNotFound)
@@ -44,7 +45,7 @@ func (d *AdminDao) FindByAccount(ctx context.Context, account string) (*model.Ad
 // ExistsByAccount 检查账号是否存在
 func (d *AdminDao) ExistsByAccount(ctx context.Context, account string) (bool, error) {
 	var count int64
-	err := d.db.WithContext(ctx).Model(&model.Admin{}).Where("account = ?", account).Count(&count).Error
+	err := mvc.ExtractDB(ctx, d.db).Model(&model.Admin{}).Where("account = ?", account).Count(&count).Error
 	if err != nil {
 		return false, d.err.New("检查账号是否存在失败", err).DB()
 	}
@@ -53,7 +54,7 @@ func (d *AdminDao) ExistsByAccount(ctx context.Context, account string) (bool, e
 
 // UpdatePassword 更新管理员密码
 func (d *AdminDao) UpdatePassword(ctx context.Context, id int64, passwordHash string) error {
-	err := d.db.WithContext(ctx).Model(&model.Admin{}).
+	err := mvc.ExtractDB(ctx, d.db).Model(&model.Admin{}).
 		Where("id = ?", id).
 		Update("password_hash", passwordHash).Error
 	if err != nil {
@@ -64,7 +65,7 @@ func (d *AdminDao) UpdatePassword(ctx context.Context, id int64, passwordHash st
 
 // UpdateStatus 更新管理员状态
 func (d *AdminDao) UpdateStatus(ctx context.Context, id int64, status int8) error {
-	err := d.db.WithContext(ctx).Model(&model.Admin{}).
+	err := mvc.ExtractDB(ctx, d.db).Model(&model.Admin{}).
 		Where("id = ?", id).
 		Update("status", status).Error
 	if err != nil {
@@ -76,7 +77,7 @@ func (d *AdminDao) UpdateStatus(ctx context.Context, id int64, status int8) erro
 // FindAllActive 查询所有启用的管理员
 func (d *AdminDao) FindAllActive(ctx context.Context) ([]*model.Admin, error) {
 	var admins []*model.Admin
-	err := d.db.WithContext(ctx).Where("status = ?", model.AdminStatusEnabled).Find(&admins).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("status = ?", model.AdminStatusEnabled).Find(&admins).Error
 	if err != nil {
 		return nil, d.err.New("查询启用管理员失败", err).DB()
 	}
@@ -86,7 +87,7 @@ func (d *AdminDao) FindAllActive(ctx context.Context) ([]*model.Admin, error) {
 // Count 查询管理员总数
 func (d *AdminDao) Count(ctx context.Context) (int64, error) {
 	var count int64
-	err := d.db.WithContext(ctx).Model(&model.Admin{}).Count(&count).Error
+	err := mvc.ExtractDB(ctx, d.db).Model(&model.Admin{}).Count(&count).Error
 	if err != nil {
 		return 0, d.err.New("查询管理员数量失败", err).DB()
 	}
@@ -102,4 +103,3 @@ func (d *AdminDao) WithTx(tx *gorm.DB) *AdminDao {
 		db:       tx,
 	}
 }
-

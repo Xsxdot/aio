@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
@@ -24,6 +25,16 @@ func NewDomainService(daoInstance *dao.DomainDao, log *logger.Log) *DomainServic
 		log:          log.WithEntryName("DomainService"),
 		err:          errorc.NewErrorBuilder("DomainService"),
 	}
+}
+
+// FindByDomain 根据域名查找配置
+func (s *DomainService) FindByDomain(ctx context.Context, host string) (*model.ShortDomain, error) {
+	return s.Dao.FindByDomain(ctx, host)
+}
+
+// FindDefault 获取默认域名配置
+func (s *DomainService) FindDefault(ctx context.Context) (*model.ShortDomain, error) {
+	return s.Dao.FindDefault(ctx)
 }
 
 

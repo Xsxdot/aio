@@ -52,7 +52,7 @@ func (a *App) CreateShortLink(ctx context.Context, req *CreateShortLinkRequest) 
 	var code string
 	if req.CustomCode != "" {
 		// 使用自定义短码，需检查是否已存在
-		exists, err := a.LinkService.Dao.ExistsByDomainAndCode(ctx, req.DomainID, req.CustomCode)
+		exists, err := a.LinkService.ExistsByDomainAndCode(ctx, req.DomainID, req.CustomCode)
 		if err != nil {
 			return nil, err
 		}
@@ -128,8 +128,8 @@ func (a *App) UpdateShortLink(ctx context.Context, id int64, req *UpdateShortLin
 	}
 
 	// 保存更新
-	if err := a.LinkService.Dao.DB.WithContext(ctx).Save(link).Error; err != nil {
-		return a.err.New("更新短链接失败", err).DB()
+	if err := a.LinkService.Save(ctx, link); err != nil {
+		return err
 	}
 
 	// 清除缓存
@@ -148,8 +148,8 @@ func (a *App) UpdateShortLinkStatus(ctx context.Context, id int64, enabled bool)
 
 	// 更新状态
 	link.Enabled = enabled
-	if err := a.LinkService.Dao.DB.WithContext(ctx).Save(link).Error; err != nil {
-		return a.err.New("更新短链接状态失败", err).DB()
+	if err := a.LinkService.Save(ctx, link); err != nil {
+		return err
 	}
 
 	// 清除缓存
@@ -200,7 +200,7 @@ func (a *App) ResolveShortLink(ctx context.Context, host, code, password string)
 		Value: &link,
 		TTL:   5 * time.Minute, // 缓存5分钟
 		Do: func(*cache.Item) (interface{}, error) {
-			return a.LinkService.Dao.FindByDomainAndCode(ctx, domain.ID, code)
+			return a.LinkService.FindByDomainAndCode(ctx, domain.ID, code)
 		},
 	})
 
@@ -227,10 +227,10 @@ func (a *App) resolveDomainWithCache(ctx context.Context, host string) (*model.S
 		TTL:   10 * time.Minute, // 域名缓存10分钟
 		Do: func(*cache.Item) (interface{}, error) {
 			// 先尝试根据 host 查找域名
-			d, err := a.DomainService.Dao.FindByDomain(ctx, host)
+			d, err := a.DomainService.FindByDomain(ctx, host)
 			if err != nil {
 				// 找不到则使用默认域名
-				d, err = a.DomainService.Dao.FindDefault(ctx)
+				d, err = a.DomainService.FindDefault(ctx)
 				if err != nil {
 					return nil, a.err.New("未找到匹配的域名且无默认域名", nil)
 				}
@@ -248,20 +248,36 @@ func (a *App) resolveDomainWithCache(ctx context.Context, host string) (*model.S
 
 // VisitShortLink 访问短链接（记录访问并返回跳转信息）
 func (a *App) VisitShortLink(ctx context.Context, link *model.ShortLink, ip, ua, referer string) error {
-	visitDao := a.StatsService.VisitDao
-	return a.LinkService.RecordVisit(ctx, link.ID, visitDao, ip, ua, referer)
+	visit := &model.ShortVisit{
+		LinkID:    link.ID,
+		IP:        ip,
+		UserAgent: ua,
+		Referer:   referer,
+		VisitedAt: time.Now(),
+	}
+	if err := a.StatsService.CreateVisit(ctx, visit); err != nil {
+		a.log.WithErr(err).Error("创建访问记录失败")
+	}
+	return a.LinkService.IncrementVisitCount(ctx, link.ID)
 }
 
 // ReportShortLinkSuccess 上报短链接跳转成功
 func (a *App) ReportShortLinkSuccess(ctx context.Context, code, eventID string, attrs map[string]interface{}) error {
 	// 根据 code 查找短链接（任意域名）
-	link, err := a.LinkService.Dao.FindByCode(ctx, code)
+	link, err := a.LinkService.FindByCode(ctx, code)
 	if err != nil {
 		return err
 	}
 
-	successDao := a.StatsService.SuccessEventDao
-	return a.LinkService.RecordSuccess(ctx, link.ID, successDao, eventID, attrs)
+	event := &model.ShortSuccessEvent{
+		LinkID:  link.ID,
+		EventID: eventID,
+		Attrs:   attrs,
+	}
+	if err := a.StatsService.CreateSuccessEvent(ctx, event); err != nil {
+		return err
+	}
+	return a.LinkService.IncrementSuccessCount(ctx, link.ID)
 }
 
 // GetShortLinkStats 获取短链接统计
@@ -276,14 +292,12 @@ func (a *App) GetShortLinkStats(ctx context.Context, linkID int64, days int) (*S
 		return nil, err
 	}
 
-	visitDao := a.StatsService.VisitDao
-	recentVisits, err := visitDao.ListByLinkID(ctx, linkID, 20)
+	recentVisits, err := a.StatsService.ListRecentVisits(ctx, linkID, 20)
 	if err != nil {
 		return nil, err
 	}
 
-	successEventDao := a.StatsService.SuccessEventDao
-	recentSuccess, err := successEventDao.ListByLinkID(ctx, linkID, 20)
+	recentSuccess, err := a.StatsService.ListRecentSuccess(ctx, linkID, 20)
 	if err != nil {
 		return nil, err
 	}

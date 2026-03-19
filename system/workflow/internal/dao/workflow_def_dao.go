@@ -30,7 +30,7 @@ func NewWorkflowDefDao(db *gorm.DB, log *logger.Log) *WorkflowDefDao {
 // FindByCode 根据 code 获取最新版本的定义
 func (d *WorkflowDefDao) FindByCode(ctx context.Context, code string) (*model.WorkflowDefModel, error) {
 	var item model.WorkflowDefModel
-	err := d.db.WithContext(ctx).Where("code = ?", code).Order("version desc").First(&item).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("code = ?", code).Order("version desc").First(&item).Error
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func (d *WorkflowDefDao) FindByCode(ctx context.Context, code string) (*model.Wo
 // FindByCodeAndVersion 根据 code 和 version 查询定义
 func (d *WorkflowDefDao) FindByCodeAndVersion(ctx context.Context, code string, version int32) (*model.WorkflowDefModel, error) {
 	var item model.WorkflowDefModel
-	err := d.db.WithContext(ctx).Where("code = ? AND version = ?", code, version).First(&item).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("code = ? AND version = ?", code, version).First(&item).Error
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (d *WorkflowDefDao) ListDefs(ctx context.Context, codeLike string, pageNum,
 		pageSize = 10
 	}
 
-	db := d.db.WithContext(ctx).Model(&model.WorkflowDefModel{})
+	db := mvc.ExtractDB(ctx, d.db).Model(&model.WorkflowDefModel{})
 	if codeLike != "" {
 		db = db.Where("code LIKE ?", "%"+codeLike+"%")
 	}

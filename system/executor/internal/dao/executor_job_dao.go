@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/xsxdot/aio/base"
+	"github.com/xsxdot/aio/pkg/core/mvc"
 	"github.com/xsxdot/aio/system/executor/internal/model"
 
 	"gorm.io/gorm"
@@ -24,13 +25,13 @@ func NewExecutorJobDAO() *ExecutorJobDAO {
 
 // Create 创建任务
 func (d *ExecutorJobDAO) Create(ctx context.Context, job *model.ExecutorJobModel) error {
-	return d.db.WithContext(ctx).Create(job).Error
+	return mvc.ExtractDB(ctx, d.db).Create(job).Error
 }
 
 // GetByID 根据ID获取任务
 func (d *ExecutorJobDAO) GetByID(ctx context.Context, id uint64) (*model.ExecutorJobModel, error) {
 	var job model.ExecutorJobModel
-	err := d.db.WithContext(ctx).Where("id = ?", id).First(&job).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("id = ?", id).First(&job).Error
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +41,7 @@ func (d *ExecutorJobDAO) GetByID(ctx context.Context, id uint64) (*model.Executo
 // GetByDedupKey 根据环境+幂等键获取任务（不同环境的 dedup_key 相互独立）
 func (d *ExecutorJobDAO) GetByDedupKey(ctx context.Context, env, dedupKey string) (*model.ExecutorJobModel, error) {
 	var job model.ExecutorJobModel
-	err := d.db.WithContext(ctx).Where("env = ? AND dedup_key = ?", env, dedupKey).First(&job).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("env = ? AND dedup_key = ?", env, dedupKey).First(&job).Error
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +55,7 @@ func (d *ExecutorJobDAO) AcquireJob(ctx context.Context, env, targetService, met
 	now := time.Now()
 	leaseUntil := now.Add(time.Duration(leaseDuration) * time.Second)
 
-	err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := mvc.ExtractDB(ctx, d.db).Transaction(func(tx *gorm.DB) error {
 		// 1. 检查该 consumer 是否已有未到期租约的任务（保证同 consumer 不并行）
 		// 使用 Find 代替 First，避免「无记录」时 GORM 默认 logger 打印 record not found
 		var existingJobs []model.ExecutorJobModel
@@ -165,7 +166,7 @@ func (d *ExecutorJobDAO) RenewLease(ctx context.Context, jobID uint64, attemptNo
 	now := time.Now()
 	newLeaseUntil := now.Add(time.Duration(extendDuration) * time.Second)
 
-	err := d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := mvc.ExtractDB(ctx, d.db).Transaction(func(tx *gorm.DB) error {
 		// 查询并校验
 		err := tx.Where("id = ? AND attempts = ? AND lease_owner = ?", jobID, attemptNo, consumerID).
 			First(&job).Error
@@ -190,7 +191,7 @@ func (d *ExecutorJobDAO) AckJob(ctx context.Context, jobID uint64, attemptNo int
 	status model.JobStatus, errorMsg, resultJSON string, retryAfter int32,
 	stopRetry bool, addMaxAttempts int32, errorType string) error {
 
-	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return mvc.ExtractDB(ctx, d.db).Transaction(func(tx *gorm.DB) error {
 		var job model.ExecutorJobModel
 
 		// 查询并校验
@@ -283,14 +284,14 @@ func calculateNextRunAt(attempts int32, retryAfter int32, retryBackoffType model
 
 // UpdateStatus 更新任务状态
 func (d *ExecutorJobDAO) UpdateStatus(ctx context.Context, jobID uint64, status model.JobStatus) error {
-	return d.db.WithContext(ctx).Model(&model.ExecutorJobModel{}).
+	return mvc.ExtractDB(ctx, d.db).Model(&model.ExecutorJobModel{}).
 		Where("id = ?", jobID).
 		Update("status", status).Error
 }
 
 // UpdateArgsJSON 更新任务参数JSON
 func (d *ExecutorJobDAO) UpdateArgsJSON(ctx context.Context, jobID uint64, argsJSON string) error {
-	return d.db.WithContext(ctx).Model(&model.ExecutorJobModel{}).
+	return mvc.ExtractDB(ctx, d.db).Model(&model.ExecutorJobModel{}).
 		Where("id = ?", jobID).
 		Update("args_json", argsJSON).Error
 }
@@ -304,7 +305,7 @@ func (d *ExecutorJobDAO) Requeue(ctx context.Context, jobID uint64, runAt time.T
 		"lease_until": nil,
 	}
 
-	return d.db.WithContext(ctx).Model(&model.ExecutorJobModel{}).
+	return mvc.ExtractDB(ctx, d.db).Model(&model.ExecutorJobModel{}).
 		Where("id = ?", jobID).
 		Updates(updates).Error
 }
@@ -314,7 +315,7 @@ func (d *ExecutorJobDAO) List(ctx context.Context, env, targetService string, st
 	var jobs []*model.ExecutorJobModel
 	var total int64
 
-	query := d.db.WithContext(ctx).Model(&model.ExecutorJobModel{}).Where("env = ?", env)
+	query := mvc.ExtractDB(ctx, d.db).Model(&model.ExecutorJobModel{}).Where("env = ?", env)
 
 	if targetService != "" {
 		query = query.Where("target_service = ?", targetService)
@@ -349,7 +350,7 @@ func (d *ExecutorJobDAO) CountByStatus(ctx context.Context, env string) (map[mod
 	}
 
 	var counts []StatusCount
-	err := d.db.WithContext(ctx).
+	err := mvc.ExtractDB(ctx, d.db).
 		Model(&model.ExecutorJobModel{}).
 		Where("env = ?", env).
 		Select("status, COUNT(*) as count").
@@ -373,7 +374,7 @@ func (d *ExecutorJobDAO) CountDueJobs(ctx context.Context, env string) (int64, e
 	var count int64
 	now := time.Now()
 
-	err := d.db.WithContext(ctx).
+	err := mvc.ExtractDB(ctx, d.db).
 		Model(&model.ExecutorJobModel{}).
 		Where("env = ? AND status = ? AND (next_run_at IS NULL OR next_run_at <= ?)", env, model.JobStatusPending, now).
 		Count(&count).Error
@@ -389,7 +390,7 @@ func (d *ExecutorJobDAO) GetRetryDistribution(ctx context.Context, env string) (
 	}
 
 	var counts []RetryCount
-	err := d.db.WithContext(ctx).
+	err := mvc.ExtractDB(ctx, d.db).
 		Model(&model.ExecutorJobModel{}).
 		Where("env = ? AND status != ?", env, model.JobStatusPending).
 		Select("attempts, COUNT(*) as count").
@@ -410,7 +411,7 @@ func (d *ExecutorJobDAO) GetRetryDistribution(ctx context.Context, env string) (
 
 // DeleteOldSucceededJobs 删除旧的已成功任务（仅清理指定 env）
 func (d *ExecutorJobDAO) DeleteOldSucceededJobs(ctx context.Context, env string, olderThan time.Time) (int64, error) {
-	result := d.db.WithContext(ctx).
+	result := mvc.ExtractDB(ctx, d.db).
 		Where("env = ? AND status = ? AND updated_at < ?", env, model.JobStatusSucceeded, olderThan).
 		Delete(&model.ExecutorJobModel{})
 
@@ -419,7 +420,7 @@ func (d *ExecutorJobDAO) DeleteOldSucceededJobs(ctx context.Context, env string,
 
 // DeleteOldCanceledJobs 删除旧的已取消任务（仅清理指定 env）
 func (d *ExecutorJobDAO) DeleteOldCanceledJobs(ctx context.Context, env string, olderThan time.Time) (int64, error) {
-	result := d.db.WithContext(ctx).
+	result := mvc.ExtractDB(ctx, d.db).
 		Where("env = ? AND status = ? AND updated_at < ?", env, model.JobStatusCanceled, olderThan).
 		Delete(&model.ExecutorJobModel{})
 
@@ -428,7 +429,7 @@ func (d *ExecutorJobDAO) DeleteOldCanceledJobs(ctx context.Context, env string, 
 
 // DeleteOldDeadJobs 删除旧的死信任务（仅清理指定 env）
 func (d *ExecutorJobDAO) DeleteOldDeadJobs(ctx context.Context, env string, olderThan time.Time) (int64, error) {
-	result := d.db.WithContext(ctx).
+	result := mvc.ExtractDB(ctx, d.db).
 		Where("env = ? AND status = ? AND updated_at < ?", env, model.JobStatusDead, olderThan).
 		Delete(&model.ExecutorJobModel{})
 

@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
@@ -31,7 +32,7 @@ func NewDnsCredentialDao(db *gorm.DB, log *logger.Log) *DnsCredentialDao {
 // FindByProvider 根据服务商类型查询凭证列表
 func (d *DnsCredentialDao) FindByProvider(ctx context.Context, provider model.DnsProvider) ([]model.DnsCredential, error) {
 	var credentials []model.DnsCredential
-	err := d.db.WithContext(ctx).Where("provider = ? AND status = ?", provider, 1).Find(&credentials).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("provider = ? AND status = ?", provider, 1).Find(&credentials).Error
 	if err != nil {
 		d.log.WithErr(err).WithField("provider", provider).Error("根据服务商查询凭证失败")
 		return nil, d.err.New("根据服务商查询凭证失败", err)
@@ -42,7 +43,7 @@ func (d *DnsCredentialDao) FindByProvider(ctx context.Context, provider model.Dn
 // FindActiveCredentials 查询所有启用的凭证
 func (d *DnsCredentialDao) FindActiveCredentials(ctx context.Context) ([]model.DnsCredential, error) {
 	var credentials []model.DnsCredential
-	err := d.db.WithContext(ctx).Where("status = ?", 1).Find(&credentials).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("status = ?", 1).Find(&credentials).Error
 	if err != nil {
 		d.log.WithErr(err).Error("查询启用凭证失败")
 		return nil, d.err.New("查询启用凭证失败", err)

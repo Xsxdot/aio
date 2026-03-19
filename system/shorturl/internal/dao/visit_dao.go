@@ -3,6 +3,7 @@ package dao
 import (
 	"context"
 	"time"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
@@ -32,7 +33,7 @@ func NewVisitDao(db *gorm.DB, log *logger.Log) *VisitDao {
 // ListByLinkID 查询指定链接的访问记录
 func (d *VisitDao) ListByLinkID(ctx context.Context, linkID int64, limit int) ([]*model.ShortVisit, error) {
 	var results []*model.ShortVisit
-	err := d.db.WithContext(ctx).Where("link_id = ?", linkID).
+	err := mvc.ExtractDB(ctx, d.db).Where("link_id = ?", linkID).
 		Order("visited_at DESC").Limit(limit).Find(&results).Error
 	if err != nil {
 		return nil, d.err.New("查询访问记录失败", err).DB()
@@ -43,7 +44,7 @@ func (d *VisitDao) ListByLinkID(ctx context.Context, linkID int64, limit int) ([
 // CountByLinkID 统计指定链接的访问次数
 func (d *VisitDao) CountByLinkID(ctx context.Context, linkID int64) (int64, error) {
 	var count int64
-	err := d.db.WithContext(ctx).Model(&model.ShortVisit{}).
+	err := mvc.ExtractDB(ctx, d.db).Model(&model.ShortVisit{}).
 		Where("link_id = ?", linkID).Count(&count).Error
 	if err != nil {
 		return 0, d.err.New("统计访问次数失败", err).DB()
@@ -59,7 +60,7 @@ func (d *VisitDao) CountByLinkIDAndDateRange(ctx context.Context, linkID int64, 
 	}
 	var results []DailyCount
 
-	err := d.db.WithContext(ctx).Model(&model.ShortVisit{}).
+	err := mvc.ExtractDB(ctx, d.db).Model(&model.ShortVisit{}).
 		Select("DATE(visited_at) as date, COUNT(*) as count").
 		Where("link_id = ? AND visited_at >= ? AND visited_at < ?", linkID, startDate, endDate).
 		Group("DATE(visited_at)").
@@ -76,10 +77,3 @@ func (d *VisitDao) CountByLinkIDAndDateRange(ctx context.Context, linkID int64, 
 	}
 	return countMap, nil
 }
-
-
-
-
-
-
-

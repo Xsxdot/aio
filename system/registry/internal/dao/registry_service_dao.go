@@ -30,7 +30,7 @@ func NewRegistryServiceDao(db *gorm.DB, log *logger.Log) *RegistryServiceDao {
 
 func (d *RegistryServiceDao) FindByKey(ctx context.Context, project, name string) (*model.RegistryService, error) {
 	var svc model.RegistryService
-	err := d.db.WithContext(ctx).
+	err := mvc.ExtractDB(ctx, d.db).
 		Where("project = ? AND name = ?", project, name).
 		First(&svc).Error
 	if err != nil {
@@ -44,7 +44,7 @@ func (d *RegistryServiceDao) FindByKey(ctx context.Context, project, name string
 
 func (d *RegistryServiceDao) ListByFilter(ctx context.Context, project string) ([]*model.RegistryService, error) {
 	var list []*model.RegistryService
-	q := d.db.WithContext(ctx).Model(&model.RegistryService{})
+	q := mvc.ExtractDB(ctx, d.db).Model(&model.RegistryService{})
 	if project != "" {
 		q = q.Where("project = ?", project)
 	}

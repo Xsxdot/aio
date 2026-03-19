@@ -46,11 +46,11 @@ func (d *WorkflowInstanceDao) SaveWithTx(ctx context.Context, tx *gorm.DB, entit
 
 // ListInstancesFilter 实例列表筛选条件
 type ListInstancesFilter struct {
-	DefID         *int64  // 按 def_id 筛选
-	DefCode       string  // 按 def code 筛选（需 join def 表）
-	Status        string  // 按状态筛选
-	CreatedAfter  int64   // 创建时间戳（秒）之后
-	CreatedBefore int64   // 创建时间戳（秒）之前
+	DefID         *int64 // 按 def_id 筛选
+	DefCode       string // 按 def code 筛选（需 join def 表）
+	Status        string // 按状态筛选
+	CreatedAfter  int64  // 创建时间戳（秒）之后
+	CreatedBefore int64  // 创建时间戳（秒）之前
 }
 
 // ListInstances 分页列出实例，支持 def_code、status、时间范围筛选
@@ -62,7 +62,7 @@ func (d *WorkflowInstanceDao) ListInstances(ctx context.Context, filter *ListIns
 		pageSize = 10
 	}
 
-	db := d.db.WithContext(ctx).Model(&model.WorkflowInstanceModel{})
+	db := mvc.ExtractDB(ctx, d.db).Model(&model.WorkflowInstanceModel{})
 
 	if filter != nil {
 		if filter.DefID != nil {

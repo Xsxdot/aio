@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
@@ -31,7 +32,7 @@ func NewDeployTargetDao(db *gorm.DB, log *logger.Log) *DeployTargetDao {
 // FindActiveTargets 查询所有启用的部署目标
 func (d *DeployTargetDao) FindActiveTargets(ctx context.Context) ([]model.DeployTarget, error) {
 	var targets []model.DeployTarget
-	err := d.db.WithContext(ctx).Where("status = ?", 1).Find(&targets).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("status = ?", 1).Find(&targets).Error
 	if err != nil {
 		d.log.WithErr(err).Error("查询启用部署目标失败")
 		return nil, d.err.New("查询启用部署目标失败", err)
@@ -42,7 +43,7 @@ func (d *DeployTargetDao) FindActiveTargets(ctx context.Context) ([]model.Deploy
 // FindByType 根据类型查询部署目标列表
 func (d *DeployTargetDao) FindByType(ctx context.Context, targetType model.DeployTargetType) ([]model.DeployTarget, error) {
 	var targets []model.DeployTarget
-	err := d.db.WithContext(ctx).Where("type = ? AND status = ?", targetType, 1).Find(&targets).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("type = ? AND status = ?", targetType, 1).Find(&targets).Error
 	if err != nil {
 		d.log.WithErr(err).WithField("type", targetType).Error("根据类型查询部署目标失败")
 		return nil, d.err.New("根据类型查询部署目标失败", err)
@@ -61,12 +62,12 @@ func (d *DeployTargetDao) FindActiveTargetsByCertificateDomain(ctx context.Conte
 		// 通配符证书：*.base
 		base := certDomain[2:] // 去掉 "*."
 		// 查询：domain = "*.base" 或 domain LIKE "%.base"（候选集合，包含 *.base、b.base、x.b.base 等）
-		err = d.db.WithContext(ctx).
+		err = mvc.ExtractDB(ctx, d.db).
 			Where("status = ? AND (domain = ? OR domain LIKE ?)", 1, certDomain, "%."+base).
 			Find(&targets).Error
 	} else {
 		// 精确域名证书：只匹配 domain = certDomain
-		err = d.db.WithContext(ctx).
+		err = mvc.ExtractDB(ctx, d.db).
 			Where("status = ? AND domain = ?", 1, certDomain).
 			Find(&targets).Error
 	}

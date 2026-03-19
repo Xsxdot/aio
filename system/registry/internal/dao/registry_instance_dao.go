@@ -32,7 +32,7 @@ func NewRegistryInstanceDao(db *gorm.DB, log *logger.Log) *RegistryInstanceDao {
 
 func (d *RegistryInstanceDao) FindByServiceAndKey(ctx context.Context, serviceID int64, instanceKey string) (*model.RegistryInstance, error) {
 	var inst model.RegistryInstance
-	err := d.db.WithContext(ctx).
+	err := mvc.ExtractDB(ctx, d.db).
 		Where("service_id = ? AND instance_key = ?", serviceID, instanceKey).
 		First(&inst).Error
 	if err != nil {
@@ -46,7 +46,7 @@ func (d *RegistryInstanceDao) FindByServiceAndKey(ctx context.Context, serviceID
 
 func (d *RegistryInstanceDao) ListByServiceID(ctx context.Context, serviceID int64) ([]*model.RegistryInstance, error) {
 	var list []*model.RegistryInstance
-	if err := d.db.WithContext(ctx).
+	if err := mvc.ExtractDB(ctx, d.db).
 		Where("service_id = ?", serviceID).
 		Order("id DESC").
 		Find(&list).Error; err != nil {
@@ -58,7 +58,7 @@ func (d *RegistryInstanceDao) ListByServiceID(ctx context.Context, serviceID int
 // ListByServiceIDAndEnv 查询指定服务和环境的实例列表
 func (d *RegistryInstanceDao) ListByServiceIDAndEnv(ctx context.Context, serviceID int64, env string) ([]*model.RegistryInstance, error) {
 	var list []*model.RegistryInstance
-	q := d.db.WithContext(ctx).Where("service_id = ?", serviceID)
+	q := mvc.ExtractDB(ctx, d.db).Where("service_id = ?", serviceID)
 	if env != "" {
 		q = q.Where("env = ?", env)
 	}
@@ -73,7 +73,7 @@ func (d *RegistryInstanceDao) Upsert(ctx context.Context, inst *model.RegistryIn
 	if inst.LastHeartbeatAt.IsZero() {
 		inst.LastHeartbeatAt = time.Now()
 	}
-	return d.db.WithContext(ctx).
+	return mvc.ExtractDB(ctx, d.db).
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "service_id"}, {Name: "instance_key"}},
 			DoUpdates: clause.AssignmentColumns([]string{
@@ -90,7 +90,7 @@ func (d *RegistryInstanceDao) Upsert(ctx context.Context, inst *model.RegistryIn
 }
 
 func (d *RegistryInstanceDao) UpdateHeartbeat(ctx context.Context, serviceID int64, instanceKey string, at time.Time) error {
-	res := d.db.WithContext(ctx).Model(&model.RegistryInstance{}).
+	res := mvc.ExtractDB(ctx, d.db).Model(&model.RegistryInstance{}).
 		Where("service_id = ? AND instance_key = ?", serviceID, instanceKey).
 		Update("last_heartbeat_at", at)
 	if res.Error != nil {
@@ -103,7 +103,7 @@ func (d *RegistryInstanceDao) UpdateHeartbeat(ctx context.Context, serviceID int
 }
 
 func (d *RegistryInstanceDao) DeleteByServiceAndKey(ctx context.Context, serviceID int64, instanceKey string) error {
-	res := d.db.WithContext(ctx).Where("service_id = ? AND instance_key = ?", serviceID, instanceKey).Delete(&model.RegistryInstance{})
+	res := mvc.ExtractDB(ctx, d.db).Where("service_id = ? AND instance_key = ?", serviceID, instanceKey).Delete(&model.RegistryInstance{})
 	if res.Error != nil {
 		return d.err.New("删除实例失败", res.Error).DB()
 	}
