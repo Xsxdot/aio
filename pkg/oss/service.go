@@ -512,6 +512,33 @@ func (s *AliyunService) UploadFile(ctx context.Context, objectKey string, reader
 	return nil
 }
 
+// AppendFile 向已存在或可创建的追加写对象追加一段内容（position 为 0 时创建追加对象）
+// 返回下一次追加应使用的 position（即当前对象总长度）
+func (s *AliyunService) AppendFile(ctx context.Context, objectKey string, reader io.Reader, position int64) (int64, error) {
+	s.log.WithTrace(ctx).WithField("objectKey", objectKey).WithField("position", position).Debug("追加文件到阿里云OSS")
+
+	objectKey = s.ValidAndProcessOssKey(objectKey)
+
+	req := &oss.AppendObjectRequest{
+		Bucket:   oss.Ptr(s.config.Bucket),
+		Key:      oss.Ptr(objectKey),
+		Position: oss.Ptr(position),
+		Body:     reader,
+	}
+	if position == 0 {
+		req.InitHashCRC64 = oss.Ptr("0")
+	}
+
+	result, err := s.dataClient().AppendObject(ctx, req)
+	if err != nil {
+		return position, s.err.New("追加文件到阿里云OSS失败", err).WithTraceID(ctx).ToLog(s.log.Entry)
+	}
+	if result == nil {
+		return position, nil
+	}
+	return result.NextPosition, nil
+}
+
 // GetThumbnailUrl 获取图片缩略图URL
 func (s *AliyunService) GetThumbnailUrl(ctx context.Context, objectKey string, width, height int, expire time.Duration) (string, error) {
 	s.log.WithTrace(ctx).WithField("objectKey", objectKey).WithField("width", width).WithField("height", height).Info("获取图片缩略图URL")
