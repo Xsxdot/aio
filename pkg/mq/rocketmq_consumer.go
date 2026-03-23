@@ -15,6 +15,7 @@ import (
 type rocketMQSubscription struct {
 	topic   string
 	group   string
+	mode    ConsumeMode
 	handler Handler
 }
 
@@ -38,7 +39,7 @@ func newRocketMQConsumer(cfg *RocketConfig) (*rocketMQConsumer, error) {
 }
 
 // Subscribe 注册主题订阅，需在 Start 前调用
-func (c *rocketMQConsumer) Subscribe(topic string, group string, handler Handler) error {
+func (c *rocketMQConsumer) Subscribe(topic string, group string, mode ConsumeMode, handler Handler) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.started {
@@ -47,6 +48,7 @@ func (c *rocketMQConsumer) Subscribe(topic string, group string, handler Handler
 	c.subs = append(c.subs, &rocketMQSubscription{
 		topic:   topic,
 		group:   group,
+		mode:    mode,
 		handler: handler,
 	})
 	return nil
@@ -70,10 +72,18 @@ func (c *rocketMQConsumer) Start() error {
 	}
 
 	for _, sub := range c.subs {
+		// 根据消费模式选择 MessageModel
+		var model consumer.MessageModel
+		if sub.mode == ConsumeModeBroadcast {
+			model = consumer.BroadCasting
+		} else {
+			model = consumer.Clustering
+		}
+
 		opts := []consumer.Option{
 			consumer.WithNameServer(strings.Split(c.cfg.NameServer, ",")),
 			consumer.WithGroupName(sub.group),
-			consumer.WithConsumerModel(consumer.Clustering),
+			consumer.WithConsumerModel(model),
 			consumer.WithRetry(retryTimes),
 		}
 

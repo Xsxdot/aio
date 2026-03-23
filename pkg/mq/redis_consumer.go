@@ -18,6 +18,7 @@ const (
 type subscription struct {
 	topic   string
 	group   string
+	mode    ConsumeMode
 	handler Handler
 }
 
@@ -74,7 +75,7 @@ func newRedisConsumer(cfg *RedisConfig) (*redisConsumer, error) {
 }
 
 // Subscribe 注册主题订阅，需在 Start 前调用
-func (c *redisConsumer) Subscribe(topic string, group string, handler Handler) error {
+func (c *redisConsumer) Subscribe(topic string, group string, mode ConsumeMode, handler Handler) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.started {
@@ -83,6 +84,7 @@ func (c *redisConsumer) Subscribe(topic string, group string, handler Handler) e
 	c.subs = append(c.subs, &subscription{
 		topic:   topic,
 		group:   group,
+		mode:    mode,
 		handler: handler,
 	})
 	return nil
@@ -100,15 +102,20 @@ func (c *redisConsumer) Start() error {
 	}
 	c.started = true
 
-	// 为每个订阅创建 consumer group 并启动消费协程
+	// 为每个订阅创建对应的消费协程
 	ctx := context.Background()
 	for _, sub := range c.subs {
-		// 创建 consumer group（如已存在则忽略）
-		c.client.XGroupCreateMkStream(ctx, sub.topic, sub.group, "0").Err()
-
-		c.wg.Add(2)
-		go c.consumeLoop(sub)
-		go c.reclaimPendingLoop(sub)
+		if sub.mode == ConsumeModeBroadcast {
+			// 广播模式：不使用 consumer group，每个消费者独立消费
+			c.wg.Add(1)
+			go c.broadcastConsumeLoop(sub)
+		} else {
+			// 集群模式：使用 consumer group
+			c.client.XGroupCreateMkStream(ctx, sub.topic, sub.group, "0").Err()
+			c.wg.Add(2)
+			go c.consumeLoop(sub)
+			go c.reclaimPendingLoop(sub)
+		}
 	}
 
 	return nil
@@ -236,6 +243,58 @@ func (c *redisConsumer) processPending(sub *subscription) {
 		result := sub.handler(ctx, msg)
 		if result == ConsumeSuccess {
 			c.client.XAck(ctx, sub.topic, sub.group, xMsg.ID)
+		}
+	}
+}
+
+// broadcastConsumeLoop 广播消费循环：XREAD 拉取消息，每个消费者独立维护消费位置
+func (c *redisConsumer) broadcastConsumeLoop(sub *subscription) {
+	defer c.wg.Done()
+
+	ctx := context.Background()
+	// 消费位置存储在 Redis 中，key 格式: {topic}:broadcast:{group}:offset
+	offsetKey := fmt.Sprintf("%s:broadcast:%s:offset", sub.topic, sub.group)
+
+	// 获取上次消费位置，默认从最新消息开始
+	lastID, err := c.client.Get(ctx, offsetKey).Result()
+	if err != nil {
+		lastID = "$" // $ 表示从最新消息开始，0 表示从头开始
+	}
+
+	for {
+		select {
+		case <-c.stopCh:
+			return
+		default:
+		}
+
+		// XREAD 读取新消息
+		streams, err := c.client.XRead(ctx, &redis.XReadArgs{
+			Streams: []string{sub.topic, lastID},
+			Count:   10,
+			Block:   c.blockTimeout,
+		}).Result()
+		if err != nil {
+			if err == redis.Nil {
+				continue
+			}
+			select {
+			case <-c.stopCh:
+				return
+			case <-time.After(time.Second):
+				continue
+			}
+		}
+
+		for _, stream := range streams {
+			for _, xMsg := range stream.Messages {
+				msg := parseRedisMessage(sub.topic, xMsg)
+				// 广播模式下不重试，消费失败直接跳过
+				_ = sub.handler(ctx, msg)
+				// 更新消费位置
+				lastID = xMsg.ID
+				c.client.Set(ctx, offsetKey, lastID, 0)
+			}
 		}
 	}
 }

@@ -48,6 +48,14 @@ const (
 	ConsumeRetry                        // 稍后重试
 )
 
+// ConsumeMode 消费模式
+type ConsumeMode int
+
+const (
+	ConsumeModeCluster   ConsumeMode = iota // 集群消费（默认）：同一组内消费者分担消息
+	ConsumeModeBroadcast                    // 广播消费：组内每个消费者都收到全量消息
+)
+
 // Handler 消费处理函数
 type Handler func(ctx context.Context, msg *Message) ConsumeResult
 
@@ -65,10 +73,20 @@ type Producer interface {
 
 // Consumer 消费者接口
 type Consumer interface {
-	// Subscribe 订阅主题。group 为消费组名称
-	Subscribe(topic string, group string, handler Handler) error
+	// Subscribe 订阅主题。group 为消费组名称，mode 为消费模式
+	Subscribe(topic string, group string, mode ConsumeMode, handler Handler) error
 	// Start 启动消费者，开始拉取消息。调用前需先 Subscribe
 	Start() error
 	// Close 关闭消费者，停止消费并释放资源
 	Close() error
+}
+
+// SubscribeCluster 便捷函数：以集群模式订阅主题
+func SubscribeCluster(c Consumer, topic string, group string, handler Handler) error {
+	return c.Subscribe(topic, group, ConsumeModeCluster, handler)
+}
+
+// SubscribeBroadcast 便捷函数：以广播模式订阅主题
+func SubscribeBroadcast(c Consumer, topic string, group string, handler Handler) error {
+	return c.Subscribe(topic, group, ConsumeModeBroadcast, handler)
 }
