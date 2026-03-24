@@ -5,9 +5,9 @@ import (
 )
 
 type Page struct {
-	PageNum int         `json:"pageNum"`
-	Size    int         `json:"size"`
-	Sort    interface{} `json:"sort"`
+	PageNum int `json:"pageNum"`
+	Size    int `json:"size"`
+	Sort    any `json:"sort"`
 }
 
 func Paginate(page *Page) func(db *gorm.DB) *gorm.DB {
