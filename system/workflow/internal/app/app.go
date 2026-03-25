@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/xsxdot/aio/base"
 	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/pkg/core/logger"
 	executorClient "github.com/xsxdot/aio/system/executor/api/client"
@@ -46,7 +47,10 @@ func NewApp(
 }
 
 // CreateDef 创建工作流定义
-func (a *App) CreateDef(ctx context.Context, code, name, dagJSON string, version int32) (int64, error) {
+func (a *App) CreateDef(ctx context.Context, env, code, name, dagJSON string, version int32) (int64, error) {
+	if env == "" {
+		env = base.ENV
+	}
 	if version <= 0 {
 		version = 1
 	}
@@ -58,6 +62,7 @@ func (a *App) CreateDef(ctx context.Context, code, name, dagJSON string, version
 		return 0, a.err.New("DAG 验证失败: "+err.Error(), err)
 	}
 	def := &model.WorkflowDefModel{
+		Env:     env,
 		Code:    code,
 		Version: version,
 		Name:    name,
@@ -75,8 +80,11 @@ func (a *App) GetInstance(ctx context.Context, instanceID int64) (*model.Workflo
 }
 
 // GetDefByCode 根据 code 获取工作流定义（最新版本）
-func (a *App) GetDefByCode(ctx context.Context, code string) (*model.WorkflowDefModel, error) {
-	return a.DefService.FindByCode(ctx, code)
+func (a *App) GetDefByCode(ctx context.Context, env, code string) (*model.WorkflowDefModel, error) {
+	if env == "" {
+		env = base.ENV
+	}
+	return a.DefService.FindByCode(ctx, env, code)
 }
 
 // GetDefByID 根据 ID 获取工作流定义
@@ -85,16 +93,22 @@ func (a *App) GetDefByID(ctx context.Context, id int64) (*model.WorkflowDefModel
 }
 
 // GetDefByCodeAndVersion 根据 code 和 version 查询定义，version=0 表示最新版本
-func (a *App) GetDefByCodeAndVersion(ctx context.Context, code string, version int32) (*model.WorkflowDefModel, error) {
-	if version <= 0 {
-		return a.DefService.FindByCode(ctx, code)
+func (a *App) GetDefByCodeAndVersion(ctx context.Context, env, code string, version int32) (*model.WorkflowDefModel, error) {
+	if env == "" {
+		env = base.ENV
 	}
-	return a.DefService.FindByCodeAndVersion(ctx, code, version)
+	if version <= 0 {
+		return a.DefService.FindByCode(ctx, env, code)
+	}
+	return a.DefService.FindByCodeAndVersion(ctx, env, code, version)
 }
 
 // ListDefs 分页列出定义
-func (a *App) ListDefs(ctx context.Context, codeLike string, pageNum, pageSize int32) ([]*model.WorkflowDefModel, int64, error) {
-	return a.DefService.ListDefs(ctx, codeLike, pageNum, pageSize)
+func (a *App) ListDefs(ctx context.Context, env, codeLike string, pageNum, pageSize int32) ([]*model.WorkflowDefModel, int64, error) {
+	if env == "" {
+		env = base.ENV
+	}
+	return a.DefService.ListDefs(ctx, env, codeLike, pageNum, pageSize)
 }
 
 // ListInstances 分页列出实例
@@ -103,18 +117,21 @@ func (a *App) ListInstances(ctx context.Context, filter *dao.ListInstancesFilter
 }
 
 // CreateIfNotExists 幂等创建定义，存在则返回已有 def_id
-func (a *App) CreateIfNotExists(ctx context.Context, code, name, dagJSON string, version int32) (defID int64, created bool, err error) {
+func (a *App) CreateIfNotExists(ctx context.Context, env, code, name, dagJSON string, version int32) (defID int64, created bool, err error) {
+	if env == "" {
+		env = base.ENV
+	}
 	if version <= 0 {
 		version = 1
 	}
-	existing, findErr := a.DefService.FindByCodeAndVersion(ctx, code, version)
+	existing, findErr := a.DefService.FindByCodeAndVersion(ctx, env, code, version)
 	if findErr == nil && existing != nil {
 		return existing.ID, false, nil
 	}
 	if findErr != nil && !errorc.IsNotFound(findErr) {
 		return 0, false, findErr
 	}
-	id, err := a.CreateDef(ctx, code, name, dagJSON, version)
+	id, err := a.CreateDef(ctx, env, code, name, dagJSON, version)
 	if err != nil {
 		return 0, false, err
 	}

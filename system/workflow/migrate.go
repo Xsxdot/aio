@@ -11,6 +11,13 @@ import (
 func AutoMigrate(db *gorm.DB, log *logger.Log) error {
 	log.GetLogger().Info("Running workflow database migrations...")
 
+	// 删除旧索引（Env 字段新增后索引名变化）
+	if db.Migrator().HasIndex(&model.WorkflowDefModel{}, "idx_code_version") {
+		if err := db.Migrator().DropIndex(&model.WorkflowDefModel{}, "idx_code_version"); err != nil {
+			log.GetLogger().WithError(err).Warn("Failed to drop old index idx_code_version")
+		}
+	}
+
 	err := db.AutoMigrate(
 		&model.WorkflowDefModel{},
 		&model.WorkflowInstanceModel{},

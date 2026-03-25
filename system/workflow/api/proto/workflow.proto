@@ -22,6 +22,7 @@ service WorkflowService {
 }
 
 message CreateDefRequest {
+  string env = 5;       // 环境标识
   string code = 1;
   string name = 2;
   string dag_json = 3;
@@ -85,6 +86,7 @@ message ExecutionTrailCheckpoint {
 }
 
 message GetDefRequest {
+  string env = 3;       // 环境标识
   string code = 1;
   int32 version = 2;  // 0=最新版本, >0=指定版本
 }
@@ -96,9 +98,11 @@ message GetDefResponse {
   string name = 4;
   string dag_json = 5;
   bool not_found = 6;
+  string env = 7;       // 环境标识
 }
 
 message ListDefsRequest {
+  string env = 4;       // 环境标识
   string code_like = 1;
   int32 page_num = 2;
   int32 page_size = 3;
@@ -110,6 +114,7 @@ message ListDefsResponse {
 }
 
 message CreateIfNotExistsRequest {
+  string env = 5;       // 环境标识
   string code = 1;
   string name = 2;
   string dag_json = 3;

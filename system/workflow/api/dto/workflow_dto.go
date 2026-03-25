@@ -2,6 +2,7 @@ package dto
 
 // CreateDefRequest 创建工作流定义请求
 type CreateDefRequest struct {
+	Env     string `json:"env"` // 环境标识
 	Code    string `json:"code" validate:"required"`
 	Version int32  `json:"version"`
 	Name    string `json:"name" validate:"required"`
@@ -38,8 +39,8 @@ type RollbackRequest struct {
 type SignalRequest struct {
 	SignalName string                 `json:"signal_name" validate:"required"` // 如 "patch_product_image"
 	Payload    map[string]interface{} `json:"payload"`                         // 补传数据，合并入 state
-	WakeupNode string                 `json:"wakeup_node"`                    // 唤醒的目标节点，空则不唤醒
-	Env        string                 `json:"env"`                            // 环境标识，空则用实例 env
+	WakeupNode string                 `json:"wakeup_node"`                     // 唤醒的目标节点，空则不唤醒
+	Env        string                 `json:"env"`                             // 环境标识，空则用实例 env
 }
 
 // ExecutionTrail 执行轨迹（用于前端绘制执行过程）

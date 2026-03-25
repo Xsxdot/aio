@@ -60,12 +60,16 @@ func (s *WorkflowService) CreateDef(ctx context.Context, req *pb.CreateDefReques
 		return nil, status.Error(codes.InvalidArgument, "dag_json 不能为空")
 	}
 
+	env := req.Env
+	if strings.TrimSpace(env) == "" {
+		env = base.ENV
+	}
 	version := req.Version
 	if version <= 0 {
 		version = 1
 	}
 
-	defID, err := s.client.CreateDef(ctx, req.Code, req.Name, req.DagJson, version)
+	defID, err := s.client.CreateDef(ctx, env, req.Code, req.Name, req.DagJson, version)
 	if err != nil {
 		s.log.WithErr(err).Error("创建工作流定义失败")
 		return nil, status.Error(codes.Internal, err.Error())
@@ -220,11 +224,11 @@ func (s *WorkflowService) GetExecutionTrail(ctx context.Context, req *pb.GetExec
 	}
 
 	return &pb.GetExecutionTrailResponse{
-		InstanceId:     trail.InstanceID,
-		Status:         trail.Status,
-		CurrentState:   trail.CurrentState,
-		ActiveNodeIds:  trail.ActiveNodeIDs,
-		Checkpoints:    checkpoints,
+		InstanceId:    trail.InstanceID,
+		Status:        trail.Status,
+		CurrentState:  trail.CurrentState,
+		ActiveNodeIds: trail.ActiveNodeIDs,
+		Checkpoints:   checkpoints,
 	}, nil
 }
 
@@ -233,7 +237,11 @@ func (s *WorkflowService) GetDef(ctx context.Context, req *pb.GetDefRequest) (*p
 	if strings.TrimSpace(req.Code) == "" {
 		return nil, status.Error(codes.InvalidArgument, "code 不能为空")
 	}
-	def, err := s.client.GetDef(ctx, req.Code, req.Version)
+	env := req.Env
+	if strings.TrimSpace(env) == "" {
+		env = base.ENV
+	}
+	def, err := s.client.GetDef(ctx, env, req.Code, req.Version)
 	if err != nil {
 		s.log.WithErr(err).Error("查询工作流定义失败")
 		return nil, status.Error(codes.Internal, err.Error())
@@ -247,11 +255,16 @@ func (s *WorkflowService) GetDef(ctx context.Context, req *pb.GetDefRequest) (*p
 		Version: def.Version,
 		Name:    def.Name,
 		DagJson: def.DAGJSON,
+		Env:     def.Env,
 	}, nil
 }
 
 // ListDefs 分页列出定义
 func (s *WorkflowService) ListDefs(ctx context.Context, req *pb.ListDefsRequest) (*pb.ListDefsResponse, error) {
+	env := req.Env
+	if strings.TrimSpace(env) == "" {
+		env = base.ENV
+	}
 	pageNum, pageSize := req.PageNum, req.PageSize
 	if pageNum <= 0 {
 		pageNum = 1
@@ -259,7 +272,7 @@ func (s *WorkflowService) ListDefs(ctx context.Context, req *pb.ListDefsRequest)
 	if pageSize <= 0 {
 		pageSize = 10
 	}
-	items, total, err := s.client.ListDefs(ctx, req.CodeLike, pageNum, pageSize)
+	items, total, err := s.client.ListDefs(ctx, env, req.CodeLike, pageNum, pageSize)
 	if err != nil {
 		s.log.WithErr(err).Error("列出工作流定义失败")
 		return nil, status.Error(codes.Internal, err.Error())
@@ -272,6 +285,7 @@ func (s *WorkflowService) ListDefs(ctx context.Context, req *pb.ListDefsRequest)
 			Version: d.Version,
 			Name:    d.Name,
 			DagJson: d.DAGJSON,
+			Env:     d.Env,
 		}
 	}
 	return &pb.ListDefsResponse{Items: pbItems, Total: total}, nil
@@ -288,11 +302,15 @@ func (s *WorkflowService) CreateIfNotExists(ctx context.Context, req *pb.CreateI
 	if strings.TrimSpace(req.DagJson) == "" {
 		return nil, status.Error(codes.InvalidArgument, "dag_json 不能为空")
 	}
+	env := req.Env
+	if strings.TrimSpace(env) == "" {
+		env = base.ENV
+	}
 	version := req.Version
 	if version <= 0 {
 		version = 1
 	}
-	defID, created, err := s.client.CreateIfNotExists(ctx, req.Code, req.Name, req.DagJson, version)
+	defID, created, err := s.client.CreateIfNotExists(ctx, env, req.Code, req.Name, req.DagJson, version)
 	if err != nil {
 		s.log.WithErr(err).Error("幂等创建工作流定义失败")
 		return nil, status.Error(codes.Internal, err.Error())

@@ -28,9 +28,9 @@ func NewWorkflowDefDao(db *gorm.DB, log *logger.Log) *WorkflowDefDao {
 }
 
 // FindByCode 根据 code 获取最新版本的定义
-func (d *WorkflowDefDao) FindByCode(ctx context.Context, code string) (*model.WorkflowDefModel, error) {
+func (d *WorkflowDefDao) FindByCode(ctx context.Context, env, code string) (*model.WorkflowDefModel, error) {
 	var item model.WorkflowDefModel
-	err := mvc.ExtractDB(ctx, d.db).Where("code = ?", code).Order("version desc").First(&item).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("env = ? AND code = ?", env, code).Order("version desc").First(&item).Error
 	if err != nil {
 		return nil, err
 	}
@@ -38,9 +38,9 @@ func (d *WorkflowDefDao) FindByCode(ctx context.Context, code string) (*model.Wo
 }
 
 // FindByCodeAndVersion 根据 code 和 version 查询定义
-func (d *WorkflowDefDao) FindByCodeAndVersion(ctx context.Context, code string, version int32) (*model.WorkflowDefModel, error) {
+func (d *WorkflowDefDao) FindByCodeAndVersion(ctx context.Context, env, code string, version int32) (*model.WorkflowDefModel, error) {
 	var item model.WorkflowDefModel
-	err := mvc.ExtractDB(ctx, d.db).Where("code = ? AND version = ?", code, version).First(&item).Error
+	err := mvc.ExtractDB(ctx, d.db).Where("env = ? AND code = ? AND version = ?", env, code, version).First(&item).Error
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (d *WorkflowDefDao) FindByCodeAndVersion(ctx context.Context, code string, 
 }
 
 // ListDefs 分页列出定义，支持 code 模糊匹配
-func (d *WorkflowDefDao) ListDefs(ctx context.Context, codeLike string, pageNum, pageSize int32) ([]*model.WorkflowDefModel, int64, error) {
+func (d *WorkflowDefDao) ListDefs(ctx context.Context, env, codeLike string, pageNum, pageSize int32) ([]*model.WorkflowDefModel, int64, error) {
 	if pageNum <= 0 {
 		pageNum = 1
 	}
@@ -56,7 +56,7 @@ func (d *WorkflowDefDao) ListDefs(ctx context.Context, codeLike string, pageNum,
 		pageSize = 10
 	}
 
-	db := mvc.ExtractDB(ctx, d.db).Model(&model.WorkflowDefModel{})
+	db := mvc.ExtractDB(ctx, d.db).Model(&model.WorkflowDefModel{}).Where("env = ?", env)
 	if codeLike != "" {
 		db = db.Where("code LIKE ?", "%"+codeLike+"%")
 	}

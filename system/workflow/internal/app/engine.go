@@ -62,9 +62,9 @@ func serializeWorkflowState(data workflowStateData, sys workflowStateSys) (strin
 
 // stateUpdateMode 状态更新模式
 const (
-	stateUpdateOverwrite  = "overwrite"
-	stateUpdateAppend     = "append"
-	stateUpdateDeepMerge  = "deep_merge"
+	stateUpdateOverwrite = "overwrite"
+	stateUpdateAppend    = "append"
+	stateUpdateDeepMerge = "deep_merge"
 )
 
 // applyStateReducer 根据节点配置将 output 合并进 data（overwrite/append/deep_merge）
@@ -301,7 +301,7 @@ func (a *App) StartWorkflow(ctx context.Context, defCode string, initialData map
 	if env == "" {
 		env = base.ENV
 	}
-	def, err := a.DefService.FindByCode(ctx, defCode)
+	def, err := a.DefService.FindByCode(ctx, env, defCode)
 	if err != nil {
 		return 0, err
 	}
@@ -658,7 +658,7 @@ func (a *App) triggerNode(ctx context.Context, instance *model.WorkflowInstanceM
 			DedupKey:         dedupKey,
 			RetryBackoffType: executorDto.RetryBackoffExponential,
 			Source:           "workflow",
-			CallbackData:    callbackData,
+			CallbackData:     callbackData,
 		})
 		if err != nil {
 			return a.err.New("提交任务到Executor失败", err)
@@ -963,18 +963,18 @@ func (a *App) RollbackToNode(ctx context.Context, instanceID int64, targetNodeID
 
 // ExecutionTrail 执行轨迹
 type ExecutionTrail struct {
-	InstanceID    int64                    `json:"instance_id"`
-	Status        string                   `json:"status"`
-	CurrentState  string                   `json:"current_state"`
-	ActiveNodeIDs string                   `json:"active_node_ids"`
+	InstanceID    int64                      `json:"instance_id"`
+	Status        string                     `json:"status"`
+	CurrentState  string                     `json:"current_state"`
+	ActiveNodeIDs string                     `json:"active_node_ids"`
 	Checkpoints   []ExecutionTrailCheckpoint `json:"checkpoints"`
 }
 
 type ExecutionTrailCheckpoint struct {
-	NodeID    string                 `json:"node_id"`
+	NodeID     string                 `json:"node_id"`
 	NodeOutput map[string]interface{} `json:"node_output"`
 	StateAfter map[string]interface{} `json:"state_after"`
-	CreatedAt string                 `json:"created_at"`
+	CreatedAt  string                 `json:"created_at"`
 }
 
 // GetExecutionTrail 获取工作流完整执行轨迹（用于前端绘制执行过程）

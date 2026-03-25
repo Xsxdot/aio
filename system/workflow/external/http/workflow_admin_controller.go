@@ -47,10 +47,14 @@ func (ctrl *WorkflowAdminController) CreateDef(c *fiber.Ctx) error {
 	if errMsg, err := utils.Validate(&req); err != nil {
 		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(c)).ToLog(ctrl.log.GetLogger())
 	}
+	env := req.Env
+	if env == "" {
+		env = base.ENV
+	}
 	if req.Version <= 0 {
 		req.Version = 1
 	}
-	id, err := ctrl.app.CreateDef(util.Context(c), req.Code, req.Name, req.DAGJSON, req.Version)
+	id, err := ctrl.app.CreateDef(util.Context(c), env, req.Code, req.Name, req.DAGJSON, req.Version)
 	if err != nil {
 		return err
 	}

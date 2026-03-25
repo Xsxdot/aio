@@ -24,12 +24,13 @@ func newWorkflowClient(conn *grpc.ClientConn) *WorkflowClient {
 }
 
 // CreateDef 创建工作流定义
-func (c *WorkflowClient) CreateDef(ctx context.Context, code, name, dagJSON string, version int32) (int64, error) {
+func (c *WorkflowClient) CreateDef(ctx context.Context, env, code, name, dagJSON string, version int32) (int64, error) {
 	if version <= 0 {
 		version = 1
 	}
 
 	resp, err := c.service.CreateDef(ctx, &workflowpb.CreateDefRequest{
+		Env:     env,
 		Code:    code,
 		Name:    name,
 		DagJson: dagJSON,
@@ -42,7 +43,7 @@ func (c *WorkflowClient) CreateDef(ctx context.Context, code, name, dagJSON stri
 }
 
 // StartWorkflow 启动工作流
-func (c *WorkflowClient) StartWorkflow(ctx context.Context, defCode string, initialData map[string]interface{}) (int64, error) {
+func (c *WorkflowClient) StartWorkflow(ctx context.Context, env, defCode string, initialData map[string]interface{}) (int64, error) {
 	initialDataJSON := "{}"
 	if initialData != nil {
 		data, err := json.Marshal(initialData)
@@ -55,6 +56,7 @@ func (c *WorkflowClient) StartWorkflow(ctx context.Context, defCode string, init
 	resp, err := c.service.StartWorkflow(ctx, &workflowpb.StartWorkflowRequest{
 		DefCode:         defCode,
 		InitialDataJson: initialDataJSON,
+		Env:             env,
 	})
 	if err != nil {
 		return 0, WrapError(err, "start workflow failed")
@@ -63,7 +65,7 @@ func (c *WorkflowClient) StartWorkflow(ctx context.Context, defCode string, init
 }
 
 // StartWorkflowWithJSON 启动工作流（传入已序列化的初始数据 JSON）
-func (c *WorkflowClient) StartWorkflowWithJSON(ctx context.Context, defCode, initialDataJSON string) (int64, error) {
+func (c *WorkflowClient) StartWorkflowWithJSON(ctx context.Context, env, defCode, initialDataJSON string) (int64, error) {
 	if initialDataJSON == "" {
 		initialDataJSON = "{}"
 	}
@@ -71,6 +73,7 @@ func (c *WorkflowClient) StartWorkflowWithJSON(ctx context.Context, defCode, ini
 	resp, err := c.service.StartWorkflow(ctx, &workflowpb.StartWorkflowRequest{
 		DefCode:         defCode,
 		InitialDataJson: initialDataJSON,
+		Env:             env,
 	})
 	if err != nil {
 		return 0, WrapError(err, "start workflow failed")
@@ -202,6 +205,7 @@ func (c *WorkflowClient) GetExecutionTrail(ctx context.Context, instanceID int64
 // WorkflowDef 工作流定义（SDK 友好版）
 type WorkflowDef struct {
 	ID      int64
+	Env     string
 	Code    string
 	Version int32
 	Name    string
@@ -209,8 +213,9 @@ type WorkflowDef struct {
 }
 
 // GetDef 查询工作流定义，version=0 表示最新版本
-func (c *WorkflowClient) GetDef(ctx context.Context, code string, version int32) (*WorkflowDef, error) {
+func (c *WorkflowClient) GetDef(ctx context.Context, env, code string, version int32) (*WorkflowDef, error) {
 	resp, err := c.service.GetDef(ctx, &workflowpb.GetDefRequest{
+		Env:     env,
 		Code:    code,
 		Version: version,
 	})
@@ -222,6 +227,7 @@ func (c *WorkflowClient) GetDef(ctx context.Context, code string, version int32)
 	}
 	return &WorkflowDef{
 		ID:      resp.DefId,
+		Env:     resp.Env,
 		Code:    resp.Code,
 		Version: resp.Version,
 		Name:    resp.Name,
@@ -230,7 +236,7 @@ func (c *WorkflowClient) GetDef(ctx context.Context, code string, version int32)
 }
 
 // ListDefs 分页列出工作流定义
-func (c *WorkflowClient) ListDefs(ctx context.Context, codeLike string, pageNum, pageSize int32) ([]*WorkflowDef, int64, error) {
+func (c *WorkflowClient) ListDefs(ctx context.Context, env, codeLike string, pageNum, pageSize int32) ([]*WorkflowDef, int64, error) {
 	if pageNum <= 0 {
 		pageNum = 1
 	}
@@ -238,6 +244,7 @@ func (c *WorkflowClient) ListDefs(ctx context.Context, codeLike string, pageNum,
 		pageSize = 10
 	}
 	resp, err := c.service.ListDefs(ctx, &workflowpb.ListDefsRequest{
+		Env:      env,
 		CodeLike: codeLike,
 		PageNum:  pageNum,
 		PageSize: pageSize,
@@ -249,6 +256,7 @@ func (c *WorkflowClient) ListDefs(ctx context.Context, codeLike string, pageNum,
 	for i, d := range resp.Items {
 		items[i] = &WorkflowDef{
 			ID:      d.DefId,
+			Env:     d.Env,
 			Code:    d.Code,
 			Version: d.Version,
 			Name:    d.Name,
@@ -259,11 +267,12 @@ func (c *WorkflowClient) ListDefs(ctx context.Context, codeLike string, pageNum,
 }
 
 // CreateIfNotExists 幂等创建工作流定义，已存在则返回已有 def_id
-func (c *WorkflowClient) CreateIfNotExists(ctx context.Context, code, name, dagJSON string, version int32) (defID int64, created bool, err error) {
+func (c *WorkflowClient) CreateIfNotExists(ctx context.Context, env, code, name, dagJSON string, version int32) (defID int64, created bool, err error) {
 	if version <= 0 {
 		version = 1
 	}
 	resp, err := c.service.CreateIfNotExists(ctx, &workflowpb.CreateIfNotExistsRequest{
+		Env:     env,
 		Code:    code,
 		Name:    name,
 		DagJson: dagJSON,

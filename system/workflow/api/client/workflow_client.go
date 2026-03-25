@@ -18,8 +18,8 @@ func NewWorkflowClient(a *app.App) *WorkflowClient {
 }
 
 // CreateDef 创建工作流定义
-func (c *WorkflowClient) CreateDef(ctx context.Context, code, name, dagJSON string, version int32) (int64, error) {
-	return c.app.CreateDef(ctx, code, name, dagJSON, version)
+func (c *WorkflowClient) CreateDef(ctx context.Context, env, code, name, dagJSON string, version int32) (int64, error) {
+	return c.app.CreateDef(ctx, env, code, name, dagJSON, version)
 }
 
 // StartWorkflow 启动工作流，env 用于 Executor 任务隔离
@@ -47,18 +47,18 @@ func (c *WorkflowClient) GetExecutionTrail(ctx context.Context, instanceID int64
 }
 
 // GetDef 查询定义，version=0 表示最新版本
-func (c *WorkflowClient) GetDef(ctx context.Context, code string, version int32) (*app.WorkflowDefModel, error) {
-	return c.app.GetDefByCodeAndVersion(ctx, code, version)
+func (c *WorkflowClient) GetDef(ctx context.Context, env, code string, version int32) (*app.WorkflowDefModel, error) {
+	return c.app.GetDefByCodeAndVersion(ctx, env, code, version)
 }
 
 // ListDefs 分页列出定义
-func (c *WorkflowClient) ListDefs(ctx context.Context, codeLike string, pageNum, pageSize int32) ([]*app.WorkflowDefModel, int64, error) {
-	return c.app.ListDefs(ctx, codeLike, pageNum, pageSize)
+func (c *WorkflowClient) ListDefs(ctx context.Context, env, codeLike string, pageNum, pageSize int32) ([]*app.WorkflowDefModel, int64, error) {
+	return c.app.ListDefs(ctx, env, codeLike, pageNum, pageSize)
 }
 
 // CreateIfNotExists 幂等创建定义
-func (c *WorkflowClient) CreateIfNotExists(ctx context.Context, code, name, dagJSON string, version int32) (defID int64, created bool, err error) {
-	return c.app.CreateIfNotExists(ctx, code, name, dagJSON, version)
+func (c *WorkflowClient) CreateIfNotExists(ctx context.Context, env, code, name, dagJSON string, version int32) (defID int64, created bool, err error) {
+	return c.app.CreateIfNotExists(ctx, env, code, name, dagJSON, version)
 }
 
 // GetInstance 获取实例详情（含 def_code）
