@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	registrypb "github.com/xsxdot/aio/system/registry/api/proto"
 
@@ -11,13 +12,18 @@ import (
 
 // RegistryClient 注册中心客户端
 type RegistryClient struct {
+	env     string
 	client  *Client
 	service registrypb.RegistryServiceClient
 }
 
 // newRegistryClient 创建注册中心客户端
-func newRegistryClient(client *Client, conn *grpc.ClientConn) (*RegistryClient, error) {
+func newRegistryClient(client *Client, conn *grpc.ClientConn, env string) (*RegistryClient, error) {
+	if strings.TrimSpace(env) == "" {
+		env = "dev"
+	}
 	return &RegistryClient{
+		env:     env,
 		client:  client,
 		service: registrypb.NewRegistryServiceClient(conn),
 	}, nil
@@ -46,10 +52,10 @@ type InstanceEndpoint struct {
 }
 
 // ListServices 获取服务列表
-func (rc *RegistryClient) ListServices(ctx context.Context, project, env string) ([]ServiceDescriptor, error) {
+func (rc *RegistryClient) ListServices(ctx context.Context, project string) ([]ServiceDescriptor, error) {
 	req := &registrypb.ListServicesRequest{
 		Project: project,
-		Env:     env,
+		Env:     rc.env,
 	}
 
 	resp, err := rc.service.ListServices(ctx, req)

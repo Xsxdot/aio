@@ -245,14 +245,14 @@ func loadConfigFromCenter(localCfg Config, env string) (Config, error) {
 	prefix := localCfg.Sdk.BootstrapConfigPrefix
 
 	// 先尝试直接用 prefix 作为 key 获取完整配置
-	configJSON, err := client.ConfigClient.GetConfigJSON(ctx, prefix, env)
+	configJSON, err := client.ConfigClient.GetConfigJSON(ctx, prefix)
 	if err != nil && !sdk.IsNotFound(err) {
 		return Config{}, fmt.Errorf("failed to get config from center: %w", err)
 	}
 
 	// 如果找不到完整配置，则按前缀查询并组装
 	if sdk.IsNotFound(err) || configJSON == "" {
-		configJSON, err = loadAndComposeConfigsByPrefix(ctx, client, prefix, env)
+		configJSON, err = loadAndComposeConfigsByPrefix(ctx, client, prefix)
 		if err != nil {
 			return Config{}, fmt.Errorf("failed to compose configs by prefix: %w", err)
 		}
@@ -272,9 +272,9 @@ func loadConfigFromCenter(localCfg Config, env string) (Config, error) {
 }
 
 // loadAndComposeConfigsByPrefix 按前缀查询配置并组装成大 JSON
-func loadAndComposeConfigsByPrefix(ctx context.Context, client *sdk.Client, prefix, env string) (string, error) {
+func loadAndComposeConfigsByPrefix(ctx context.Context, client *sdk.Client, prefix string) (string, error) {
 	// 获取所有匹配前缀的配置
-	configs, err := client.ConfigClient.GetConfigsByPrefix(ctx, prefix, env)
+	configs, err := client.ConfigClient.GetConfigsByPrefix(ctx, prefix)
 	if err != nil {
 		return "", fmt.Errorf("failed to get configs by prefix: %w", err)
 	}
@@ -283,7 +283,7 @@ func loadAndComposeConfigsByPrefix(ctx context.Context, client *sdk.Client, pref
 		return "", fmt.Errorf("no configs found with prefix: %s", prefix)
 	}
 
-	return composeConfigsByPrefix(configs, prefix, env)
+	return composeConfigsByPrefix(configs, prefix)
 }
 
 // configEntry 配置条目（用于排序）
@@ -294,20 +294,17 @@ type configEntry struct {
 }
 
 // composeConfigsByPrefix 将配置 map 组装成嵌套 JSON（纯函数，便于测试）
-func composeConfigsByPrefix(configs map[string]string, prefix, env string) (string, error) {
+func composeConfigsByPrefix(configs map[string]string, prefix string) (string, error) {
 	// 收集所有条目，并按路径深度排序（父节点先写，子节点后写可覆盖冲突字段）
 	entries := make([]configEntry, 0, len(configs))
 	prefixDot := prefix + "."
 
 	for fullKey, jsonStr := range configs {
-		// 去掉环境后缀 (.dev/.prod/.test 等)
-		keyWithoutEnv := strings.TrimSuffix(fullKey, "."+env)
-
 		// 去掉 prefix. 前缀，得到 section
-		if !strings.HasPrefix(keyWithoutEnv, prefixDot) {
+		if !strings.HasPrefix(fullKey, prefixDot) {
 			continue
 		}
-		section := strings.TrimPrefix(keyWithoutEnv, prefixDot)
+		section := strings.TrimPrefix(fullKey, prefixDot)
 
 		// 解析 JSON 对象
 		var obj map[string]interface{}

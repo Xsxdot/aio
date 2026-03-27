@@ -8,11 +8,11 @@ import (
 // TestComposeConfigsByPrefix_DottedKeys 测试 dotted keys 正确嵌套
 func TestComposeConfigsByPrefix_DottedKeys(t *testing.T) {
 	configs := map[string]string{
-		"tk.server.tools.deepseek.dev": `{"api_key": "deepseek-key", "model": "deepseek-chat"}`,
-		"tk.server.tools.ali-bj.dev":   `{"api_key": "ali-key", "region": "beijing"}`,
+		"tk.server.tools.deepseek": `{"api_key": "deepseek-key", "model": "deepseek-chat"}`,
+		"tk.server.tools.ali-bj":   `{"api_key": "ali-key", "region": "beijing"}`,
 	}
 
-	result, err := composeConfigsByPrefix(configs, "tk.server", "dev")
+	result, err := composeConfigsByPrefix(configs, "tk.server")
 	if err != nil {
 		t.Fatalf("composeConfigsByPrefix failed: %v", err)
 	}
@@ -49,12 +49,12 @@ func TestComposeConfigsByPrefix_DottedKeys(t *testing.T) {
 // TestComposeConfigsByPrefix_ParentChildMerge 测试父子并存时的合并语义
 func TestComposeConfigsByPrefix_ParentChildMerge(t *testing.T) {
 	configs := map[string]string{
-		"tk.server.tools.dev":          `{"timeout": 10, "retry": 3}`,
-		"tk.server.tools.deepseek.dev": `{"timeout": 30, "model": "deepseek-chat"}`,
-		"tk.server.tools.ali-bj.dev":   `{"timeout": 20, "region": "beijing"}`,
+		"tk.server.tools":          `{"timeout": 10, "retry": 3}`,
+		"tk.server.tools.deepseek": `{"timeout": 30, "model": "deepseek-chat"}`,
+		"tk.server.tools.ali-bj":   `{"timeout": 20, "region": "beijing"}`,
 	}
 
-	result, err := composeConfigsByPrefix(configs, "tk.server", "dev")
+	result, err := composeConfigsByPrefix(configs, "tk.server")
 	if err != nil {
 		t.Fatalf("composeConfigsByPrefix failed: %v", err)
 	}
@@ -102,11 +102,11 @@ func TestComposeConfigsByPrefix_ParentChildMerge(t *testing.T) {
 // TestComposeConfigsByPrefix_AppSection 测试 app section 的特殊处理
 func TestComposeConfigsByPrefix_AppSection(t *testing.T) {
 	configs := map[string]string{
-		"tk.server.app.dev":   `{"name": "test-app", "version": "1.0"}`,
-		"tk.server.redis.dev": `{"host": "localhost", "port": 6379}`,
+		"tk.server.app":   `{"name": "test-app", "version": "1.0"}`,
+		"tk.server.redis": `{"host": "localhost", "port": 6379}`,
 	}
 
-	result, err := composeConfigsByPrefix(configs, "tk.server", "dev")
+	result, err := composeConfigsByPrefix(configs, "tk.server")
 	if err != nil {
 		t.Fatalf("composeConfigsByPrefix failed: %v", err)
 	}
@@ -137,12 +137,12 @@ func TestComposeConfigsByPrefix_AppSection(t *testing.T) {
 // TestComposeConfigsByPrefix_DeepNesting 测试更深层级的嵌套
 func TestComposeConfigsByPrefix_DeepNesting(t *testing.T) {
 	configs := map[string]string{
-		"tk.server.a.b.c.dev": `{"value": "deep"}`,
-		"tk.server.a.b.dev":   `{"value": "middle", "extra": "data"}`,
-		"tk.server.a.dev":     `{"value": "shallow"}`,
+		"tk.server.a.b.c": `{"value": "deep"}`,
+		"tk.server.a.b":   `{"value": "middle", "extra": "data"}`,
+		"tk.server.a":     `{"value": "shallow"}`,
 	}
 
-	result, err := composeConfigsByPrefix(configs, "tk.server", "dev")
+	result, err := composeConfigsByPrefix(configs, "tk.server")
 	if err != nil {
 		t.Fatalf("composeConfigsByPrefix failed: %v", err)
 	}
@@ -184,11 +184,11 @@ func TestComposeConfigsByPrefix_DeepNesting(t *testing.T) {
 // TestComposeConfigsByPrefix_EmptyPrefix 测试空前缀情况
 func TestComposeConfigsByPrefix_EmptyPrefix(t *testing.T) {
 	configs := map[string]string{
-		"redis.dev": `{"host": "localhost"}`,
-		"db.dev":    `{"host": "postgres"}`,
+		"redis": `{"host": "localhost"}`,
+		"db":    `{"host": "postgres"}`,
 	}
 
-	result, err := composeConfigsByPrefix(configs, "", "dev")
+	result, err := composeConfigsByPrefix(configs, "")
 	if err != nil {
 		t.Fatalf("composeConfigsByPrefix failed: %v", err)
 	}
@@ -268,7 +268,3 @@ func TestSortEntriesByDepth(t *testing.T) {
 		}
 	}
 }
-
-
-
-

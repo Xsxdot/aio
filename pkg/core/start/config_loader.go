@@ -95,14 +95,14 @@ func loadConfigFromCenterGeneric[T any](localCfg Config, env string) (*T, error)
 	prefix := localCfg.Sdk.BootstrapConfigPrefix
 
 	// 先尝试直接用 prefix 作为 key 获取完整配置
-	configJSON, err := client.ConfigClient.GetConfigJSON(ctx, prefix, env)
+	configJSON, err := client.ConfigClient.GetConfigJSON(ctx, prefix)
 	if err != nil && !sdk.IsNotFound(err) {
 		return nil, fmt.Errorf("failed to get config from center: %w", err)
 	}
 
 	// 如果找不到完整配置，则按前缀查询并组装
 	if sdk.IsNotFound(err) || configJSON == "" {
-		configJSON, err = loadAndComposeConfigsByPrefix(ctx, client, prefix, env)
+		configJSON, err = loadAndComposeConfigsByPrefix(ctx, client, prefix)
 		if err != nil {
 			return nil, fmt.Errorf("failed to compose configs by prefix: %w", err)
 		}

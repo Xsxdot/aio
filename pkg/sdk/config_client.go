@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"strings"
 
 	configpb "github.com/xsxdot/aio/system/config/api/proto"
 
@@ -11,6 +12,7 @@ import (
 // ConfigClient 配置中心客户端
 // 封装配置查询端 RPC（GetConfig/BatchGetConfigs）以及管理端 RPC（Create/Update/Delete）
 type ConfigClient struct {
+	env     string
 	service configpb.ConfigServiceClient
 }
 
@@ -71,19 +73,22 @@ type ConfigInfo struct {
 }
 
 // newConfigClient 创建配置中心客户端
-func newConfigClient(conn *grpc.ClientConn) *ConfigClient {
+func newConfigClient(conn *grpc.ClientConn, env string) *ConfigClient {
+	if strings.TrimSpace(env) == "" {
+		env = "dev"
+	}
 	return &ConfigClient{
+		env:     env,
 		service: configpb.NewConfigServiceClient(conn),
 	}
 }
 
 // GetConfigJSON 获取配置（返回 JSON 字符串）
 // key: 配置键
-// env: 环境（如 dev, prod, test）
-func (c *ConfigClient) GetConfigJSON(ctx context.Context, key, env string) (string, error) {
+func (c *ConfigClient) GetConfigJSON(ctx context.Context, key string) (string, error) {
 	req := &configpb.GetConfigRequest{
 		Key: key,
-		Env: env,
+		Env: c.env,
 	}
 
 	resp, err := c.service.GetConfig(ctx, req)
@@ -96,12 +101,11 @@ func (c *ConfigClient) GetConfigJSON(ctx context.Context, key, env string) (stri
 
 // BatchGetConfigs 批量获取配置
 // keys: 配置键列表
-// env: 环境（如 dev, prod, test）
 // 返回: map[key]jsonStr
-func (c *ConfigClient) BatchGetConfigs(ctx context.Context, keys []string, env string) (map[string]string, error) {
+func (c *ConfigClient) BatchGetConfigs(ctx context.Context, keys []string) (map[string]string, error) {
 	req := &configpb.BatchGetConfigsRequest{
 		Keys: keys,
-		Env:  env,
+		Env:  c.env,
 	}
 
 	resp, err := c.service.BatchGetConfigs(ctx, req)
@@ -114,12 +118,11 @@ func (c *ConfigClient) BatchGetConfigs(ctx context.Context, keys []string, env s
 
 // GetConfigsByPrefix 按前缀获取配置
 // prefix: 配置键前缀
-// env: 环境（如 dev, prod, test）
-// 返回: map[fullKey]jsonStr（fullKey 含环境后缀）
-func (c *ConfigClient) GetConfigsByPrefix(ctx context.Context, prefix, env string) (map[string]string, error) {
+// 返回: map[key]jsonStr（key 已去除环境后缀）
+func (c *ConfigClient) GetConfigsByPrefix(ctx context.Context, prefix string) (map[string]string, error) {
 	req := &configpb.GetConfigsByPrefixRequest{
 		Prefix: prefix,
-		Env:    env,
+		Env:    c.env,
 	}
 
 	resp, err := c.service.GetConfigsByPrefix(ctx, req)
@@ -127,7 +130,15 @@ func (c *ConfigClient) GetConfigsByPrefix(ctx context.Context, prefix, env strin
 		return nil, WrapError(err, "get configs by prefix failed")
 	}
 
-	return resp.Configs, nil
+	// 去掉环境后缀后返回
+	envSuffix := "." + c.env
+	result := make(map[string]string, len(resp.Configs))
+	for fullKey, jsonStr := range resp.Configs {
+		key := strings.TrimSuffix(fullKey, envSuffix)
+		result[key] = jsonStr
+	}
+
+	return result, nil
 }
 
 // CreateConfig 创建配置

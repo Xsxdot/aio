@@ -87,7 +87,7 @@ func New(config Config) (*Client, error) {
 	client.conn = conn
 
 	// 初始化 Registry 客户端
-	registryClient, err := newRegistryClient(client, conn)
+	registryClient, err := newRegistryClient(client, conn, config.Env)
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to create registry client: %w", err)
@@ -95,11 +95,11 @@ func New(config Config) (*Client, error) {
 	client.Registry = registryClient
 
 	// 初始化 Discovery 客户端
-	discoveryClient := newDiscoveryClient(client)
+	discoveryClient := newDiscoveryClient(client, config.Env)
 	client.Discovery = discoveryClient
 
 	// 初始化 Config 客户端
-	configClient := newConfigClient(conn)
+	configClient := newConfigClient(conn, config.Env)
 	client.ConfigClient = configClient
 
 	// 初始化 ShortURL 客户端
@@ -111,7 +111,7 @@ func New(config Config) (*Client, error) {
 	client.Executor = executorClient
 
 	// 初始化 Workflow 客户端
-	client.Workflow = newWorkflowClient(conn)
+	client.Workflow = newWorkflowClient(conn, config.Env)
 
 	return client, nil
 }

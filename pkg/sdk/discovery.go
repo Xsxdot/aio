@@ -3,12 +3,14 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
 
 // DiscoveryClient 服务发现客户端
 type DiscoveryClient struct {
+	env    string
 	client *Client
 
 	// 实例缓存
@@ -35,8 +37,12 @@ type instanceFailure struct {
 }
 
 // newDiscoveryClient 创建服务发现客户端
-func newDiscoveryClient(client *Client) *DiscoveryClient {
+func newDiscoveryClient(client *Client, env string) *DiscoveryClient {
+	if strings.TrimSpace(env) == "" {
+		env = "dev"
+	}
 	return &DiscoveryClient{
+		env:             env,
 		client:          client,
 		services:        make(map[string]*serviceCache),
 		failedInstances: make(map[string]*instanceFailure),
@@ -44,7 +50,7 @@ func newDiscoveryClient(client *Client) *DiscoveryClient {
 }
 
 // Resolve 解析服务实例列表
-func (dc *DiscoveryClient) Resolve(ctx context.Context, project, serviceName, env string) ([]InstanceEndpoint, error) {
+func (dc *DiscoveryClient) Resolve(ctx context.Context, project, serviceName string) ([]InstanceEndpoint, error) {
 	// 先尝试从缓存获取
 	cacheKey := fmt.Sprintf("%s/%s", project, serviceName)
 
@@ -59,7 +65,7 @@ func (dc *DiscoveryClient) Resolve(ctx context.Context, project, serviceName, en
 	dc.mu.RUnlock()
 
 	// 从注册中心刷新
-	services, err := dc.client.Registry.ListServices(ctx, project, env)
+	services, err := dc.client.Registry.ListServices(ctx, project)
 	if err != nil {
 		return nil, err
 	}
@@ -90,12 +96,12 @@ func (dc *DiscoveryClient) Resolve(ctx context.Context, project, serviceName, en
 }
 
 // Pick 选择一个健康的实例（round-robin + 故障转移）
-func (dc *DiscoveryClient) Pick(project, serviceName, env string) (*InstanceEndpoint, func(error), error) {
+func (dc *DiscoveryClient) Pick(project, serviceName string) (*InstanceEndpoint, func(error), error) {
 	ctx, cancel := dc.client.DefaultContext()
 	defer cancel()
 
 	// 获取实例列表
-	instances, err := dc.Resolve(ctx, project, serviceName, env)
+	instances, err := dc.Resolve(ctx, project, serviceName)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -167,8 +173,8 @@ func (dc *DiscoveryClient) markInstanceFailed(endpoint string) {
 }
 
 // RefreshService 刷新服务缓存
-func (dc *DiscoveryClient) RefreshService(ctx context.Context, project, serviceName, env string) error {
-	services, err := dc.client.Registry.ListServices(ctx, project, env)
+func (dc *DiscoveryClient) RefreshService(ctx context.Context, project, serviceName string) error {
+	services, err := dc.client.Registry.ListServices(ctx, project)
 	if err != nil {
 		return err
 	}

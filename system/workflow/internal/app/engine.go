@@ -678,7 +678,7 @@ func (a *App) triggerNode(ctx context.Context, instance *model.WorkflowInstanceM
 	return nil
 }
 
-// triggerMapNode 触发 Map 节点：根据 items_path 获取数组，派发 N 个子任务，初始化 Latch
+// triggerMapNode 触发 Map 节点：根据 items_path 获取数组，派发 N 个子任务，初始化 Latch todo dag unuse
 func (a *App) triggerMapNode(ctx context.Context, instance *model.WorkflowInstanceModel, node *model.Node, dag *model.DAG, env string) error {
 	if env == "" {
 		env = base.ENV
