@@ -19,9 +19,10 @@ type DAG struct {
 
 // Node 节点定义
 type Node struct {
-	ID     string                 `json:"id"`
-	Type   NodeType               `json:"type"`
-	Config map[string]interface{} `json:"config"` // 节点特定配置，例如 service, method
+	ID        string                 `json:"id"`
+	Type      NodeType               `json:"type"`
+	DependsOn []string               `json:"depends_on,omitempty"` // 便捷语法：声明前驱节点，Normalize 时自动转换为 Edge
+	Config    map[string]interface{} `json:"config"`               // 节点特定配置，例如 service, method
 }
 
 // EdgeType 边类型：空/success 成功走此边, error 失败走此边, always 无论成功失败都走
@@ -78,8 +79,38 @@ func (d *DAG) GetOutgoingEdges(nodeID string) []Edge {
 	return edges
 }
 
+// GetIncomingEdges 获取某个节点的所有入边
+func (d *DAG) GetIncomingEdges(nodeID string) []Edge {
+	var edges []Edge
+	for _, e := range d.Edges {
+		if e.To == nodeID {
+			edges = append(edges, e)
+		}
+	}
+	return edges
+}
+
+// Normalize 将节点的 DependsOn 声明转换为显式 Edge（幂等）
+// 遍历所有节点，若 DependsOn 列表中存在尚未被 Edges 覆盖的依赖关系，则自动补全
+func (d *DAG) Normalize() {
+	existing := make(map[string]bool)
+	for _, e := range d.Edges {
+		existing[e.From+"->"+e.To] = true
+	}
+	for _, n := range d.Nodes {
+		for _, dep := range n.DependsOn {
+			key := dep + "->" + n.ID
+			if !existing[key] {
+				d.Edges = append(d.Edges, Edge{From: dep, To: n.ID})
+				existing[key] = true
+			}
+		}
+	}
+}
+
 // Validate 验证 DAG 是否合法：无环、边引用有效节点、存在起始节点
 func (d *DAG) Validate() error {
+	d.Normalize() // 先将 DependsOn 转换为 Edge，再校验
 	if len(d.Nodes) == 0 {
 		return fmt.Errorf("DAG 至少需要一个节点")
 	}

@@ -282,6 +282,9 @@ func (a *App) handleMapSubTaskCompleted(tx *gorm.DB, instance *model.WorkflowIns
 				}
 			}
 			if cpCount == 0 && !inActive {
+				if !allPredecessorsCompleted(tx, instance.ID, edge.To, dag) {
+					continue
+				}
 				*nextNodeIDs = append(*nextNodeIDs, edge.To)
 				newActiveNodes = append(newActiveNodes, edge.To)
 			}
@@ -293,6 +296,25 @@ func (a *App) handleMapSubTaskCompleted(tx *gorm.DB, instance *model.WorkflowIns
 		instance.Status = model.InstanceStatusCompleted
 	}
 	return true, tx.Save(instance).Error
+}
+
+// allPredecessorsCompleted 检查目标节点的所有前驱（非 error 入边）是否都已完成（有 checkpoint）
+// 用于 Join Barrier：多入边汇聚时，只有所有前驱都完成才触发下游节点
+func allPredecessorsCompleted(tx *gorm.DB, instanceID int64, nodeID string, dag *model.DAG) bool {
+	inEdges := dag.GetIncomingEdges(nodeID)
+	for _, edge := range inEdges {
+		if edge.Type == model.EdgeTypeError {
+			continue // error 边不算依赖
+		}
+		var cpCount int64
+		tx.Model(&model.WorkflowCheckpointModel{}).
+			Where("instance_id = ? AND node_id = ?", instanceID, edge.From).
+			Count(&cpCount)
+		if cpCount == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // StartWorkflow 启动一个新的工作流实例，任一起始节点触发失败则将实例标记为 FAILED
@@ -310,6 +332,7 @@ func (a *App) StartWorkflow(ctx context.Context, defCode string, initialData map
 	if err := json.Unmarshal([]byte(def.DAGJSON), &dag); err != nil {
 		return 0, a.err.New("解析DAG失败", err)
 	}
+	dag.Normalize()
 
 	startNodes := dag.GetStartNodes()
 	if len(startNodes) == 0 {
@@ -409,6 +432,7 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 		if err := json.Unmarshal([]byte(def.DAGJSON), &dag); err != nil {
 			return fmt.Errorf("解析 DAG 失败: %w", err)
 		}
+		dag.Normalize()
 
 		// 3. Map 子任务回调：聚合结果，计数器归零时写 output_path 并触发下游
 		if subID >= 0 {
@@ -492,6 +516,9 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 						}
 					}
 					if cpCount == 0 && !inActive {
+						if !allPredecessorsCompleted(tx, instance.ID, edge.To, &dag) {
+							continue
+						}
 						nextNodeIDs = append(nextNodeIDs, edge.To)
 						newActiveNodes = append(newActiveNodes, edge.To)
 					}
@@ -579,6 +606,9 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 					}
 				}
 				if cpCount == 0 && !inActive {
+					if !allPredecessorsCompleted(tx, instance.ID, edge.To, &dag) {
+						continue
+					}
 					nextNodeIDs = append(nextNodeIDs, edge.To)
 					newActiveNodes = append(newActiveNodes, edge.To)
 				}
@@ -636,10 +666,15 @@ func (a *App) triggerNode(ctx context.Context, instance *model.WorkflowInstanceM
 			methodName = method
 		}
 
+		// 修复：将 CurrentState 从 JSON string 还原为 map，避免 json.Marshal 时 double-encoding
+		var stateObj map[string]interface{}
+		if err := json.Unmarshal([]byte(instance.CurrentState), &stateObj); err != nil {
+			return a.err.New("解析 CurrentState 用于派发失败", err)
+		}
 		payload := map[string]interface{}{
 			"instance_id": instance.ID,
 			"node_id":     node.ID,
-			"state":       instance.CurrentState,
+			"state":       stateObj,
 			"config":      node.Config,
 		}
 		payloadBytes, _ := json.Marshal(payload)
@@ -747,12 +782,17 @@ func (a *App) triggerMapNode(ctx context.Context, instance *model.WorkflowInstan
 	if _, err := a.InstanceService.UpdateById(ctx, instance.ID, instance); err != nil {
 		return a.err.New("更新实例状态失败", err)
 	}
+	// 修复：将 CurrentState 从 JSON string 还原为 map，避免 double-encoding
+	var mapStateObj map[string]interface{}
+	if err := json.Unmarshal([]byte(instance.CurrentState), &mapStateObj); err != nil {
+		return a.err.New("解析 CurrentState 用于 Map 子任务派发失败", err)
+	}
 	for i := 0; i < N; i++ {
 		item := itemsArr[i]
 		subPayload := map[string]interface{}{
 			"instance_id": instance.ID,
 			"node_id":     node.ID,
-			"state":       instance.CurrentState,
+			"state":       mapStateObj,
 			"config":      node.Config,
 			itemAlias:     item,
 		}
@@ -876,6 +916,7 @@ func (a *App) RollbackToNode(ctx context.Context, instanceID int64, targetNodeID
 		if err := json.Unmarshal([]byte(def.DAGJSON), &dag); err != nil {
 			return fmt.Errorf("解析DAG失败: %w", err)
 		}
+		dag.Normalize()
 		if dag.GetNode(targetNodeID) == nil {
 			return fmt.Errorf("目标节点不存在: %s", targetNodeID)
 		}
@@ -1076,6 +1117,7 @@ func (a *App) RetryNode(ctx context.Context, instanceID int64, nodeID string) er
 		if err := json.Unmarshal([]byte(def.DAGJSON), &dag); err != nil {
 			return fmt.Errorf("解析DAG失败: %w", err)
 		}
+		dag.Normalize()
 		if dag.GetNode(nodeID) == nil {
 			return fmt.Errorf("目标节点不存在: %s", nodeID)
 		}
@@ -1196,6 +1238,7 @@ func (a *App) SendSignal(ctx context.Context, instanceID int64, signalName strin
 			if err := json.Unmarshal([]byte(def.DAGJSON), &dag); err != nil {
 				return fmt.Errorf("解析 DAG 失败: %w", err)
 			}
+			dag.Normalize()
 			node := dag.GetNode(wakeupNode)
 			if node == nil {
 				return fmt.Errorf("唤醒节点不存在: %s", wakeupNode)
