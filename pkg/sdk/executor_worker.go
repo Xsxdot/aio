@@ -413,8 +413,9 @@ func (w *ExecutorWorker) executeJob(ctx context.Context, job *AcquiredJob, handl
 		renewCancel()
 	}
 
-	// 确认任务结果（使用独立短超时 ctx，避免被任务 ctx 取消）
-	ackCtx, ackCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// 确认任务结果（使用较长超时，因为服务端回调可能触发下游节点提交）
+	// 原 5 秒超时在并行节点场景下可能导致竞态问题
+	ackCtx, ackCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer ackCancel()
 
 	return w.ackJob(ackCtx, job, result, handlerErr)

@@ -406,6 +406,43 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 			env = base.ENV
 		}
 
+		// 检测是否为失败回调（带 error_msg）
+		_, hasErrorMsg := output["error_msg"]
+
+		// 如果实例已经失败/完成，且当前是成功回调，只记录 Checkpoint，不触发下游
+		if (instance.Status == model.InstanceStatusFailed || instance.Status == model.InstanceStatusCompleted || instance.Status == model.InstanceStatusCanceled) && !hasErrorMsg {
+			fmt.Printf("[TRACE-REPORT-LATE-SUCCESS] 实例已结束，记录迟到成功: instance_id=%d, node_id=%s, status=%s\n", instanceID, nodeID, instance.Status)
+			// 解析状态
+			data, sys, err := parseWorkflowState(instance.CurrentState)
+			if err != nil {
+				return fmt.Errorf("解析 CurrentState 失败: %w", err)
+			}
+			if data == nil {
+				data = make(workflowStateData)
+			}
+			// 合并输出到状态（可选，保留现场）
+			for k, v := range output {
+				data[k] = v
+			}
+			newStateStr, _ := serializeWorkflowState(data, sys)
+			// 创建 Checkpoint 记录
+			outputBytes, _ := json.Marshal(output)
+			if err := tx.Create(&model.WorkflowCheckpointModel{
+				InstanceID: instance.ID,
+				NodeID:     nodeID,
+				NodeOutput: string(outputBytes),
+				StateAfter: newStateStr,
+			}).Error; err != nil {
+				return err
+			}
+			// 更新 CurrentState（可选）
+			instance.CurrentState = newStateStr
+			if err := tx.Save(&instance).Error; err != nil {
+				return err
+			}
+			return nil
+		}
+
 		if instance.Status != model.InstanceStatusRunning && instance.Status != model.InstanceStatusWaiting {
 			return fmt.Errorf("实例状态不允许推进: %s", instance.Status)
 		}
@@ -446,7 +483,6 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 		}
 
 		// 4. 检测是否为 Executor 最终失败回调（带 error_msg），走 error 边或置实例 FAILED
-		_, hasErrorMsg := output["error_msg"]
 		if hasErrorMsg {
 			// 修复：如果是 Map 节点的子任务报错，立即清除 Latch 计数，防止幽灵并发
 			if subID >= 0 {
