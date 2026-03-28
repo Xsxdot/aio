@@ -35,6 +35,8 @@ type Config struct {
 	TLS *TLSConfig `json:"tls" yaml:"tls"`
 	// Auth 鉴权配置
 	Auth *AuthConfig `json:"auth" yaml:"auth"`
+	// Logging 日志配置
+	Logging *LoggingConfig `json:"logging" yaml:"logging"`
 }
 
 // KeepAliveConfig 保活配置
@@ -95,6 +97,17 @@ func DefaultAuthConfig() *AuthConfig {
 	}
 }
 
+// DefaultLoggingConfig 返回默认日志配置
+func DefaultLoggingConfig() *LoggingConfig {
+	return &LoggingConfig{
+		SkipInfoMethods: []string{
+			"/xiaozhizhang.executor.v1.ExecutorService/AcquireJob", // Executor 轮询接口，高频调用
+			"/grpc.health.v1.Health/Check",                         // 健康检查
+			"/xiaozhizhang.registry.v1.RegistryService/HeartbeatStream",
+		},
+	}
+}
+
 // BuildServerOptions 根据配置构建 gRPC 服务器选项
 func (c *Config) BuildServerOptions(logger *zap.Logger) []grpc.ServerOption {
 	var opts []grpc.ServerOption
@@ -126,7 +139,11 @@ func (c *Config) BuildServerOptions(logger *zap.Logger) []grpc.ServerOption {
 	}
 
 	// 日志中间件
-	interceptors = append(interceptors, unaryLoggingInterceptor(logger))
+	loggingConfig := c.Logging
+	if loggingConfig == nil {
+		loggingConfig = DefaultLoggingConfig()
+	}
+	interceptors = append(interceptors, unaryLoggingInterceptor(logger, loggingConfig))
 
 	// 验证中间件
 	if c.EnableValidation {

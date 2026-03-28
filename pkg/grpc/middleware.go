@@ -52,12 +52,22 @@ type AuthConfig struct {
 	AuthProvider AuthProvider
 }
 
+// LoggingConfig 日志配置
+type LoggingConfig struct {
+	// SkipInfoMethods 跳过 Info 级别日志的方法列表（高频轮询接口）
+	// 这些方法只在 Debug 级别打印日志，或完全跳过
+	SkipInfoMethods []string
+}
+
 // unaryLoggingInterceptor 统一的日志记录中间件
-func unaryLoggingInterceptor(logger *zap.Logger) grpc.UnaryServerInterceptor {
+func unaryLoggingInterceptor(logger *zap.Logger, config *LoggingConfig) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		start := time.Now()
 
-		// 记录请求开始
+		// 检查是否为高频方法，只打印 Debug 日志
+		isHighFrequency := shouldSkipInfoLog(info.FullMethod, config.SkipInfoMethods)
+
+		// 记录请求开始（始终 Debug 级别）
 		logger.Debug("gRPC 请求开始",
 			zap.String("method", info.FullMethod),
 			zap.Time("start_time", start))
@@ -85,6 +95,12 @@ func unaryLoggingInterceptor(logger *zap.Logger) grpc.UnaryServerInterceptor {
 				zap.Duration("duration", duration),
 				zap.String("status", code.String()),
 				zap.Error(err))
+		} else if isHighFrequency {
+			// 高频方法只打印 Debug 级别
+			logger.Debug("gRPC 请求完成",
+				zap.String("method", info.FullMethod),
+				zap.Duration("duration", duration),
+				zap.String("status", code.String()))
 		} else {
 			logger.Info("gRPC 请求完成",
 				zap.String("method", info.FullMethod),
@@ -182,6 +198,16 @@ func PermissionInterceptor(config *AuthConfig, logger *zap.Logger) grpc.UnarySer
 // shouldSkipAuth 检查是否应该跳过鉴权
 func shouldSkipAuth(method string, skipMethods []string) bool {
 	for _, skipMethod := range skipMethods {
+		if method == skipMethod || strings.HasSuffix(method, skipMethod) {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldSkipInfoLog 检查是否应该跳过 Info 级别日志（高频方法）
+func shouldSkipInfoLog(method string, skipInfoMethods []string) bool {
+	for _, skipMethod := range skipInfoMethods {
 		if method == skipMethod || strings.HasSuffix(method, skipMethod) {
 			return true
 		}
