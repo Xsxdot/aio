@@ -6,17 +6,11 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"github.com/xsxdot/aio/pkg/core/consts"
 
 	"github.com/sirupsen/logrus"
+	"github.com/xsxdot/aio/pkg/core/consts"
 
-	"github.com/redis/go-redis/v9"
-
-	//"github.com/sirupsen/logrus"
 	"runtime"
-
-	"gopkg.in/mgo.v2"
-	"gorm.io/gorm"
 )
 
 // 配置选项
@@ -59,17 +53,6 @@ func (e *Error) WithTraceID(ctx context.Context) *Error {
 	var traceID string
 
 	if ctx != nil {
-		// span := zipkin.SpanFromContext(ctx)
-		// if span == nil {
-		// 	if uuid, ok := ctx.Value(consts.TraceKey).(string); ok {
-		// 		traceID = uuid
-		// 	} else {
-		// 		traceID = ""
-		// 	}
-		// } else {
-		// 	traceID = span.Context().TraceID.String()
-		// 	span.Tag("error", "true")
-		// }
 		if uuid, ok := ctx.Value(consts.TraceKey).(string); ok {
 			traceID = uuid
 		} else {
@@ -135,77 +118,63 @@ func (e *Error) Error() string {
 		return "<nil>"
 	}
 
-	// 1. 收集错误链
+	// 1. 收集错误链（带防死循环保护）
 	var errChain []*Error
 	currErr := e
-	for {
+	depth := 0
+	for currErr != nil && depth < 20 {
 		errChain = append(errChain, currErr)
-		if cause, ok := currErr.Cause.(*Error); ok {
+		depth++
+		if cause, ok := currErr.Cause.(*Error); ok && cause != nil && cause != currErr {
 			currErr = cause
 		} else {
 			break
 		}
 	}
 
-	// 2. 查找根因错误 (第一个包装了非 *Error 错误的 Error)
-	var rootCause *Error
-	var originalError error // 底层的原始错误
-	for i := len(errChain) - 1; i >= 0; i-- {
-		err := errChain[i]
-		if err.Cause != nil {
-			if _, ok := err.Cause.(*Error); !ok {
-				rootCause = err
-				originalError = err.Cause
-				break
-			}
-		}
-	}
-	// 如果没找到明确的包装了第三方错误的error，就认为最内层的就是根因
-	if rootCause == nil && len(errChain) > 0 {
-		rootCause = errChain[len(errChain)-1]
-		originalError = rootCause.Cause
-	}
+	lastErr := errChain[len(errChain)-1]
+	originalErr := lastErr.Cause
 
-	// 3. 构建格式化的错误信息
 	var sb strings.Builder
 
-	// 3.1 打印根因
-	sb.WriteString("========================= Root Cause =========================\n")
-	if rootCause != nil {
-		if originalError != nil {
-			sb.WriteString(fmt.Sprintf("Error: %s\n", originalError.Error()))
-		}
-		if rootCause.FileName != "" {
-			sb.WriteString(fmt.Sprintf("Location: %s:%d\n", rootCause.FileName, rootCause.Line))
-		}
-		if rootCause.FuncName != "" {
-			sb.WriteString(fmt.Sprintf("Function: %s\n", rootCause.FuncName))
-		}
-		if rootCause.Msg != "" {
-			sb.WriteString(fmt.Sprintf("Message: %s\n", rootCause.Msg))
-		}
-		if rootCause.TraceID != "" {
-			sb.WriteString(fmt.Sprintf("Trace ID: %s\n", rootCause.TraceID))
-		}
-	} else {
-		sb.WriteString("No specific root cause identified.\n")
-	}
-
-	// 3.2 打印完整错误跟踪链
-	sb.WriteString("\n======================= Full Error Trace =======================\n")
+	// 2. 简洁的单行报错汇总 (Outer -> Inner -> Root)
+	sb.WriteString("Err: ")
 	for i, err := range errChain {
-		sb.WriteString(fmt.Sprintf("%d: ", i+1))
-		if err.ErrorCode != nil {
-			sb.WriteString(fmt.Sprintf("[%s] ", err.ErrorCode.String()))
+		if i > 0 {
+			sb.WriteString(" -> ")
 		}
 		sb.WriteString(err.Msg)
-
-		if err.FileName != "" {
-			sb.WriteString(fmt.Sprintf("\n   at %s:%d", err.FileName, err.Line))
-		}
-		sb.WriteString("\n")
 	}
-	sb.WriteString("==============================================================\n")
+	if originalErr != nil && originalErr != lastErr {
+		sb.WriteString(fmt.Sprintf(" -> %v", originalErr))
+	}
+	sb.WriteString("\n")
+
+	// 3. 核心追踪信息
+	if e.TraceID != "" {
+		sb.WriteString(fmt.Sprintf("[TraceID: %s]\n", e.TraceID))
+	}
+
+	// 4. 干净的逻辑调用栈
+	sb.WriteString("--- Logical Stack Trace ---\n")
+	for i, err := range errChain {
+		codeStr := "Unknown"
+		if err.ErrorCode != nil {
+			codeStr = err.ErrorCode.Name
+		}
+		// 打印：1. [NotFound] 找不到用户数据
+		sb.WriteString(fmt.Sprintf("  %d. [%s] %s\n", i+1, codeStr, err.Msg))
+		// 打印：    @ core/mvc/controller.go:45 (FindById)
+		if err.FileName != "" {
+			funcName := trimFilename(err.FuncName) // 函数名也可能带长包名，稍微精简
+			sb.WriteString(fmt.Sprintf("     @ %s:%d (%s)\n", trimFilename(err.FileName), err.Line, funcName))
+		}
+	}
+
+	// 5. 打印最底层的原生错误（如 sql.ErrNoRows）
+	if originalErr != nil && originalErr != lastErr {
+		sb.WriteString(fmt.Sprintf("  %d. [Root Cause] %v\n", len(errChain)+1, originalErr))
+	}
 
 	return sb.String()
 }
@@ -219,10 +188,16 @@ func (e *Error) RootCause() string {
 	// 1. 收集错误链
 	var errChain []*Error
 	currErr := e
-	for {
+	depth := 0
+	for depth < 20 {
 		errChain = append(errChain, currErr)
-		if cause, ok := currErr.Cause.(*Error); ok {
+		if cause, ok := currErr.Cause.(*Error); ok && cause != nil {
+			// 防止自引用导致的死循环
+			if cause == currErr {
+				break
+			}
 			currErr = cause
+			depth++
 		} else {
 			break
 		}
@@ -270,92 +245,59 @@ func (e *Error) ToLog(log *logrus.Entry, msgs ...string) *Error {
 		return nil
 	}
 
-	// 1. 收集错误链
 	var errChain []*Error
 	currErr := e
-	for {
+	depth := 0
+	for currErr != nil && depth < 20 {
 		errChain = append(errChain, currErr)
-		if cause, ok := currErr.Cause.(*Error); ok {
+		depth++
+		if cause, ok := currErr.Cause.(*Error); ok && cause != nil && cause != currErr {
 			currErr = cause
 		} else {
 			break
 		}
 	}
 
-	// 2. 查找根因错误
-	var rootCause *Error
-	var originalError error
-	for i := len(errChain) - 1; i >= 0; i-- {
-		err := errChain[i]
-		if err.Cause != nil {
-			if _, ok := err.Cause.(*Error); !ok {
-				rootCause = err
-				originalError = err.Cause
-				break
-			}
-		}
-	}
-	if rootCause == nil && len(errChain) > 0 {
-		rootCause = errChain[len(errChain)-1]
-		originalError = rootCause.Cause
-	}
+	lastErr := errChain[len(errChain)-1]
+	originalErr := lastErr.Cause
 
-	// 3. 构建日志字段
+	// 构建用于 JSON 检索的结构化字段
 	fields := make(map[string]interface{})
 
-	// 3.1 添加根因信息
-	if rootCause != nil {
-		fields["root_cause_file"] = rootCause.FileName
-		fields["root_cause_line"] = rootCause.Line
-		fields["root_cause_func"] = rootCause.FuncName
-		fields["root_cause_msg"] = rootCause.Msg
-		if originalError != nil {
-			fields["root_cause_original_error"] = originalError.Error()
-		}
-		if rootCause.ErrorCode != nil {
-			fields["root_cause_error_code"] = rootCause.ErrorCode.String()
-		}
-	}
-
-	// 3.2 添加完整的错误链信息
-	chain := make([]map[string]interface{}, 0, len(errChain))
-	for _, err := range errChain {
-		level := make(map[string]interface{})
-		level["file"] = err.FileName
-		level["line"] = err.Line
-		level["func"] = err.FuncName
-		level["msg"] = err.Msg
-		if err.ErrorCode != nil {
-			level["code"] = err.ErrorCode.String()
-		}
-		if err.TraceID != "" {
-			level["trace_id"] = err.TraceID
-		}
-		if err == e && enableFullStack { // 只为最外层错误添加完整堆栈
-			stack := err.getFullStack()
-			if stack != "" {
-				level["stack_trace"] = stack
-			}
-		}
-		chain = append(chain, level)
-	}
-	fields["error_chain"] = chain
 	if e.TraceID != "" {
 		fields["trace_id"] = e.TraceID
 	}
 
-	// 4. 构建最终日志消息
+	// 记录原始的底层错误
+	if originalErr != nil {
+		fields["root_cause"] = originalErr.Error()
+	}
+
+	// 构建逻辑错误链数组
+	chain := make([]map[string]interface{}, 0, len(errChain))
+	for _, err := range errChain {
+		level := make(map[string]interface{})
+		level["msg"] = err.Msg
+		level["location"] = fmt.Sprintf("%s:%d", trimFilename(err.FileName), err.Line)
+		if err.ErrorCode != nil {
+			level["code"] = err.ErrorCode.Name
+		}
+		chain = append(chain, level)
+	}
+	fields["error_chain"] = chain
+
+	// 最终日志消息：如果有自定义传参优先用传参，否则用错误链的单行汇总
 	var finalMsg string
 	if len(msgs) > 0 {
 		finalMsg = strings.Join(msgs, ", ")
-	} else if len(errChain) > 0 {
-		finalMsg = errChain[0].Msg // 使用最外层错误的Msg作为主要信息
 	} else {
-		finalMsg = "An error occurred"
+		// 取最外层的 Msg 作为日志标题
+		finalMsg = e.Msg
 	}
 
+	// 输出结构化日志
 	log.WithFields(fields).Error(finalMsg)
-	println(e.Error())
+
 	return e
 }
 
@@ -428,16 +370,48 @@ func getErrCode(err error) *ErrorCode {
 		return ErrorCodeUnknown
 	}
 
-	for _, e := range notfounds {
-		if errors.Is(err, e) {
-			return ErrorCodeNotFound
+	// 避免触发自定义 Error 的堆栈序列化
+	var msg string
+	if e, ok := err.(*Error); ok {
+		msg = e.Msg
+		if e.Cause != nil {
+			if ce, ok := e.Cause.(*Error); ok {
+				msg += " " + ce.Msg
+			} else {
+				msg += " " + e.Cause.Error()
+			}
 		}
+	} else {
+		msg = err.Error()
 	}
 
+	if isNotFoundMessage(msg) {
+		return ErrorCodeNotFound
+	}
 	return ErrorCodeUnknown
 }
 
-var notfounds = []error{gorm.ErrRecordNotFound, redis.Nil, mgo.ErrNotFound}
+// 内置的 NotFound 关键词列表（小写）
+var notFoundKeywords = []string{
+	"record not found",
+	"redis: nil",
+}
+
+// isNotFoundMessage 判断错误消息是否包含 NotFound 关键词
+func isNotFoundMessage(msg string) bool {
+	lowerMsg := strings.ToLower(msg)
+	for _, kw := range notFoundKeywords {
+		if strings.Contains(lowerMsg, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// RegisterNotFoundKeyword 允许用户注册自定义的 NotFound 关键词
+func RegisterNotFoundKeyword(keyword string) {
+	notFoundKeywords = append(notFoundKeywords, strings.ToLower(keyword))
+}
 
 // 快速构造函数 - 不获取堆栈信息，适用于性能敏感场景
 func (e *ErrorBuilder) Quick(msg string, err error) *Error {
@@ -451,11 +425,11 @@ func (e *ErrorBuilder) Quick(msg string, err error) *Error {
 
 // 快速构造函数 - 全局版本
 func Quick(msg string, err error) *Error {
-	return &Error{
-		Msg:       msg,
-		Cause:     err,
-		ErrorCode: getErrCode(err),
-	}
+	stack := getStackOptimized(2) // 关键修复：抓取调用者位置
+	stack.Msg = msg
+	stack.Cause = err
+	stack.ErrorCode = getErrCode(err)
+	return stack
 }
 
 // 快速构造特定错误类型的方法
@@ -528,15 +502,15 @@ func ParseError(err error) *Error {
 	if err == nil {
 		return nil
 	}
-
 	var e *Error
-	// Use errors.As to check if an *Error already exists in the chain.
 	if errors.As(err, &e) {
 		return e
 	}
-
-	// If not, wrap the original error.
-	return Quick("", err)
+	// 将 depth 改为 2，以准确抓取调用 ParseError 的那行业务代码
+	stack := getStackOptimized(2)
+	stack.Cause = err
+	stack.ErrorCode = getErrCode(err)
+	return stack
 }
 
 func IsNotFound(err error) bool {
@@ -544,20 +518,39 @@ func IsNotFound(err error) bool {
 		return false
 	}
 
-	// 1. Check if it's our custom NotFound error, anywhere in the chain.
+	// 1. 检查是否是我们自定义的 NotFound
 	var e *Error
 	if errors.As(err, &e) {
 		if e.ErrorCode == ErrorCodeNotFound {
 			return true
 		}
-	}
-
-	// 2. Check for other known 'not found' error values in the chain.
-	for _, target := range notfounds {
-		if errors.Is(err, target) {
+		// 只判断 Msg 和 Cause，不调用 e.Error()
+		if isNotFoundMessage(e.Msg) {
 			return true
 		}
+		if e.Cause != nil {
+			// 对 Cause 进行判断，但避免触发我们的 Error 的序列化
+			if ce, ok := e.Cause.(*Error); ok {
+				return IsNotFound(ce) // 递归处理嵌套的 Error
+			}
+			return isNotFoundMessage(e.Cause.Error())
+		}
+		return false
 	}
 
-	return false
+	// 2. 第三方原生 error，直接判断 Message
+	return isNotFoundMessage(err.Error())
+}
+
+// trimFilename 截断绝对路径，只保留项目相对路径，减少日志噪音
+func trimFilename(fullPath string) string {
+	if fullPath == "" {
+		return ""
+	}
+	parts := strings.Split(fullPath, "/")
+	if len(parts) > 3 {
+		// 只保留最后 3 级路径，例如 "core/mvc/controller.go"
+		return strings.Join(parts[len(parts)-3:], "/")
+	}
+	return fullPath
 }

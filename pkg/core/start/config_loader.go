@@ -102,7 +102,7 @@ func loadConfigFromCenterGeneric[T any](localCfg Config, env string) (*T, error)
 
 	// 如果找不到完整配置，则按前缀查询并组装
 	if sdk.IsNotFound(err) || configJSON == "" {
-		configJSON, err = loadAndComposeConfigsByPrefix(ctx, client, prefix)
+		configJSON, err = client.ConfigClient.GetComposedConfigByPrefix(ctx, prefix)
 		if err != nil {
 			return nil, fmt.Errorf("failed to compose configs by prefix: %w", err)
 		}

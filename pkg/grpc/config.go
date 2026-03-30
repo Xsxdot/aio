@@ -174,7 +174,7 @@ func (c *Config) BuildServerOptions(logger *zap.Logger) []grpc.ServerOption {
 	}
 
 	// 日志中间件
-	streamInterceptors = append(streamInterceptors, StreamLoggingInterceptor(logger))
+	streamInterceptors = append(streamInterceptors, StreamLoggingInterceptor(logger, loggingConfig))
 
 	// 添加流式中间件链
 	if len(streamInterceptors) > 0 {

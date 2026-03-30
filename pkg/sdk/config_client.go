@@ -2,6 +2,9 @@ package sdk
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"sort"
 	"strings"
 
 	configpb "github.com/xsxdot/aio/system/config/api/proto"
@@ -97,6 +100,22 @@ func (c *ConfigClient) GetConfigJSON(ctx context.Context, key string) (string, e
 	}
 
 	return resp.JsonStr, nil
+}
+
+// GetConfigInto 获取配置并直接反序列化到目标对象
+// key: 配置键
+// target: 目标对象指针，用于接收反序列化后的配置
+func (c *ConfigClient) GetConfigInto(ctx context.Context, key string, target any) error {
+	jsonStr, err := c.GetConfigJSON(ctx, key)
+	if err != nil {
+		return err
+	}
+
+	if err := json.Unmarshal([]byte(jsonStr), target); err != nil {
+		return WrapError(err, "failed to unmarshal config into target")
+	}
+
+	return nil
 }
 
 // BatchGetConfigs 批量获取配置
@@ -284,5 +303,154 @@ func convertPBConfigResponseToSDK(pbResp *configpb.ConfigResponse) *ConfigInfo {
 		Description: pbResp.Description,
 		CreatedAt:   pbResp.CreatedAt,
 		UpdatedAt:   pbResp.UpdatedAt,
+	}
+}
+
+// GetComposedConfigByPrefix 按前缀获取配置并组装成嵌套 JSON
+// 适用于应用启动时需要从多个分散配置项组装成完整配置的场景
+func (c *ConfigClient) GetComposedConfigByPrefix(ctx context.Context, prefix string) (string, error) {
+	configs, err := c.GetConfigsByPrefix(ctx, prefix)
+	if err != nil {
+		return "", WrapError(err, "get composed config by prefix failed")
+	}
+	if len(configs) == 0 {
+		return "", WrapError(fmt.Errorf("no configs found with prefix: %s", prefix), "get composed config by prefix failed")
+	}
+	return ComposeConfigsByPrefix(configs, prefix)
+}
+
+// GetComposedConfigInto 按前缀获取配置并组装后直接反序列化到目标对象
+// prefix: 配置键前缀
+// target: 目标对象指针，用于接收反序列化后的配置
+func (c *ConfigClient) GetComposedConfigInto(ctx context.Context, prefix string, target any) error {
+	jsonStr, err := c.GetComposedConfigByPrefix(ctx, prefix)
+	if err != nil {
+		return err
+	}
+
+	if err := json.Unmarshal([]byte(jsonStr), target); err != nil {
+		return WrapError(err, "failed to unmarshal composed config into target")
+	}
+
+	return nil
+}
+
+// configEntry 配置条目（用于排序）
+type configEntry struct {
+	section string
+	obj     map[string]any
+	depth   int
+}
+
+// ComposeConfigsByPrefix 纯函数，将配置 map 组装成嵌套 JSON（便于测试和复用）
+// configs: map[key]jsonStr，key 已去除环境后缀
+// prefix: 配置前缀（用于去除前缀得到 section）
+func ComposeConfigsByPrefix(configs map[string]string, prefix string) (string, error) {
+	// 收集所有条目，并按路径深度排序（父节点先写，子节点后写可覆盖冲突字段）
+	entries := make([]configEntry, 0, len(configs))
+	prefixDot := prefix + "."
+
+	for fullKey, jsonStr := range configs {
+		// 去掉 prefix. 前缀，得到 section
+		if !strings.HasPrefix(fullKey, prefixDot) {
+			continue
+		}
+		section := strings.TrimPrefix(fullKey, prefixDot)
+
+		// 解析 JSON 对象
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(jsonStr), &obj); err != nil {
+			return "", fmt.Errorf("failed to parse config %s: %w", fullKey, err)
+		}
+
+		depth := strings.Count(section, ".") + 1
+		entries = append(entries, configEntry{section: section, obj: obj, depth: depth})
+	}
+
+	// 按深度排序（父先写），同深度按 section 字典序
+	sortEntriesByDepth(entries)
+
+	// 组装大 JSON
+	bigConfig := make(map[string]any)
+
+	for _, e := range entries {
+		// 特殊处理：{prefix}.app 的内容 merge 到根
+		if e.section == "app" {
+			for k, v := range e.obj {
+				bigConfig[k] = v
+			}
+		} else {
+			// 按 `.` 分段，写入嵌套路径
+			setNestedValue(bigConfig, strings.Split(e.section, "."), e.obj)
+		}
+	}
+
+	// 序列化为 JSON
+	result, err := json.Marshal(bigConfig)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal composed config: %w", err)
+	}
+
+	return string(result), nil
+}
+
+// sortEntriesByDepth 按深度（父节点优先）和 section 字典序排序
+func sortEntriesByDepth(entries []configEntry) {
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].depth != entries[j].depth {
+			return entries[i].depth < entries[j].depth
+		}
+		return entries[i].section < entries[j].section
+	})
+}
+
+// setNestedValue 将 value 写入嵌套路径 path，支持递归合并 map
+func setNestedValue(root map[string]any, path []string, value map[string]any) {
+	if len(path) == 0 {
+		return
+	}
+
+	// 遍历到倒数第二层
+	current := root
+	for i := 0; i < len(path)-1; i++ {
+		key := path[i]
+		if _, exists := current[key]; !exists {
+			current[key] = make(map[string]any)
+		}
+		// 如果中间节点不是 map，跳过（不覆盖）
+		if nextMap, ok := current[key].(map[string]any); ok {
+			current = nextMap
+		} else {
+			return
+		}
+	}
+
+	// 最后一层：合并或覆盖
+	lastKey := path[len(path)-1]
+	if existing, exists := current[lastKey]; exists {
+		if existingMap, ok := existing.(map[string]any); ok {
+			// 双方都是 map，递归合并
+			mergeMaps(existingMap, value)
+			return
+		}
+	}
+	// 否则直接覆盖
+	current[lastKey] = value
+}
+
+// mergeMaps 将 src 的键值递归合并到 dst 中（子节点优先，冲突时覆盖）
+func mergeMaps(dst, src map[string]any) {
+	for k, v := range src {
+		if dstVal, exists := dst[k]; exists {
+			// 如果双方都是 map，递归合并
+			if dstMap, dstOk := dstVal.(map[string]any); dstOk {
+				if srcMap, srcOk := v.(map[string]any); srcOk {
+					mergeMaps(dstMap, srcMap)
+					continue
+				}
+			}
+		}
+		// 否则覆盖
+		dst[k] = v
 	}
 }

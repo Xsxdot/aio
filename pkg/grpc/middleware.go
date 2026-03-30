@@ -434,11 +434,14 @@ func StreamPermissionInterceptor(config *AuthConfig, logger *zap.Logger) grpc.St
 }
 
 // StreamLoggingInterceptor 流式日志记录中间件
-func StreamLoggingInterceptor(logger *zap.Logger) grpc.StreamServerInterceptor {
+func StreamLoggingInterceptor(logger *zap.Logger, config *LoggingConfig) grpc.StreamServerInterceptor {
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		start := time.Now()
 
-		// 记录流开始
+		// 检查是否为高频方法，只打印 Debug 日志
+		isHighFrequency := shouldSkipInfoLog(info.FullMethod, config.SkipInfoMethods)
+
+		// 记录流开始（始终 Debug 级别）
 		logger.Debug("gRPC Stream 开始",
 			zap.String("method", info.FullMethod),
 			zap.Bool("client_stream", info.IsClientStream),
@@ -468,6 +471,12 @@ func StreamLoggingInterceptor(logger *zap.Logger) grpc.StreamServerInterceptor {
 				zap.Duration("duration", duration),
 				zap.String("status", code.String()),
 				zap.Error(err))
+		} else if isHighFrequency {
+			// 高频方法只打印 Debug 级别
+			logger.Debug("gRPC Stream 结束",
+				zap.String("method", info.FullMethod),
+				zap.Duration("duration", duration),
+				zap.String("status", code.String()))
 		} else {
 			logger.Info("gRPC Stream 结束",
 				zap.String("method", info.FullMethod),

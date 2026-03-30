@@ -1,4 +1,4 @@
-package start
+package sdk
 
 import (
 	"encoding/json"
@@ -12,9 +12,9 @@ func TestComposeConfigsByPrefix_DottedKeys(t *testing.T) {
 		"tk.server.tools.ali-bj":   `{"api_key": "ali-key", "region": "beijing"}`,
 	}
 
-	result, err := composeConfigsByPrefix(configs, "tk.server")
+	result, err := ComposeConfigsByPrefix(configs, "tk.server")
 	if err != nil {
-		t.Fatalf("composeConfigsByPrefix failed: %v", err)
+		t.Fatalf("ComposeConfigsByPrefix failed: %v", err)
 	}
 
 	var output map[string]interface{}
@@ -54,9 +54,9 @@ func TestComposeConfigsByPrefix_ParentChildMerge(t *testing.T) {
 		"tk.server.tools.ali-bj":   `{"timeout": 20, "region": "beijing"}`,
 	}
 
-	result, err := composeConfigsByPrefix(configs, "tk.server")
+	result, err := ComposeConfigsByPrefix(configs, "tk.server")
 	if err != nil {
-		t.Fatalf("composeConfigsByPrefix failed: %v", err)
+		t.Fatalf("ComposeConfigsByPrefix failed: %v", err)
 	}
 
 	var output map[string]interface{}
@@ -106,9 +106,9 @@ func TestComposeConfigsByPrefix_AppSection(t *testing.T) {
 		"tk.server.redis": `{"host": "localhost", "port": 6379}`,
 	}
 
-	result, err := composeConfigsByPrefix(configs, "tk.server")
+	result, err := ComposeConfigsByPrefix(configs, "tk.server")
 	if err != nil {
-		t.Fatalf("composeConfigsByPrefix failed: %v", err)
+		t.Fatalf("ComposeConfigsByPrefix failed: %v", err)
 	}
 
 	var output map[string]interface{}
@@ -142,9 +142,9 @@ func TestComposeConfigsByPrefix_DeepNesting(t *testing.T) {
 		"tk.server.a":     `{"value": "shallow"}`,
 	}
 
-	result, err := composeConfigsByPrefix(configs, "tk.server")
+	result, err := ComposeConfigsByPrefix(configs, "tk.server")
 	if err != nil {
-		t.Fatalf("composeConfigsByPrefix failed: %v", err)
+		t.Fatalf("ComposeConfigsByPrefix failed: %v", err)
 	}
 
 	var output map[string]interface{}
@@ -188,9 +188,9 @@ func TestComposeConfigsByPrefix_EmptyPrefix(t *testing.T) {
 		"db":    `{"host": "postgres"}`,
 	}
 
-	result, err := composeConfigsByPrefix(configs, "")
+	result, err := ComposeConfigsByPrefix(configs, "")
 	if err != nil {
-		t.Fatalf("composeConfigsByPrefix failed: %v", err)
+		t.Fatalf("ComposeConfigsByPrefix failed: %v", err)
 	}
 
 	var output map[string]interface{}
