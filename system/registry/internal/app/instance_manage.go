@@ -29,6 +29,7 @@ func (a *App) toInstanceDTO(inst *model.RegistryInstance) *dto.InstanceDTO {
 	if inst == nil {
 		return nil
 	}
+
 	return &dto.InstanceDTO{
 		ID:              inst.ID,
 		ServiceID:       inst.ServiceID,
@@ -36,6 +37,9 @@ func (a *App) toInstanceDTO(inst *model.RegistryInstance) *dto.InstanceDTO {
 		Env:             inst.Env,
 		Host:            inst.Host,
 		Endpoint:        inst.Endpoint,
+		Endpoints:       inst.Endpoints,
+		HTTPPort:        inst.HTTPPort,
+		GRPCPort:        inst.GRPCPort,
 		Meta:            map[string]interface{}(inst.Meta),
 		TTLSeconds:      inst.TTLSeconds,
 		LastHeartbeatAt: inst.LastHeartbeatAt,
@@ -72,6 +76,9 @@ func (a *App) RegisterInstance(ctx context.Context, req *dto.RegisterInstanceReq
 		Env:             req.Env,
 		Host:            req.Host,
 		Endpoint:        req.Endpoint,
+		Endpoints:       req.Endpoints,
+		HTTPPort:        req.HTTPPort,
+		GRPCPort:        req.GRPCPort,
 		Meta:            req.Meta,
 		TTLSeconds:      ttl,
 		LastHeartbeatAt: now,

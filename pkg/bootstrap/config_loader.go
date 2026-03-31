@@ -4,19 +4,17 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/xsxdot/aio/pkg/core/config"
 	"gopkg.in/yaml.v3"
 )
 
 // LocalBootstrap 本地引导配置（极其轻量，只管连接配置中心）
 type LocalBootstrap struct {
-	AppName  string           `yaml:"app-name"`
-	Env      string           `yaml:"env"`
-	Host     string           `yaml:"host"`
-	Port     int              `yaml:"port"`
-	Domain   string           `yaml:"domain"`
-	LogLevel string           `yaml:"log-level"`
-	Aio      config.SdkConfig `yaml:"sdk"`
+	AppName string    `yaml:"app-name"`
+	Env     string    `yaml:"env"`
+	Host    string    `yaml:"host"`   // 绑定IP
+	Port    int       `yaml:"port"`   // HTTP 端口
+	Domain  string    `yaml:"domain"` // 域名
+	Aio     SdkConfig `yaml:"sdk"`
 }
 
 // loadBootstrap 解析本地引导文件

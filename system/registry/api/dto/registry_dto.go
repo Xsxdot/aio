@@ -1,6 +1,10 @@
 package dto
 
-import "time"
+import (
+	"time"
+
+	"github.com/xsxdot/aio/system/registry/internal/model"
+)
 
 // ===== Service DTO =====
 
@@ -21,7 +25,10 @@ type InstanceDTO struct {
 	InstanceKey     string                 `json:"instanceKey"`
 	Env             string                 `json:"env"`
 	Host            string                 `json:"host"`
-	Endpoint        string                 `json:"endpoint"`
+	Endpoint        string                 `json:"endpoint"`         // 默认访问地址（向后兼容）
+	Endpoints       []model.EndpointConfig `json:"endpoints"`        // 多端点配置
+	HTTPPort        int64                  `json:"httpPort"`         // HTTP 端口（全局）
+	GRPCPort        int64                  `json:"grpcPort"`         // gRPC 端口（全局）
 	Meta            map[string]interface{} `json:"meta"`
 	TTLSeconds      int64                  `json:"ttlSeconds"`
 	LastHeartbeatAt time.Time              `json:"lastHeartbeatAt"`
@@ -58,10 +65,13 @@ type UpdateServiceReq struct {
 
 type RegisterInstanceReq struct {
 	ServiceID   int64                  `json:"serviceId" validate:"required"`
-	InstanceKey string                 `json:"instanceKey"` // 可为空：服务端生成
+	InstanceKey string                 `json:"instanceKey"`      // 可为空：服务端生成
 	Env         string                 `json:"env" validate:"required"`
 	Host        string                 `json:"host" validate:"required"`
-	Endpoint    string                 `json:"endpoint" validate:"required"`
+	Endpoint    string                 `json:"endpoint"`         // 默认访问地址（向后兼容，可选）
+	Endpoints   []model.EndpointConfig `json:"endpoints"`        // 多端点配置
+	HTTPPort    int64                  `json:"httpPort"`         // HTTP 端口（全局）
+	GRPCPort    int64                  `json:"grpcPort"`         // gRPC 端口（全局）
 	Meta        map[string]interface{} `json:"meta"`
 	TTLSeconds  int64                  `json:"ttlSeconds"` // 默认 60
 }

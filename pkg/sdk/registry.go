@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -45,10 +46,95 @@ type InstanceEndpoint struct {
 	InstanceKey   string
 	Env           string
 	Host          string
-	Endpoint      string
+	Endpoint      string              // 默认访问地址（向后兼容）
+	Endpoints     []EndpointConfig    // 多端点列表
+	HTTPPort      int64               // HTTP 端口（全局）
+	GRPCPort      int64               // gRPC 端口（全局）
 	Meta          map[string]interface{}
 	TTLSeconds    int64
 	LastHeartbeat int64
+}
+
+// EndpointConfig 单个端点配置
+type EndpointConfig struct {
+	Host     string `json:"host"`     // 主机地址（不含协议前缀）
+	Network  string `json:"network"`  // 网络类型标识：local/internal/external/tailscale
+	Priority int    `json:"priority"` // 优先级（数值越小优先级越高）
+}
+
+// GetEndpointByNetwork 根据网络类型选择端点
+func (ie *InstanceEndpoint) GetEndpointByNetwork(network string) string {
+	for _, ep := range ie.Endpoints {
+		if ep.Network == network {
+			if ie.HTTPPort > 0 {
+				return fmt.Sprintf("%s:%d", ep.Host, ie.HTTPPort)
+			}
+			return ep.Host
+		}
+	}
+	// 回退到默认 Endpoint 或 Host
+	if ie.Endpoint != "" {
+		return ie.Endpoint
+	}
+	if ie.HTTPPort > 0 {
+		return fmt.Sprintf("%s:%d", ie.Host, ie.HTTPPort)
+	}
+	return ie.Host
+}
+
+// GetGRPCAddress 根据 network 获取 gRPC 地址
+func (ie *InstanceEndpoint) GetGRPCAddress(network string) string {
+	for _, ep := range ie.Endpoints {
+		if ep.Network == network {
+			if ie.GRPCPort > 0 {
+				return fmt.Sprintf("%s:%d", ep.Host, ie.GRPCPort)
+			}
+			return ""
+		}
+	}
+	// 无匹配时使用默认 Host
+	if ie.GRPCPort > 0 {
+		return fmt.Sprintf("%s:%d", ie.Host, ie.GRPCPort)
+	}
+	return ""
+}
+
+// GetAllEndpoints 获取所有端点（用于调试或遍历）
+func (ie *InstanceEndpoint) GetAllEndpoints() []string {
+	result := make([]string, 0, len(ie.Endpoints))
+	for _, ep := range ie.Endpoints {
+		if ie.HTTPPort > 0 {
+			result = append(result, fmt.Sprintf("%s:%d", ep.Host, ie.HTTPPort))
+		} else {
+			result = append(result, ep.Host)
+		}
+	}
+	return result
+}
+
+// parseInstanceEndpoint 从 proto Instance 解析为 InstanceEndpoint
+func parseInstanceEndpoint(inst *registrypb.Instance) InstanceEndpoint {
+	ep := InstanceEndpoint{
+		ID:            inst.Id,
+		InstanceKey:   inst.InstanceKey,
+		Env:           inst.Env,
+		Host:          inst.Host,
+		Endpoint:      inst.Endpoint,
+		HTTPPort:      inst.HttpPort,
+		GRPCPort:      inst.GrpcPort,
+		TTLSeconds:    inst.TtlSeconds,
+		LastHeartbeat: inst.LastHeartbeatAt,
+		Meta:          make(map[string]interface{}),
+	}
+
+	// 解析 endpoints_json
+	if inst.EndpointsJson != "" {
+		if err := json.Unmarshal([]byte(inst.EndpointsJson), &ep.Endpoints); err != nil {
+			// 解析失败不影响整体，忽略
+		}
+	}
+
+	return ep
 }
 
 // ListServices 获取服务列表
@@ -76,20 +162,7 @@ func (rc *RegistryClient) ListServices(ctx context.Context, project string) ([]S
 		}
 
 		for _, inst := range svc.Instances {
-			endpoint := InstanceEndpoint{
-				ID:            inst.Id,
-				InstanceKey:   inst.InstanceKey,
-				Env:           inst.Env,
-				Host:          inst.Host,
-				Endpoint:      inst.Endpoint,
-				TTLSeconds:    inst.TtlSeconds,
-				LastHeartbeat: inst.LastHeartbeatAt,
-			}
-
-			// 解析 meta（简单处理，实际可能需要 JSON 解析）
-			endpoint.Meta = make(map[string]interface{})
-
-			desc.Instances = append(desc.Instances, endpoint)
+			desc.Instances = append(desc.Instances, parseInstanceEndpoint(inst))
 		}
 
 		services = append(services, desc)
@@ -124,17 +197,7 @@ func (rc *RegistryClient) GetServiceByID(ctx context.Context, serviceID int64) (
 	}
 
 	for _, inst := range svc.Instances {
-		endpoint := InstanceEndpoint{
-			ID:            inst.Id,
-			InstanceKey:   inst.InstanceKey,
-			Env:           inst.Env,
-			Host:          inst.Host,
-			Endpoint:      inst.Endpoint,
-			TTLSeconds:    inst.TtlSeconds,
-			LastHeartbeat: inst.LastHeartbeatAt,
-		}
-		endpoint.Meta = make(map[string]interface{})
-		desc.Instances = append(desc.Instances, endpoint)
+		desc.Instances = append(desc.Instances, parseInstanceEndpoint(inst))
 	}
 
 	return desc, nil
@@ -143,13 +206,16 @@ func (rc *RegistryClient) GetServiceByID(ctx context.Context, serviceID int64) (
 // RegisterInstance 注册实例
 func (rc *RegistryClient) RegisterInstance(ctx context.Context, req *RegisterInstanceRequest) (*RegisterInstanceResponse, error) {
 	grpcReq := &registrypb.RegisterInstanceRequest{
-		ServiceId:   req.ServiceID,
-		InstanceKey: req.InstanceKey,
-		Env:         req.Env,
-		Host:        req.Host,
-		Endpoint:    req.Endpoint,
-		MetaJson:    req.MetaJSON,
-		TtlSeconds:  req.TTLSeconds,
+		ServiceId:     req.ServiceID,
+		InstanceKey:   req.InstanceKey,
+		Env:           req.Env,
+		Host:          req.Host,
+		Endpoint:      req.Endpoint,
+		EndpointsJson: req.EndpointsJSON,
+		HttpPort:      req.HTTPPort,
+		GrpcPort:      req.GRPCPort,
+		MetaJson:      req.MetaJSON,
+		TtlSeconds:    req.TTLSeconds,
 	}
 
 	resp, err := rc.service.RegisterInstance(ctx, grpcReq)
@@ -180,13 +246,16 @@ func (rc *RegistryClient) DeregisterInstance(ctx context.Context, serviceID int6
 
 // RegisterInstanceRequest 注册实例请求
 type RegisterInstanceRequest struct {
-	ServiceID   int64
-	InstanceKey string
-	Env         string
-	Host        string
-	Endpoint    string
-	MetaJSON    string
-	TTLSeconds  int64
+	ServiceID     int64
+	InstanceKey   string
+	Env           string
+	Host          string
+	Endpoint      string
+	EndpointsJSON string
+	HTTPPort      int64
+	GRPCPort      int64
+	MetaJSON      string
+	TTLSeconds    int64
 }
 
 // RegisterInstanceResponse 注册实例响应

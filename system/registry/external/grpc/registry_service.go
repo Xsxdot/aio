@@ -9,6 +9,7 @@ import (
 	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/registry/api/client"
 	"github.com/xsxdot/aio/system/registry/api/dto"
+	"github.com/xsxdot/aio/system/registry/internal/model"
 	pb "github.com/xsxdot/aio/system/registry/api/proto"
 
 	"google.golang.org/grpc"
@@ -60,8 +61,17 @@ func (s *RegistryService) RegisterInstance(ctx context.Context, req *pb.Register
 	if req.Host == "" {
 		return nil, status.Error(codes.InvalidArgument, "host 不能为空")
 	}
-	if req.Endpoint == "" {
-		return nil, status.Error(codes.InvalidArgument, "endpoint 不能为空")
+	// endpoint 可选（向后兼容），但必须提供 host 或 endpoint
+	if req.Endpoint == "" && req.EndpointsJson == "" {
+		return nil, status.Error(codes.InvalidArgument, "必须提供 endpoint 或 endpoints")
+	}
+
+	// 解析 endpoints_json
+	var endpoints []model.EndpointConfig
+	if req.EndpointsJson != "" {
+		if err := json.Unmarshal([]byte(req.EndpointsJson), &endpoints); err != nil {
+			return nil, status.Error(codes.InvalidArgument, "endpoints_json 格式错误")
+		}
 	}
 
 	// 转换为 DTO
@@ -71,6 +81,9 @@ func (s *RegistryService) RegisterInstance(ctx context.Context, req *pb.Register
 		Env:         req.Env,
 		Host:        req.Host,
 		Endpoint:    req.Endpoint,
+		Endpoints:   endpoints,
+		HTTPPort:    req.HttpPort,
+		GRPCPort:    req.GrpcPort,
 		Meta:        parseMetaJSON(req.MetaJson),
 		TTLSeconds:  req.TtlSeconds,
 	}
@@ -338,6 +351,9 @@ func convertToProtoServiceWithInstances(svc *dto.ServiceWithInstancesDTO) *pb.Se
 				Env:             inst.Env,
 				Host:            inst.Host,
 				Endpoint:        inst.Endpoint,
+				EndpointsJson:   toJSONStringFromSlice(inst.Endpoints),
+				HttpPort:        inst.HTTPPort,
+				GrpcPort:        inst.GRPCPort,
 				MetaJson:        toJSONString(inst.Meta),
 				TtlSeconds:      inst.TTLSeconds,
 				LastHeartbeatAt: inst.LastHeartbeatAt.Unix(),
@@ -348,6 +364,18 @@ func convertToProtoServiceWithInstances(svc *dto.ServiceWithInstancesDTO) *pb.Se
 	}
 
 	return result
+}
+
+// toJSONStringFromSlice 将 slice 转为 JSON 字符串
+func toJSONStringFromSlice[T any](s []T) string {
+	if s == nil || len(s) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(s)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // convertToGRPCError 转换业务错误为 gRPC 错误
