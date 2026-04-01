@@ -2,10 +2,10 @@ package base
 
 import (
 	"github.com/xsxdot/aio/pkg/core/start"
-	"github.com/xsxdot/aio/pkg/oss"
 	"github.com/xsxdot/gokit/executor"
 	"github.com/xsxdot/gokit/grpc"
 	"github.com/xsxdot/gokit/logger"
+	"github.com/xsxdot/gokit/oss"
 	"github.com/xsxdot/gokit/scheduler"
 	"github.com/xsxdot/gokit/security"
 

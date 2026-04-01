@@ -11,6 +11,7 @@ import (
 
 	"github.com/xsxdot/aio/pkg/core/config"
 	"github.com/xsxdot/aio/pkg/sdk"
+	config2 "github.com/xsxdot/gokit/config"
 	"github.com/xsxdot/gokit/logger"
 	"github.com/xsxdot/gokit/security"
 
@@ -32,7 +33,7 @@ type Config struct {
 	Jwt          config.JwtConfig          `yaml:"jwt"`
 	Redis        config.RedisConfig        `yaml:"redis"`
 	Database     config.Database           `yaml:"db"`
-	Oss          config.OssConfig          `yaml:"oss"`
+	Oss          config2.OssConfig         `yaml:"oss"`
 	ConfigCenter config.ConfigCenterConfig `yaml:"config"`
 	Wechat       config.WechatConfig       `yaml:"wechat"`
 	Proxy        config.ProxyConfig        `yaml:"proxy"`
