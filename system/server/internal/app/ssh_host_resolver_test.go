@@ -5,9 +5,10 @@ import (
 	"errors"
 	"net"
 	"testing"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
+
 	"github.com/xsxdot/aio/system/server/internal/model"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
 
 	"github.com/stretchr/testify/assert"
 )

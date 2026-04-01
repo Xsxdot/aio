@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xsxdot/aio/pkg/scheduler"
 	executorpb "github.com/xsxdot/aio/system/executor/api/proto"
+	"github.com/xsxdot/gokit/scheduler"
 	"google.golang.org/grpc"
 )
 

@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/xsxdot/aio/pkg/core/config"
-	"github.com/xsxdot/aio/pkg/core/logger"
-	"github.com/xsxdot/aio/pkg/core/security"
 	"github.com/xsxdot/aio/pkg/sdk"
+	"github.com/xsxdot/gokit/logger"
+	"github.com/xsxdot/gokit/security"
 
 	"github.com/bsm/redislock"
 	"github.com/go-redis/cache/v9"
@@ -37,7 +37,6 @@ type Config struct {
 	Wechat       config.WechatConfig       `yaml:"wechat"`
 	Proxy        config.ProxyConfig        `yaml:"proxy"`
 	GRPC         config.GRPCConfig         `yaml:"grpc"`
-	Server       config.ServerConfig       `yaml:"server"`
 	Sdk          config.SdkConfig          `yaml:"sdk"`
 }
 
@@ -276,7 +275,6 @@ func loadConfigFromCenter(localCfg Config, env string) (Config, error) {
 
 	return cfg, nil
 }
-
 
 func (c *Configures) EnableSDKAndRegisterSelf() (*sdk.Client, *sdk.RegistrationHandle) {
 	// 先创建 SDK 客户端

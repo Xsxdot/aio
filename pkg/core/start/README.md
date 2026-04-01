@@ -277,7 +277,7 @@ import (
     "github.com/xsxdot/aio/base"
     "github.com/xsxdot/aio/pkg/core/start"
     "github.com/xsxdot/aio/pkg/db"
-    "github.com/xsxdot/aio/pkg/scheduler"
+    "github.com/xsxdot/gokit/scheduler"
     "yourproject/internal/config"
     "yourproject/app"
     "yourproject/router"

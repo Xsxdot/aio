@@ -1,8 +1,8 @@
 package registry
 
 import (
-	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/registry/internal/model"
+	"github.com/xsxdot/gokit/logger"
 
 	"gorm.io/gorm"
 )

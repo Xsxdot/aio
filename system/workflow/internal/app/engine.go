@@ -9,9 +9,9 @@ import (
 
 	"github.com/expr-lang/expr"
 	"github.com/xsxdot/aio/base"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
 	executorDto "github.com/xsxdot/aio/system/executor/api/dto"
 	"github.com/xsxdot/aio/system/workflow/internal/model"
+	errorc "github.com/xsxdot/gokit/err"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

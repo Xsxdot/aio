@@ -6,12 +6,12 @@ import (
 	"fmt"
 
 	"github.com/xsxdot/aio/base"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
 	executorClient "github.com/xsxdot/aio/system/executor/api/client"
 	"github.com/xsxdot/aio/system/workflow/internal/dao"
 	"github.com/xsxdot/aio/system/workflow/internal/model"
 	"github.com/xsxdot/aio/system/workflow/internal/service"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
 )
 
 // 类型别名，供 api/client 等层使用

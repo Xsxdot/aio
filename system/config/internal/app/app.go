@@ -2,10 +2,10 @@ package app
 
 import (
 	"github.com/xsxdot/aio/base"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/config/internal/dao"
 	"github.com/xsxdot/aio/system/config/internal/service"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
 )
 
 // App 配置中心应用组合根

@@ -1,8 +1,8 @@
 package server
 
 import (
-	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/server/internal/model"
+	"github.com/xsxdot/gokit/logger"
 
 	"gorm.io/gorm"
 )

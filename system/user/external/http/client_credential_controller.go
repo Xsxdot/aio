@@ -3,15 +3,15 @@ package controller
 import (
 	"encoding/json"
 	"strconv"
+
 	"github.com/xsxdot/aio/base"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
-	"github.com/xsxdot/aio/pkg/core/result"
-	"github.com/xsxdot/aio/pkg/core/util"
 	"github.com/xsxdot/aio/system/user/api/dto"
 	"github.com/xsxdot/aio/system/user/internal/app"
 	internaldto "github.com/xsxdot/aio/system/user/internal/model/dto"
-	"github.com/xsxdot/aio/utils"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
+	"github.com/xsxdot/gokit/result"
+	"github.com/xsxdot/gokit/utils"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -50,15 +50,15 @@ func (ctrl *ClientCredentialController) RegisterRoutes(admin fiber.Router) {
 func (ctrl *ClientCredentialController) Create(ctx *fiber.Ctx) error {
 	var req internaldto.CreateClientCredentialReq
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	client, secret, err := ctrl.app.ClientCredentialService.CreateClient(
-		util.Context(ctx),
+		utils.Context(ctx),
 		req.Name,
 		req.Description,
 		req.IPWhitelist,
@@ -95,7 +95,7 @@ func (ctrl *ClientCredentialController) Create(ctx *fiber.Ctx) error {
 
 // List 查询客户端凭证列表
 func (ctrl *ClientCredentialController) List(ctx *fiber.Ctx) error {
-	clients, err := ctrl.app.ClientCredentialService.FindAllActive(util.Context(ctx))
+	clients, err := ctrl.app.ClientCredentialService.FindAllActive(utils.Context(ctx))
 	if err != nil {
 		return err
 	}
@@ -131,10 +131,10 @@ func (ctrl *ClientCredentialController) List(ctx *fiber.Ctx) error {
 func (ctrl *ClientCredentialController) GetByID(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
-	client, err := ctrl.app.ClientCredentialService.FindById(util.Context(ctx), id)
+	client, err := ctrl.app.ClientCredentialService.FindById(utils.Context(ctx), id)
 	if err != nil {
 		return err
 	}
@@ -164,21 +164,21 @@ func (ctrl *ClientCredentialController) GetByID(ctx *fiber.Ctx) error {
 func (ctrl *ClientCredentialController) Update(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	var req internaldto.UpdateClientCredentialReq
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	req.ID = id
 	err = ctrl.app.ClientCredentialService.UpdateClient(
-		util.Context(ctx),
+		utils.Context(ctx),
 		req.ID,
 		req.Name,
 		req.Description,
@@ -192,20 +192,20 @@ func (ctrl *ClientCredentialController) Update(ctx *fiber.Ctx) error {
 func (ctrl *ClientCredentialController) UpdateStatus(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	var req internaldto.UpdateClientStatusReq
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	req.ID = id
-	err = ctrl.app.ClientCredentialService.UpdateStatus(util.Context(ctx), req.ID, req.Status)
+	err = ctrl.app.ClientCredentialService.UpdateStatus(utils.Context(ctx), req.ID, req.Status)
 	return result.Once(ctx, "更新状态成功", err)
 }
 
@@ -213,10 +213,10 @@ func (ctrl *ClientCredentialController) UpdateStatus(ctx *fiber.Ctx) error {
 func (ctrl *ClientCredentialController) RotateSecret(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
-	newSecret, err := ctrl.app.ClientCredentialService.RotateSecret(util.Context(ctx), id)
+	newSecret, err := ctrl.app.ClientCredentialService.RotateSecret(utils.Context(ctx), id)
 	if err != nil {
 		return err
 	}
@@ -231,12 +231,9 @@ func (ctrl *ClientCredentialController) RotateSecret(ctx *fiber.Ctx) error {
 func (ctrl *ClientCredentialController) Delete(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
-	err = ctrl.app.ClientCredentialService.DeleteById(util.Context(ctx), id)
+	err = ctrl.app.ClientCredentialService.DeleteById(utils.Context(ctx), id)
 	return result.Once(ctx, "删除成功", err)
 }
-
-
-

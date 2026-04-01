@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xsxdot/aio/pkg/scheduler"
+	"github.com/xsxdot/gokit/scheduler"
 )
 
 // JobHandler 任务处理函数

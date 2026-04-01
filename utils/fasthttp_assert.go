@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	errorc "github.com/xsxdot/aio/pkg/core/err"
+	errorc "github.com/xsxdot/gokit/err"
 )
 
 var errBuilder = errorc.NewErrorBuilder("FasthttpClient")

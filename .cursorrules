@@ -313,7 +313,7 @@ system/<component>/
   - 使用 `error.ToLog(log *logrus.Entry, msgs ...string)` 将 error 转为日志记录，如使用该方法，无需重复打日志。
   - ToLog方法是err的方法，并非log的方法,如：a.err.New("开启事务失败", tx.Error).ToLog(a.log.GetLogger())
     ```go
-    return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+    return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
     ```
 ### 3. 事务、缓存与数据库
 

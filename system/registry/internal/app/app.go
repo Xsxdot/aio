@@ -2,10 +2,10 @@ package app
 
 import (
 	"github.com/xsxdot/aio/base"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/registry/internal/dao"
 	"github.com/xsxdot/aio/system/registry/internal/service"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
 
 	"github.com/go-redis/cache/v9"
 	"github.com/redis/go-redis/v9"

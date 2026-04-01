@@ -1,7 +1,6 @@
 package db
 
 import (
-	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/config"
 	"github.com/xsxdot/aio/system/executor"
 	"github.com/xsxdot/aio/system/registry"
@@ -10,6 +9,7 @@ import (
 	"github.com/xsxdot/aio/system/ssl"
 	"github.com/xsxdot/aio/system/user"
 	"github.com/xsxdot/aio/system/workflow"
+	"github.com/xsxdot/gokit/logger"
 
 	"gorm.io/gorm"
 )

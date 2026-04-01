@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/xsxdot/aio/base"
-	"github.com/xsxdot/aio/pkg/scheduler"
 	"github.com/xsxdot/aio/system/registry/api/client"
 	"github.com/xsxdot/aio/system/registry/api/dto"
 	grpcsvc "github.com/xsxdot/aio/system/registry/external/grpc"
 	"github.com/xsxdot/aio/system/registry/internal/app"
+	"github.com/xsxdot/gokit/scheduler"
 )
 
 // Module 注册中心组件模块门面（对外暴露的根对象）

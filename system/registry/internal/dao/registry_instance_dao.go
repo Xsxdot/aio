@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
 	"github.com/xsxdot/aio/system/registry/internal/model"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -82,7 +82,7 @@ func (d *RegistryInstanceDao) Upsert(ctx context.Context, inst *model.RegistryIn
 				"endpoint",
 				"endpoints",
 				"http_port",
-				"grpc_port",
+				"g_rpc_port",
 				"meta",
 				"ttl_seconds",
 				"last_heartbeat_at",

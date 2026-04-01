@@ -2,13 +2,12 @@ package http
 
 import (
 	"github.com/xsxdot/aio/base"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
-	"github.com/xsxdot/aio/pkg/core/result"
-	"github.com/xsxdot/aio/pkg/core/util"
 	"github.com/xsxdot/aio/system/registry/api/client"
 	"github.com/xsxdot/aio/system/registry/api/dto"
-	"github.com/xsxdot/aio/utils"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
+	"github.com/xsxdot/gokit/result"
+	"github.com/xsxdot/gokit/utils"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -57,7 +56,7 @@ func (c *RegistryAPIController) ListServices(ctx *fiber.Ctx) error {
 func (c *RegistryAPIController) GetServiceByID(ctx *fiber.Ctx) error {
 	id, err := ctx.ParamsInt("id")
 	if err != nil {
-		return c.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	item, err := c.client.GetServiceByID(ctx.UserContext(), int64(id))
@@ -67,10 +66,10 @@ func (c *RegistryAPIController) GetServiceByID(ctx *fiber.Ctx) error {
 func (c *RegistryAPIController) RegisterInstance(ctx *fiber.Ctx) error {
 	var req dto.RegisterInstanceReq
 	if err := ctx.BodyParser(&req); err != nil {
-		return c.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return c.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
 	resp, err := c.client.RegisterInstance(ctx.UserContext(), &req)
@@ -83,10 +82,10 @@ func (c *RegistryAPIController) RegisterInstance(ctx *fiber.Ctx) error {
 func (c *RegistryAPIController) Heartbeat(ctx *fiber.Ctx) error {
 	var req dto.HeartbeatReq
 	if err := ctx.BodyParser(&req); err != nil {
-		return c.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return c.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
 	resp, err := c.client.HeartbeatInstance(ctx.UserContext(), &req)
@@ -99,10 +98,10 @@ func (c *RegistryAPIController) Heartbeat(ctx *fiber.Ctx) error {
 func (c *RegistryAPIController) Deregister(ctx *fiber.Ctx) error {
 	var req dto.DeregisterInstanceReq
 	if err := ctx.BodyParser(&req); err != nil {
-		return c.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return c.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
 	err := c.client.DeregisterInstance(ctx.UserContext(), &req)

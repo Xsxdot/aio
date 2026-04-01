@@ -6,10 +6,10 @@ import (
 	"strings"
 
 	"github.com/xsxdot/aio/base"
-	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/workflow/api/client"
 	pb "github.com/xsxdot/aio/system/workflow/api/proto"
 	"github.com/xsxdot/aio/system/workflow/internal/app"
+	"github.com/xsxdot/gokit/logger"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

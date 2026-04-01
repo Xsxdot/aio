@@ -4,13 +4,12 @@ import (
 	"strconv"
 
 	"github.com/xsxdot/aio/base"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
-	"github.com/xsxdot/aio/pkg/core/result"
-	"github.com/xsxdot/aio/pkg/core/util"
 	"github.com/xsxdot/aio/system/workflow/api/dto"
 	"github.com/xsxdot/aio/system/workflow/internal/app"
-	"github.com/xsxdot/aio/utils"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
+	"github.com/xsxdot/gokit/result"
+	"github.com/xsxdot/gokit/utils"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -42,10 +41,10 @@ func (ctrl *WorkflowAdminController) RegisterRoutes(admin fiber.Router) {
 func (ctrl *WorkflowAdminController) CreateDef(c *fiber.Ctx) error {
 	var req dto.CreateDefRequest
 	if err := c.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(c)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(c)).ToLog(ctrl.log.GetLogger())
 	}
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(c)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(c)).ToLog(ctrl.log.GetLogger())
 	}
 	env := req.Env
 	if env == "" {
@@ -54,7 +53,7 @@ func (ctrl *WorkflowAdminController) CreateDef(c *fiber.Ctx) error {
 	if req.Version <= 0 {
 		req.Version = 1
 	}
-	id, err := ctrl.app.CreateDef(util.Context(c), env, req.Code, req.Name, req.DAGJSON, req.Version)
+	id, err := ctrl.app.CreateDef(utils.Context(c), env, req.Code, req.Name, req.DAGJSON, req.Version)
 	if err != nil {
 		return err
 	}
@@ -64,20 +63,20 @@ func (ctrl *WorkflowAdminController) CreateDef(c *fiber.Ctx) error {
 func (ctrl *WorkflowAdminController) Rollback(c *fiber.Ctx) error {
 	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("实例ID参数错误", err).WithTraceID(util.Context(c))
+		return ctrl.err.New("实例ID参数错误", err).WithTraceID(utils.Context(c))
 	}
 	var req dto.RollbackRequest
 	if err := c.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(c)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(c)).ToLog(ctrl.log.GetLogger())
 	}
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(c)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(c)).ToLog(ctrl.log.GetLogger())
 	}
 	env := req.Env
 	if env == "" {
 		env = base.ENV
 	}
-	if err := ctrl.app.RollbackToNode(util.Context(c), id, req.TargetNodeID, env); err != nil {
+	if err := ctrl.app.RollbackToNode(utils.Context(c), id, req.TargetNodeID, env); err != nil {
 		return err
 	}
 	return result.OK(c, fiber.Map{"msg": "回滚成功"})
@@ -86,14 +85,14 @@ func (ctrl *WorkflowAdminController) Rollback(c *fiber.Ctx) error {
 func (ctrl *WorkflowAdminController) SendSignal(c *fiber.Ctx) error {
 	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("实例ID参数错误", err).WithTraceID(util.Context(c))
+		return ctrl.err.New("实例ID参数错误", err).WithTraceID(utils.Context(c))
 	}
 	var req dto.SignalRequest
 	if err := c.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(c)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(c)).ToLog(ctrl.log.GetLogger())
 	}
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(c)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(c)).ToLog(ctrl.log.GetLogger())
 	}
 	if req.Payload == nil {
 		req.Payload = make(map[string]interface{})
@@ -102,7 +101,7 @@ func (ctrl *WorkflowAdminController) SendSignal(c *fiber.Ctx) error {
 	if env == "" {
 		env = base.ENV
 	}
-	if err := ctrl.app.SendSignal(util.Context(c), id, req.SignalName, req.Payload, req.WakeupNode, env); err != nil {
+	if err := ctrl.app.SendSignal(utils.Context(c), id, req.SignalName, req.Payload, req.WakeupNode, env); err != nil {
 		return err
 	}
 	return result.OK(c, fiber.Map{"msg": "信号已发送"})
@@ -111,9 +110,9 @@ func (ctrl *WorkflowAdminController) SendSignal(c *fiber.Ctx) error {
 func (ctrl *WorkflowAdminController) GetInstance(c *fiber.Ctx) error {
 	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("实例ID参数错误", err).WithTraceID(util.Context(c))
+		return ctrl.err.New("实例ID参数错误", err).WithTraceID(utils.Context(c))
 	}
-	inst, err := ctrl.app.GetInstance(util.Context(c), id)
+	inst, err := ctrl.app.GetInstance(utils.Context(c), id)
 	if err != nil {
 		return err
 	}
@@ -123,9 +122,9 @@ func (ctrl *WorkflowAdminController) GetInstance(c *fiber.Ctx) error {
 func (ctrl *WorkflowAdminController) GetExecutionTrail(c *fiber.Ctx) error {
 	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("实例ID参数错误", err).WithTraceID(util.Context(c))
+		return ctrl.err.New("实例ID参数错误", err).WithTraceID(utils.Context(c))
 	}
-	trail, err := ctrl.app.GetExecutionTrail(util.Context(c), id)
+	trail, err := ctrl.app.GetExecutionTrail(utils.Context(c), id)
 	if err != nil {
 		return err
 	}

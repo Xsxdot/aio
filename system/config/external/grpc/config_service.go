@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
-	pkggrpc "github.com/xsxdot/aio/pkg/grpc"
+
 	"github.com/xsxdot/aio/system/config/api/client"
 	pb "github.com/xsxdot/aio/system/config/api/proto"
 	internalapp "github.com/xsxdot/aio/system/config/internal/app"
 	"github.com/xsxdot/aio/system/config/internal/model"
 	"github.com/xsxdot/aio/system/config/internal/model/dto"
+	errorc "github.com/xsxdot/gokit/err"
+	pkggrpc "github.com/xsxdot/gokit/grpc"
+	"github.com/xsxdot/gokit/logger"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

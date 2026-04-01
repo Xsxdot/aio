@@ -3,8 +3,8 @@ package service
 import (
 	"testing"
 
-	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/ssl/internal/model"
+	"github.com/xsxdot/gokit/logger"
 )
 
 func newTestAcmeService() *AcmeService {

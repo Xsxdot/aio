@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/system/registry/api/dto"
 	"github.com/xsxdot/aio/system/registry/internal/model"
+	errorc "github.com/xsxdot/gokit/err"
 
 	"github.com/google/uuid"
 )

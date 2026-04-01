@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	errorc "github.com/xsxdot/aio/pkg/core/err"
 	"github.com/xsxdot/aio/system/ssl/api/dto"
 	"github.com/xsxdot/aio/system/ssl/internal/app"
 	"github.com/xsxdot/aio/system/ssl/internal/model"
+	errorc "github.com/xsxdot/gokit/err"
 )
 
 // SslClient SSL 证书组件对外客户端

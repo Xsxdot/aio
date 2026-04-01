@@ -2,15 +2,15 @@ package controller
 
 import (
 	"strconv"
+
 	"github.com/xsxdot/aio/base"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
-	"github.com/xsxdot/aio/pkg/core/result"
-	"github.com/xsxdot/aio/pkg/core/security"
-	"github.com/xsxdot/aio/pkg/core/util"
 	"github.com/xsxdot/aio/system/config/internal/app"
 	"github.com/xsxdot/aio/system/config/internal/model/dto"
-	"github.com/xsxdot/aio/utils"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
+	"github.com/xsxdot/gokit/result"
+	"github.com/xsxdot/gokit/security"
+	"github.com/xsxdot/gokit/utils"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -58,18 +58,18 @@ func (ctrl *ConfigController) RegisterRoutes(admin fiber.Router) {
 func (ctrl *ConfigController) Create(ctx *fiber.Ctx) error {
 	var req dto.CreateConfigRequest
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	// 获取操作人信息
 	adminID, _ := security.GetAdminId(ctx)
 	adminAccount, _ := security.GetAdminAccount(ctx)
 
-	err := ctrl.app.CreateConfig(util.Context(ctx), &req, adminAccount, adminID)
+	err := ctrl.app.CreateConfig(utils.Context(ctx), &req, adminAccount, adminID)
 	return result.Once(ctx, "创建成功", err)
 }
 
@@ -77,23 +77,23 @@ func (ctrl *ConfigController) Create(ctx *fiber.Ctx) error {
 func (ctrl *ConfigController) Update(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	var req dto.UpdateConfigRequest
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx))
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	// 获取操作人信息
 	adminID, _ := security.GetAdminId(ctx)
 	adminAccount, _ := security.GetAdminAccount(ctx)
 
-	err = ctrl.app.UpdateConfig(util.Context(ctx), id, &req, adminAccount, adminID)
+	err = ctrl.app.UpdateConfig(utils.Context(ctx), id, &req, adminAccount, adminID)
 	return result.Once(ctx, "更新成功", err)
 }
 
@@ -101,10 +101,10 @@ func (ctrl *ConfigController) Update(ctx *fiber.Ctx) error {
 func (ctrl *ConfigController) Delete(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
-	err = ctrl.app.DeleteConfig(util.Context(ctx), id)
+	err = ctrl.app.DeleteConfig(utils.Context(ctx), id)
 	return result.Once(ctx, "删除成功", err)
 }
 
@@ -112,10 +112,10 @@ func (ctrl *ConfigController) Delete(ctx *fiber.Ctx) error {
 func (ctrl *ConfigController) Query(ctx *fiber.Ctx) error {
 	var req dto.QueryConfigRequest
 	if err := ctx.QueryParser(&req); err != nil {
-		return ctrl.err.New("解析查询参数失败", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("解析查询参数失败", err).WithTraceID(utils.Context(ctx))
 	}
 
-	configs, total, err := ctrl.app.QueryConfigs(util.Context(ctx), &req)
+	configs, total, err := ctrl.app.QueryConfigs(utils.Context(ctx), &req)
 	if err != nil {
 		return err
 	}
@@ -130,10 +130,10 @@ func (ctrl *ConfigController) Query(ctx *fiber.Ctx) error {
 func (ctrl *ConfigController) GetByID(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
-	config, err := ctrl.app.ConfigItemService.FindById(util.Context(ctx), id)
+	config, err := ctrl.app.ConfigItemService.FindById(utils.Context(ctx), id)
 	return result.Once(ctx, config, err)
 }
 
@@ -141,17 +141,17 @@ func (ctrl *ConfigController) GetByID(ctx *fiber.Ctx) error {
 func (ctrl *ConfigController) GetHistory(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	// 查询配置
-	config, err := ctrl.app.ConfigItemService.FindById(util.Context(ctx), id)
+	config, err := ctrl.app.ConfigItemService.FindById(utils.Context(ctx), id)
 	if err != nil {
 		return err
 	}
 
 	// 查询历史记录
-	histories, err := ctrl.app.ConfigHistoryService.FindByConfigKey(util.Context(ctx), config.Key)
+	histories, err := ctrl.app.ConfigHistoryService.FindByConfigKey(utils.Context(ctx), config.Key)
 	return result.Once(ctx, histories, err)
 }
 
@@ -159,19 +159,19 @@ func (ctrl *ConfigController) GetHistory(ctx *fiber.Ctx) error {
 func (ctrl *ConfigController) Rollback(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	version, err := strconv.ParseInt(ctx.Params("version"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("版本号参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("版本号参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	// 获取操作人信息
 	adminID, _ := security.GetAdminId(ctx)
 	adminAccount, _ := security.GetAdminAccount(ctx)
 
-	err = ctrl.app.RollbackConfig(util.Context(ctx), id, version, adminAccount, adminID)
+	err = ctrl.app.RollbackConfig(utils.Context(ctx), id, version, adminAccount, adminID)
 	return result.Once(ctx, "回滚成功", err)
 }
 
@@ -179,10 +179,10 @@ func (ctrl *ConfigController) Rollback(ctx *fiber.Ctx) error {
 func (ctrl *ConfigController) Export(ctx *fiber.Ctx) error {
 	var req dto.ExportConfigRequest
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx))
 	}
 
-	result, err := ctrl.app.ExportConfigs(util.Context(ctx), &req)
+	result, err := ctrl.app.ExportConfigs(utils.Context(ctx), &req)
 	if err != nil {
 		return err
 	}
@@ -198,18 +198,18 @@ func (ctrl *ConfigController) Export(ctx *fiber.Ctx) error {
 func (ctrl *ConfigController) Import(ctx *fiber.Ctx) error {
 	var req dto.ImportConfigRequest
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx))
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	// 获取操作人信息
 	adminID, _ := security.GetAdminId(ctx)
 	adminAccount, _ := security.GetAdminAccount(ctx)
 
-	err := ctrl.app.ImportConfigs(util.Context(ctx), &req, adminAccount, adminID)
+	err := ctrl.app.ImportConfigs(utils.Context(ctx), &req, adminAccount, adminID)
 	return result.Once(ctx, "导入成功", err)
 }
 
@@ -217,17 +217,17 @@ func (ctrl *ConfigController) Import(ctx *fiber.Ctx) error {
 func (ctrl *ConfigController) GetConfigJSON(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	// 查询配置
-	dbConfig, err := ctrl.app.ConfigItemService.FindById(util.Context(ctx), id)
+	dbConfig, err := ctrl.app.ConfigItemService.FindById(utils.Context(ctx), id)
 	if err != nil {
 		return err
 	}
 
 	// 获取纯对象格式（去掉 ConfigValue 包装）
-	plainObject, err := ctrl.app.ConfigItemService.GetConfigAsPlainObject(util.Context(ctx), dbConfig.Key)
+	plainObject, err := ctrl.app.ConfigItemService.GetConfigAsPlainObject(utils.Context(ctx), dbConfig.Key)
 	if err != nil {
 		return err
 	}

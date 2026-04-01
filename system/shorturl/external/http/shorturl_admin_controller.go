@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
 	"github.com/xsxdot/aio/base"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
-	"github.com/xsxdot/aio/pkg/core/result"
-	"github.com/xsxdot/aio/pkg/core/util"
 	"github.com/xsxdot/aio/system/shorturl/api/dto"
 	internalapp "github.com/xsxdot/aio/system/shorturl/internal/app"
 	"github.com/xsxdot/aio/system/shorturl/internal/model"
-	"github.com/xsxdot/aio/utils"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
+	"github.com/xsxdot/gokit/result"
+	"github.com/xsxdot/gokit/utils"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -64,11 +64,11 @@ func (c *ShortURLAdminController) CreateDomain(ctx *fiber.Ctx) error {
 	}
 
 	if err := ctx.BodyParser(&req); err != nil {
-		return c.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return c.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
 	domain := &model.ShortDomain{
@@ -78,7 +78,7 @@ func (c *ShortURLAdminController) CreateDomain(ctx *fiber.Ctx) error {
 		Comment:   req.Comment,
 	}
 
-	if err := c.app.DomainService.Create(util.Context(ctx), domain); err != nil {
+	if err := c.app.DomainService.Create(utils.Context(ctx), domain); err != nil {
 		return err
 	}
 
@@ -88,7 +88,7 @@ func (c *ShortURLAdminController) CreateDomain(ctx *fiber.Ctx) error {
 // ListDomains 查询域名列表
 func (c *ShortURLAdminController) ListDomains(ctx *fiber.Ctx) error {
 	var domains []*model.ShortDomain
-	err := c.app.DomainService.Dao.DB.WithContext(util.Context(ctx)).Find(&domains).Error
+	err := c.app.DomainService.Dao.DB.WithContext(utils.Context(ctx)).Find(&domains).Error
 	if err != nil {
 		return err
 	}
@@ -103,10 +103,10 @@ func (c *ShortURLAdminController) ListDomains(ctx *fiber.Ctx) error {
 func (c *ShortURLAdminController) GetDomain(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return c.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
-	domain, err := c.app.DomainService.FindById(util.Context(ctx), id)
+	domain, err := c.app.DomainService.FindById(utils.Context(ctx), id)
 	if err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func (c *ShortURLAdminController) GetDomain(ctx *fiber.Ctx) error {
 func (c *ShortURLAdminController) UpdateDomain(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return c.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	var req struct {
@@ -128,10 +128,10 @@ func (c *ShortURLAdminController) UpdateDomain(ctx *fiber.Ctx) error {
 	}
 
 	if err := ctx.BodyParser(&req); err != nil {
-		return c.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
-	domain, err := c.app.DomainService.FindById(util.Context(ctx), id)
+	domain, err := c.app.DomainService.FindById(utils.Context(ctx), id)
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func (c *ShortURLAdminController) UpdateDomain(ctx *fiber.Ctx) error {
 		domain.Comment = req.Comment
 	}
 
-	err = c.app.DomainService.Dao.DB.WithContext(util.Context(ctx)).Save(domain).Error
+	err = c.app.DomainService.Dao.DB.WithContext(utils.Context(ctx)).Save(domain).Error
 	return result.Once(ctx, "更新成功", err)
 }
 
@@ -154,7 +154,7 @@ func (c *ShortURLAdminController) UpdateDomain(ctx *fiber.Ctx) error {
 func (c *ShortURLAdminController) UpdateDomainStatus(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return c.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	var req struct {
@@ -162,16 +162,16 @@ func (c *ShortURLAdminController) UpdateDomainStatus(ctx *fiber.Ctx) error {
 	}
 
 	if err := ctx.BodyParser(&req); err != nil {
-		return c.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
-	domain, err := c.app.DomainService.FindById(util.Context(ctx), id)
+	domain, err := c.app.DomainService.FindById(utils.Context(ctx), id)
 	if err != nil {
 		return err
 	}
 
 	domain.Enabled = req.Enabled
-	err = c.app.DomainService.Dao.DB.WithContext(util.Context(ctx)).Save(domain).Error
+	err = c.app.DomainService.Dao.DB.WithContext(utils.Context(ctx)).Save(domain).Error
 	return result.Once(ctx, "更新状态成功", err)
 }
 
@@ -179,10 +179,10 @@ func (c *ShortURLAdminController) UpdateDomainStatus(ctx *fiber.Ctx) error {
 func (c *ShortURLAdminController) DeleteDomain(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return c.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
-	err = c.app.DomainService.DeleteById(util.Context(ctx), id)
+	err = c.app.DomainService.DeleteById(utils.Context(ctx), id)
 	return result.Once(ctx, "删除成功", err)
 }
 
@@ -191,20 +191,20 @@ func (c *ShortURLAdminController) CreateLink(ctx *fiber.Ctx) error {
 	var req internalapp.CreateShortLinkRequest
 
 	if err := ctx.BodyParser(&req); err != nil {
-		return c.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return c.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
-	link, err := c.app.CreateShortLink(util.Context(ctx), &req)
+	link, err := c.app.CreateShortLink(utils.Context(ctx), &req)
 	if err != nil {
 		return err
 	}
 
 	// 查询域名信息以构建完整URL
-	domain, err := c.app.DomainService.FindById(util.Context(ctx), link.DomainID)
+	domain, err := c.app.DomainService.FindById(utils.Context(ctx), link.DomainID)
 	if err != nil {
 		return err
 	}
@@ -223,13 +223,13 @@ func (c *ShortURLAdminController) ListLinks(ctx *fiber.Ctx) error {
 		return c.err.New("domainId参数必填", nil).ValidWithCtx()
 	}
 
-	links, total, err := c.app.LinkService.Dao.ListByDomainWithPage(util.Context(ctx), domainID, pageNum, pageSize)
+	links, total, err := c.app.LinkService.Dao.ListByDomainWithPage(utils.Context(ctx), domainID, pageNum, pageSize)
 	if err != nil {
 		return err
 	}
 
 	// 查询域名信息
-	domain, err := c.app.DomainService.FindById(util.Context(ctx), domainID)
+	domain, err := c.app.DomainService.FindById(utils.Context(ctx), domainID)
 	if err != nil {
 		return err
 	}
@@ -249,15 +249,15 @@ func (c *ShortURLAdminController) ListLinks(ctx *fiber.Ctx) error {
 func (c *ShortURLAdminController) GetLink(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return c.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
-	link, err := c.app.LinkService.FindById(util.Context(ctx), id)
+	link, err := c.app.LinkService.FindById(utils.Context(ctx), id)
 	if err != nil {
 		return err
 	}
 
-	domain, err := c.app.DomainService.FindById(util.Context(ctx), link.DomainID)
+	domain, err := c.app.DomainService.FindById(utils.Context(ctx), link.DomainID)
 	if err != nil {
 		return err
 	}
@@ -269,7 +269,7 @@ func (c *ShortURLAdminController) GetLink(ctx *fiber.Ctx) error {
 func (c *ShortURLAdminController) UpdateLink(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return c.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	var req struct {
@@ -280,7 +280,7 @@ func (c *ShortURLAdminController) UpdateLink(ctx *fiber.Ctx) error {
 	}
 
 	if err := ctx.BodyParser(&req); err != nil {
-		return c.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
 	// 转换为 App 层请求结构
@@ -295,7 +295,7 @@ func (c *ShortURLAdminController) UpdateLink(ctx *fiber.Ctx) error {
 	}
 
 	// 调用 App 层更新方法（会自动清除缓存）
-	err = c.app.UpdateShortLink(util.Context(ctx), id, appReq)
+	err = c.app.UpdateShortLink(utils.Context(ctx), id, appReq)
 	return result.Once(ctx, "更新成功", err)
 }
 
@@ -303,7 +303,7 @@ func (c *ShortURLAdminController) UpdateLink(ctx *fiber.Ctx) error {
 func (c *ShortURLAdminController) UpdateLinkStatus(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return c.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	var req struct {
@@ -311,11 +311,11 @@ func (c *ShortURLAdminController) UpdateLinkStatus(ctx *fiber.Ctx) error {
 	}
 
 	if err := ctx.BodyParser(&req); err != nil {
-		return c.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
 	// 调用 App 层更新状态方法（会自动清除缓存）
-	err = c.app.UpdateShortLinkStatus(util.Context(ctx), id, req.Enabled)
+	err = c.app.UpdateShortLinkStatus(utils.Context(ctx), id, req.Enabled)
 	return result.Once(ctx, "更新状态成功", err)
 }
 
@@ -323,11 +323,11 @@ func (c *ShortURLAdminController) UpdateLinkStatus(ctx *fiber.Ctx) error {
 func (c *ShortURLAdminController) DeleteLink(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return c.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	// 调用 App 层删除方法（会自动清除缓存）
-	err = c.app.DeleteShortLink(util.Context(ctx), id)
+	err = c.app.DeleteShortLink(utils.Context(ctx), id)
 	return result.Once(ctx, "删除成功", err)
 }
 
@@ -335,12 +335,12 @@ func (c *ShortURLAdminController) DeleteLink(ctx *fiber.Ctx) error {
 func (c *ShortURLAdminController) GetLinkStats(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return c.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	days, _ := strconv.Atoi(ctx.Query("days", "30"))
 
-	stats, err := c.app.GetShortLinkStats(util.Context(ctx), id, days)
+	stats, err := c.app.GetShortLinkStats(utils.Context(ctx), id, days)
 	if err != nil {
 		return err
 	}
@@ -416,10 +416,3 @@ func (c *ShortURLAdminController) convertToDTO(link *model.ShortLink, domain *mo
 		UpdatedAt:    link.UpdatedAt,
 	}
 }
-
-
-
-
-
-
-

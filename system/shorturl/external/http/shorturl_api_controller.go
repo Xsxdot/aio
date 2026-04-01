@@ -1,14 +1,13 @@
 package http
 
 import (
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
-	"github.com/xsxdot/aio/pkg/core/result"
-	"github.com/xsxdot/aio/pkg/core/util"
 	"github.com/xsxdot/aio/system/shorturl/api/dto"
 	internalapp "github.com/xsxdot/aio/system/shorturl/internal/app"
 	"github.com/xsxdot/aio/system/shorturl/internal/model"
-	"github.com/xsxdot/aio/utils"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
+	"github.com/xsxdot/gokit/result"
+	"github.com/xsxdot/gokit/utils"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -48,7 +47,7 @@ func (c *ShortURLAPIController) Visit(ctx *fiber.Ctx) error {
 	host := ctx.Hostname()
 
 	// 解析短链接
-	link, domain, err := c.app.ResolveShortLink(util.Context(ctx), host, code, password)
+	link, domain, err := c.app.ResolveShortLink(utils.Context(ctx), host, code, password)
 	if err != nil {
 		return err
 	}
@@ -58,7 +57,7 @@ func (c *ShortURLAPIController) Visit(ctx *fiber.Ctx) error {
 	ua := ctx.Get("User-Agent")
 	referer := ctx.Get("Referer")
 
-	if err := c.app.VisitShortLink(util.Context(ctx), link, ip, ua, referer); err != nil {
+	if err := c.app.VisitShortLink(utils.Context(ctx), link, ip, ua, referer); err != nil {
 		c.log.WithErr(err).Error("记录访问失败")
 		// 不阻断跳转流程
 	}
@@ -92,7 +91,7 @@ func (c *ShortURLAPIController) ResolveJSON(ctx *fiber.Ctx) error {
 	host := ctx.Hostname()
 
 	// 解析短链接
-	link, domain, err := c.app.ResolveShortLink(util.Context(ctx), host, code, password)
+	link, domain, err := c.app.ResolveShortLink(utils.Context(ctx), host, code, password)
 	if err != nil {
 		return err
 	}
@@ -102,7 +101,7 @@ func (c *ShortURLAPIController) ResolveJSON(ctx *fiber.Ctx) error {
 	ua := ctx.Get("User-Agent")
 	referer := ctx.Get("Referer")
 
-	if err := c.app.VisitShortLink(util.Context(ctx), link, ip, ua, referer); err != nil {
+	if err := c.app.VisitShortLink(utils.Context(ctx), link, ip, ua, referer); err != nil {
 		c.log.WithErr(err).Error("记录访问失败")
 		// 不阻断返回流程
 	}
@@ -137,23 +136,16 @@ func (c *ShortURLAPIController) ReportSuccess(ctx *fiber.Ctx) error {
 	}
 
 	if err := ctx.BodyParser(&req); err != nil {
-		return c.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return c.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
-	if err := c.app.ReportShortLinkSuccess(util.Context(ctx), code, req.EventID, req.Attrs); err != nil {
+	if err := c.app.ReportShortLinkSuccess(utils.Context(ctx), code, req.EventID, req.Attrs); err != nil {
 		return err
 	}
 
 	return result.OK(ctx, fiber.Map{"message": "上报成功"})
 }
-
-
-
-
-
-
-

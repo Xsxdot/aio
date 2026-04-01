@@ -1,8 +1,8 @@
 package user
 
 import (
-	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/user/internal/model"
+	"github.com/xsxdot/gokit/logger"
 
 	"gorm.io/gorm"
 )

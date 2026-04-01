@@ -2,8 +2,9 @@ package mvc
 
 import (
 	"context"
+
 	"github.com/xsxdot/aio/pkg/core/model/common"
-	"github.com/xsxdot/aio/pkg/core/result"
+	"github.com/xsxdot/gokit/result"
 
 	"github.com/gofiber/fiber/v2"
 )

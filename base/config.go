@@ -1,13 +1,13 @@
 package base
 
 import (
-	"github.com/xsxdot/aio/pkg/core/logger"
-	"github.com/xsxdot/aio/pkg/core/security"
 	"github.com/xsxdot/aio/pkg/core/start"
-	"github.com/xsxdot/aio/pkg/executor"
-	"github.com/xsxdot/aio/pkg/grpc"
 	"github.com/xsxdot/aio/pkg/oss"
-	"github.com/xsxdot/aio/pkg/scheduler"
+	"github.com/xsxdot/gokit/executor"
+	"github.com/xsxdot/gokit/grpc"
+	"github.com/xsxdot/gokit/logger"
+	"github.com/xsxdot/gokit/scheduler"
+	"github.com/xsxdot/gokit/security"
 
 	"github.com/go-redis/cache/v9"
 	"github.com/redis/go-redis/v9"

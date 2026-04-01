@@ -6,14 +6,13 @@ import (
 	"strings"
 
 	"github.com/xsxdot/aio/base"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
-	"github.com/xsxdot/aio/pkg/core/result"
-	"github.com/xsxdot/aio/pkg/core/util"
 	"github.com/xsxdot/aio/system/executor/api/dto"
 	"github.com/xsxdot/aio/system/executor/internal/app"
 	"github.com/xsxdot/aio/system/executor/internal/model"
-	"github.com/xsxdot/aio/utils"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
+	"github.com/xsxdot/gokit/result"
+	"github.com/xsxdot/gokit/utils"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -46,10 +45,10 @@ func (ctrl *ExecutorAdminController) RegisterRoutes(admin fiber.Router) {
 	executorRouter.Post("/jobs/:id/requeue", base.AdminAuth.RequireAdminAuth("admin:executor:requeue"), ctrl.RequeueJob)
 	executorRouter.Put("/jobs/:id/args", base.AdminAuth.RequireAdminAuth("admin:executor:update"), ctrl.UpdateJobArgs)
 	executorRouter.Get("/jobs/:id/attempts", base.AdminAuth.RequireAdminAuth("admin:executor:read"), ctrl.GetJobAttempts)
-	
+
 	// 统计信息接口
 	executorRouter.Get("/stats", base.AdminAuth.RequireAdminAuth("admin:executor:read"), ctrl.GetStats)
-	
+
 	// 清理任务接口
 	executorRouter.Post("/cleanup", base.AdminAuth.RequireAdminAuth("admin:executor:cleanup"), ctrl.CleanupJobs)
 }
@@ -58,11 +57,11 @@ func (ctrl *ExecutorAdminController) RegisterRoutes(admin fiber.Router) {
 func (ctrl *ExecutorAdminController) SubmitJob(ctx *fiber.Ctx) error {
 	var req dto.SubmitJobRequest
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	rt := dto.RetryBackoffExponential
@@ -70,7 +69,7 @@ func (ctrl *ExecutorAdminController) SubmitJob(ctx *fiber.Ctx) error {
 		rt = dto.RetryBackoffFixed
 	}
 
-	jobID, err := ctrl.app.JobService.SubmitJob(util.Context(ctx), &dto.SubmitJobInput{
+	jobID, err := ctrl.app.JobService.SubmitJob(utils.Context(ctx), &dto.SubmitJobInput{
 		Env:              req.Env,
 		TargetService:    req.TargetService,
 		Method:           req.Method,
@@ -98,11 +97,11 @@ func (ctrl *ExecutorAdminController) SubmitJob(ctx *fiber.Ctx) error {
 func (ctrl *ExecutorAdminController) ListJobs(ctx *fiber.Ctx) error {
 	var req dto.ListJobsRequest
 	if err := ctx.QueryParser(&req); err != nil {
-		return ctrl.err.New("解析查询参数失败", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("解析查询参数失败", err).WithTraceID(utils.Context(ctx))
 	}
 
 	if strings.TrimSpace(req.Env) == "" {
-		return ctrl.err.New("env 不能为空", nil).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("env 不能为空", nil).WithTraceID(utils.Context(ctx))
 	}
 
 	// 转换状态
@@ -112,7 +111,7 @@ func (ctrl *ExecutorAdminController) ListJobs(ctx *fiber.Ctx) error {
 	}
 
 	jobs, total, err := ctrl.app.JobService.ListJobs(
-		util.Context(ctx),
+		utils.Context(ctx),
 		req.Env,
 		req.TargetService,
 		status,
@@ -133,10 +132,10 @@ func (ctrl *ExecutorAdminController) ListJobs(ctx *fiber.Ctx) error {
 func (ctrl *ExecutorAdminController) GetJob(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseUint(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
-	job, err := ctrl.app.JobService.GetJob(util.Context(ctx), id)
+	job, err := ctrl.app.JobService.GetJob(utils.Context(ctx), id)
 	return result.Once(ctx, job, err)
 }
 
@@ -144,10 +143,10 @@ func (ctrl *ExecutorAdminController) GetJob(ctx *fiber.Ctx) error {
 func (ctrl *ExecutorAdminController) CancelJob(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseUint(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
-	err = ctrl.app.JobService.CancelJob(util.Context(ctx), id)
+	err = ctrl.app.JobService.CancelJob(utils.Context(ctx), id)
 	return result.Once(ctx, "任务取消成功", err)
 }
 
@@ -155,15 +154,15 @@ func (ctrl *ExecutorAdminController) CancelJob(ctx *fiber.Ctx) error {
 func (ctrl *ExecutorAdminController) RequeueJob(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseUint(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	var req dto.RequeueJobRequest
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx))
 	}
 
-	err = ctrl.app.JobService.RequeueJob(util.Context(ctx), id, req.RunAt)
+	err = ctrl.app.JobService.RequeueJob(utils.Context(ctx), id, req.RunAt)
 	return result.Once(ctx, "任务重新入队成功", err)
 }
 
@@ -171,22 +170,22 @@ func (ctrl *ExecutorAdminController) RequeueJob(ctx *fiber.Ctx) error {
 func (ctrl *ExecutorAdminController) UpdateJobArgs(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseUint(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	var req dto.UpdateJobArgsRequest
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx))
 	}
 
 	// 校验 JSON 合法性（非空时）
 	if req.ArgsJSON != "" {
 		if !json.Valid([]byte(req.ArgsJSON)) {
-			return ctrl.err.New("参数 JSON 格式不合法", nil).WithTraceID(util.Context(ctx))
+			return ctrl.err.New("参数 JSON 格式不合法", nil).WithTraceID(utils.Context(ctx))
 		}
 	}
 
-	err = ctrl.app.JobService.UpdateJobArgsJSON(util.Context(ctx), id, req.ArgsJSON)
+	err = ctrl.app.JobService.UpdateJobArgsJSON(utils.Context(ctx), id, req.ArgsJSON)
 	return result.Once(ctx, "任务参数更新成功", err)
 }
 
@@ -194,10 +193,10 @@ func (ctrl *ExecutorAdminController) UpdateJobArgs(ctx *fiber.Ctx) error {
 func (ctrl *ExecutorAdminController) GetJobAttempts(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseUint(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
-	attempts, err := ctrl.app.JobAttemptService.ListByJobID(util.Context(ctx), id)
+	attempts, err := ctrl.app.JobAttemptService.ListByJobID(utils.Context(ctx), id)
 	return result.Once(ctx, attempts, err)
 }
 
@@ -205,14 +204,14 @@ func (ctrl *ExecutorAdminController) GetJobAttempts(ctx *fiber.Ctx) error {
 func (ctrl *ExecutorAdminController) GetStats(ctx *fiber.Ctx) error {
 	var req dto.GetStatsRequest
 	if err := ctx.QueryParser(&req); err != nil {
-		return ctrl.err.New("解析查询参数失败", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("解析查询参数失败", err).WithTraceID(utils.Context(ctx))
 	}
 
 	if strings.TrimSpace(req.Env) == "" {
-		return ctrl.err.New("env 不能为空", nil).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("env 不能为空", nil).WithTraceID(utils.Context(ctx))
 	}
 
-	stats, err := ctrl.app.JobService.GetStats(util.Context(ctx), req.Env)
+	stats, err := ctrl.app.JobService.GetStats(utils.Context(ctx), req.Env)
 	return result.Once(ctx, stats, err)
 }
 
@@ -220,14 +219,14 @@ func (ctrl *ExecutorAdminController) GetStats(ctx *fiber.Ctx) error {
 func (ctrl *ExecutorAdminController) CleanupJobs(ctx *fiber.Ctx) error {
 	var req dto.CleanupJobsRequest
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx))
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
-	deleted, err := ctrl.app.JobService.CleanupOldJobs(util.Context(ctx), req.Env, req.SucceededDays, req.CanceledDays, req.DeadDays)
+	deleted, err := ctrl.app.JobService.CleanupOldJobs(utils.Context(ctx), req.Env, req.SucceededDays, req.CanceledDays, req.DeadDays)
 	if err != nil {
 		return err
 	}

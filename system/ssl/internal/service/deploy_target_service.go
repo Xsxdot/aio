@@ -2,9 +2,10 @@ package service
 
 import (
 	"context"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
+
 	"github.com/xsxdot/aio/system/ssl/internal/dao"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
 )
 
 // DeployTargetService 部署目标服务

@@ -2,7 +2,8 @@ package mvc
 
 import (
 	"context"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
+
+	errorc "github.com/xsxdot/gokit/err"
 
 	"gorm.io/gorm"
 )

@@ -2,10 +2,11 @@ package service
 
 import (
 	"strings"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
-	"github.com/xsxdot/aio/pkg/core/util"
+
 	"github.com/xsxdot/aio/system/config/internal/model"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
+	"github.com/xsxdot/gokit/utils"
 )
 
 // EncryptionService 加密服务
@@ -29,8 +30,8 @@ func (s *EncryptionService) EncryptConfigValues(values map[string]*model.ConfigV
 	for field, configValue := range values {
 		if configValue.Type == model.ValueTypeEncrypted {
 			// 检查是否已加密
-			if !util.IsEncrypted(configValue.Value) {
-				encrypted, err := util.EncryptAES(configValue.Value, s.salt)
+			if !utils.IsEncrypted(configValue.Value) {
+				encrypted, err := utils.EncryptAES(configValue.Value, s.salt)
 				if err != nil {
 					s.log.WithField("field", field).WithErr(err).Error("加密配置值失败")
 					return s.err.New("加密配置值失败", err)
@@ -47,8 +48,8 @@ func (s *EncryptionService) DecryptConfigValues(values map[string]*model.ConfigV
 	for field, configValue := range values {
 		if configValue.Type == model.ValueTypeEncrypted {
 			// 检查是否已加密
-			if util.IsEncrypted(configValue.Value) {
-				decrypted, err := util.DecryptAES(configValue.Value, s.salt)
+			if utils.IsEncrypted(configValue.Value) {
+				decrypted, err := utils.DecryptAES(configValue.Value, s.salt)
 				if err != nil {
 					s.log.WithField("field", field).WithErr(err).Error("解密配置值失败")
 					return s.err.New("解密配置值失败", err)
@@ -63,13 +64,13 @@ func (s *EncryptionService) DecryptConfigValues(values map[string]*model.ConfigV
 // ReEncrypt 使用新的盐值重新加密
 func (s *EncryptionService) ReEncrypt(value string, sourceSalt string) (string, error) {
 	// 1. 使用源盐值解密
-	decrypted, err := util.DecryptAES(value, sourceSalt)
+	decrypted, err := utils.DecryptAES(value, sourceSalt)
 	if err != nil {
 		return "", s.err.New("使用源盐值解密失败", err)
 	}
 
 	// 2. 使用当前盐值加密
-	encrypted, err := util.EncryptAES(decrypted, s.salt)
+	encrypted, err := utils.EncryptAES(decrypted, s.salt)
 	if err != nil {
 		return "", s.err.New("使用新盐值加密失败", err)
 	}

@@ -2,13 +2,12 @@ package http
 
 import (
 	"github.com/xsxdot/aio/base"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
-	"github.com/xsxdot/aio/pkg/core/result"
-	"github.com/xsxdot/aio/pkg/core/util"
 	"github.com/xsxdot/aio/system/registry/api/dto"
 	internalapp "github.com/xsxdot/aio/system/registry/internal/app"
-	"github.com/xsxdot/aio/utils"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
+	"github.com/xsxdot/gokit/result"
+	"github.com/xsxdot/gokit/utils"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -56,10 +55,10 @@ type CreateServiceRequest struct {
 func (c *RegistryAdminController) CreateService(ctx *fiber.Ctx) error {
 	var req CreateServiceRequest
 	if err := ctx.BodyParser(&req); err != nil {
-		return c.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return c.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
 	service, err := c.app.CreateService(ctx.UserContext(), req.Project, req.Name, req.Owner, req.Description, req.Spec)
@@ -79,7 +78,7 @@ func (c *RegistryAdminController) ListServices(ctx *fiber.Ctx) error {
 func (c *RegistryAdminController) GetService(ctx *fiber.Ctx) error {
 	id, err := ctx.ParamsInt("id")
 	if err != nil {
-		return c.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	svc, err := c.app.GetServiceDefByID(ctx.UserContext(), int64(id))
@@ -97,12 +96,12 @@ type UpdateServiceRequest struct {
 func (c *RegistryAdminController) UpdateService(ctx *fiber.Ctx) error {
 	id, err := ctx.ParamsInt("id")
 	if err != nil {
-		return c.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	var req UpdateServiceRequest
 	if err := ctx.BodyParser(&req); err != nil {
-		return c.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(c.log.GetLogger())
+		return c.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(c.log.GetLogger())
 	}
 
 	updated, err := c.app.UpdateService(ctx.UserContext(), int64(id), req.Project, req.Name, req.Owner, req.Description, req.Spec)
@@ -115,7 +114,7 @@ func (c *RegistryAdminController) UpdateService(ctx *fiber.Ctx) error {
 func (c *RegistryAdminController) DeleteService(ctx *fiber.Ctx) error {
 	id, err := ctx.ParamsInt("id")
 	if err != nil {
-		return c.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	err = c.app.DeleteService(ctx.UserContext(), int64(id))
@@ -127,7 +126,7 @@ func (c *RegistryAdminController) DeleteService(ctx *fiber.Ctx) error {
 func (c *RegistryAdminController) ListInstances(ctx *fiber.Ctx) error {
 	id, err := ctx.ParamsInt("id")
 	if err != nil {
-		return c.err.New("服务ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("服务ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	env := ctx.Query("env")
@@ -140,12 +139,12 @@ func (c *RegistryAdminController) ListInstances(ctx *fiber.Ctx) error {
 func (c *RegistryAdminController) OfflineInstance(ctx *fiber.Ctx) error {
 	id, err := ctx.ParamsInt("id")
 	if err != nil {
-		return c.err.New("服务ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("服务ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	instanceKey := ctx.Params("instanceKey")
 	if instanceKey == "" {
-		return c.err.New("instanceKey参数不能为空", nil).WithTraceID(util.Context(ctx))
+		return c.err.New("instanceKey参数不能为空", nil).WithTraceID(utils.Context(ctx))
 	}
 
 	err = c.app.ForceOfflineInstance(ctx.UserContext(), int64(id), instanceKey)
@@ -155,12 +154,12 @@ func (c *RegistryAdminController) OfflineInstance(ctx *fiber.Ctx) error {
 func (c *RegistryAdminController) DeleteInstance(ctx *fiber.Ctx) error {
 	id, err := ctx.ParamsInt("id")
 	if err != nil {
-		return c.err.New("服务ID参数错误", err).WithTraceID(util.Context(ctx))
+		return c.err.New("服务ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	instanceKey := ctx.Params("instanceKey")
 	if instanceKey == "" {
-		return c.err.New("instanceKey参数不能为空", nil).WithTraceID(util.Context(ctx))
+		return c.err.New("instanceKey参数不能为空", nil).WithTraceID(utils.Context(ctx))
 	}
 
 	req := &dto.DeregisterInstanceReq{

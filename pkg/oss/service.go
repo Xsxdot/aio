@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/xsxdot/aio/pkg/core/config"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
 
 	"github.com/gofiber/fiber/v2"
 

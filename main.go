@@ -10,15 +10,16 @@ import (
 
 	"github.com/xsxdot/aio/app"
 	"github.com/xsxdot/aio/base"
-	"github.com/xsxdot/aio/pkg/core/security"
 	"github.com/xsxdot/aio/pkg/core/start"
-	"github.com/xsxdot/aio/pkg/core/system"
 	"github.com/xsxdot/aio/pkg/db"
-	"github.com/xsxdot/aio/pkg/executor"
-	"github.com/xsxdot/aio/pkg/grpc"
 	"github.com/xsxdot/aio/pkg/oss"
-	"github.com/xsxdot/aio/pkg/scheduler"
 	"github.com/xsxdot/aio/router"
+	"github.com/xsxdot/gokit/executor"
+	"github.com/xsxdot/gokit/fiber_handle"
+	"github.com/xsxdot/gokit/grpc"
+	"github.com/xsxdot/gokit/scheduler"
+	"github.com/xsxdot/gokit/security"
+	"github.com/xsxdot/gokit/system"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -118,16 +119,6 @@ func main() {
 		configures.Logger.Panic(fmt.Sprintf("初始化默认超级管理员失败: %v", err))
 	}
 
-	// 初始化 bootstrap 服务器（从配置文件加载）
-	if err := appRoot.ServerModule.EnsureBootstrapServers(context.Background()); err != nil {
-		configures.Logger.Panic(fmt.Sprintf("初始化 bootstrap 服务器失败: %v", err))
-	}
-
-	// 初始化 bootstrap 服务器的 SSH 凭证（从配置文件加载）
-	if err := appRoot.ServerModule.EnsureBootstrapServerSSHCredentials(context.Background()); err != nil {
-		configures.Logger.Panic(fmt.Sprintf("初始化 bootstrap 服务器 SSH 凭证失败: %v", err))
-	}
-
 	// 注册 SSL 证书自动续期任务（每天凌晨 2:30 执行）
 	sslRenewTask, err := scheduler.NewCronTask(
 		"SSL证书自动续期",
@@ -179,7 +170,7 @@ func main() {
 	base.Logger.Info("已注册任务执行器清理任务，每天凌晨 3:00 执行")
 
 	// 创建 Fiber 应用
-	fiberApp := app.GetApp()
+	fiberApp := fiber_handle.GetApp()
 
 	// 注册路由
 	router.Register(appRoot, fiberApp)

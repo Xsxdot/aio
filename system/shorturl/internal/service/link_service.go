@@ -5,11 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/pkg/core/mvc"
 	"github.com/xsxdot/aio/system/shorturl/internal/dao"
 	"github.com/xsxdot/aio/system/shorturl/internal/model"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
 )
 
 // LinkService 短链接业务逻辑层

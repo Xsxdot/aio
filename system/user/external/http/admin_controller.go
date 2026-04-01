@@ -2,15 +2,15 @@ package controller
 
 import (
 	"strconv"
+
 	"github.com/xsxdot/aio/base"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
-	"github.com/xsxdot/aio/pkg/core/result"
-	"github.com/xsxdot/aio/pkg/core/security"
-	"github.com/xsxdot/aio/pkg/core/util"
 	"github.com/xsxdot/aio/system/user/internal/app"
 	"github.com/xsxdot/aio/system/user/internal/model/dto"
-	"github.com/xsxdot/aio/utils"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
+	"github.com/xsxdot/gokit/result"
+	"github.com/xsxdot/gokit/security"
+	"github.com/xsxdot/gokit/utils"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -52,20 +52,20 @@ func (ctrl *AdminController) RegisterRoutes(admin fiber.Router) {
 func (ctrl *AdminController) Create(ctx *fiber.Ctx) error {
 	var req dto.CreateAdminReq
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
-	admin, err := ctrl.app.AdminService.CreateAdmin(util.Context(ctx), req.Account, req.Password, req.Remark)
+	admin, err := ctrl.app.AdminService.CreateAdmin(utils.Context(ctx), req.Account, req.Password, req.Remark)
 	return result.Once(ctx, admin, err)
 }
 
 // List 查询管理员列表
 func (ctrl *AdminController) List(ctx *fiber.Ctx) error {
-	admins, err := ctrl.app.AdminService.FindAllActive(util.Context(ctx))
+	admins, err := ctrl.app.AdminService.FindAllActive(utils.Context(ctx))
 	if err != nil {
 		return err
 	}
@@ -80,10 +80,10 @@ func (ctrl *AdminController) List(ctx *fiber.Ctx) error {
 func (ctrl *AdminController) GetByID(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
-	admin, err := ctrl.app.AdminService.FindById(util.Context(ctx), id)
+	admin, err := ctrl.app.AdminService.FindById(utils.Context(ctx), id)
 	return result.Once(ctx, admin, err)
 }
 
@@ -91,10 +91,10 @@ func (ctrl *AdminController) GetByID(ctx *fiber.Ctx) error {
 func (ctrl *AdminController) Info(ctx *fiber.Ctx) error {
 	adminID, err := security.GetAdminId(ctx)
 	if err != nil {
-		return ctrl.err.New("获取管理员ID失败", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("获取管理员ID失败", err).WithTraceID(utils.Context(ctx))
 	}
 
-	admin, err := ctrl.app.AdminService.FindById(util.Context(ctx), adminID)
+	admin, err := ctrl.app.AdminService.FindById(utils.Context(ctx), adminID)
 	return result.Once(ctx, admin, err)
 }
 
@@ -102,20 +102,20 @@ func (ctrl *AdminController) Info(ctx *fiber.Ctx) error {
 func (ctrl *AdminController) ResetPassword(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	var req dto.ResetAdminPasswordReq
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	req.AdminID = id
-	err = ctrl.app.AdminService.ResetPassword(util.Context(ctx), req.AdminID, req.NewPassword)
+	err = ctrl.app.AdminService.ResetPassword(utils.Context(ctx), req.AdminID, req.NewPassword)
 	return result.Once(ctx, "重置密码成功", err)
 }
 
@@ -123,20 +123,20 @@ func (ctrl *AdminController) ResetPassword(ctx *fiber.Ctx) error {
 func (ctrl *AdminController) UpdateStatus(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
 	var req dto.UpdateAdminStatusReq
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	req.AdminID = id
-	err = ctrl.app.AdminService.UpdateStatus(util.Context(ctx), req.AdminID, req.Status)
+	err = ctrl.app.AdminService.UpdateStatus(utils.Context(ctx), req.AdminID, req.Status)
 	return result.Once(ctx, "更新状态成功", err)
 }
 
@@ -144,10 +144,10 @@ func (ctrl *AdminController) UpdateStatus(ctx *fiber.Ctx) error {
 func (ctrl *AdminController) Delete(ctx *fiber.Ctx) error {
 	id, err := strconv.ParseInt(ctx.Params("id"), 10, 64)
 	if err != nil {
-		return ctrl.err.New("ID参数错误", err).WithTraceID(util.Context(ctx))
+		return ctrl.err.New("ID参数错误", err).WithTraceID(utils.Context(ctx))
 	}
 
-	err = ctrl.app.AdminService.DeleteById(util.Context(ctx), id)
+	err = ctrl.app.AdminService.DeleteById(utils.Context(ctx), id)
 	return result.Once(ctx, "删除成功", err)
 }
 
@@ -155,14 +155,14 @@ func (ctrl *AdminController) Delete(ctx *fiber.Ctx) error {
 func (ctrl *AdminController) Login(ctx *fiber.Ctx) error {
 	var req dto.AdminLoginReq
 	if err := ctx.BodyParser(&req); err != nil {
-		return ctrl.err.New("解析请求参数失败", err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New("解析请求参数失败", err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	if errMsg, err := utils.Validate(&req); err != nil {
-		return ctrl.err.New(errMsg, err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New(errMsg, err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
-	admin, err := ctrl.app.AdminService.ValidateLogin(util.Context(ctx), req.Account, req.Password)
+	admin, err := ctrl.app.AdminService.ValidateLogin(utils.Context(ctx), req.Account, req.Password)
 	if err != nil {
 		return err
 	}
@@ -183,7 +183,7 @@ func (ctrl *AdminController) Login(ctx *fiber.Ctx) error {
 	// 创建 JWT token
 	token, expiresAt, err := base.AdminAuth.CreateAdminToken(claims)
 	if err != nil {
-		return ctrl.err.New("创建登录令牌失败", err).WithTraceID(util.Context(ctx)).ToLog(ctrl.log.GetLogger())
+		return ctrl.err.New("创建登录令牌失败", err).WithTraceID(utils.Context(ctx)).ToLog(ctrl.log.GetLogger())
 	}
 
 	return result.OK(ctx, fiber.Map{

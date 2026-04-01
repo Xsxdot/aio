@@ -2,9 +2,9 @@ package service
 
 import (
 	"github.com/xsxdot/aio/base"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
-	"github.com/xsxdot/aio/pkg/core/util"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
+	"github.com/xsxdot/gokit/utils"
 )
 
 // CryptoService 加密服务
@@ -29,7 +29,7 @@ func (s *CryptoService) Encrypt(plaintext string) (string, error) {
 	if plaintext == "" {
 		return "", nil
 	}
-	encrypted, err := util.EncryptAES(plaintext, s.salt)
+	encrypted, err := utils.EncryptAES(plaintext, s.salt)
 	if err != nil {
 		return "", s.err.New("加密失败", err)
 	}
@@ -41,7 +41,7 @@ func (s *CryptoService) Decrypt(ciphertext string) (string, error) {
 	if ciphertext == "" {
 		return "", nil
 	}
-	decrypted, err := util.DecryptAES(ciphertext, s.salt)
+	decrypted, err := utils.DecryptAES(ciphertext, s.salt)
 	if err != nil {
 		return "", s.err.New("解密失败", err)
 	}
@@ -50,5 +50,5 @@ func (s *CryptoService) Decrypt(ciphertext string) (string, error) {
 
 // IsEncrypted 检查字符串是否已加密
 func (s *CryptoService) IsEncrypted(text string) bool {
-	return util.IsEncrypted(text)
+	return utils.IsEncrypted(text)
 }

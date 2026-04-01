@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"io"
 
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/registry/api/client"
 	"github.com/xsxdot/aio/system/registry/api/dto"
-	"github.com/xsxdot/aio/system/registry/internal/model"
 	pb "github.com/xsxdot/aio/system/registry/api/proto"
+	"github.com/xsxdot/aio/system/registry/internal/model"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

@@ -2,10 +2,11 @@ package service
 
 import (
 	"context"
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
+
 	"github.com/xsxdot/aio/system/ssl/internal/dao"
 	"github.com/xsxdot/aio/system/ssl/internal/model"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
 )
 
 // DnsCredentialService DNS 凭证服务

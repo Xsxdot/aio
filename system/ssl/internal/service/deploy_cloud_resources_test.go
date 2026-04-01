@@ -5,7 +5,7 @@ import (
 
 	cas "github.com/alibabacloud-go/cas-20200407/v2/client"
 	"github.com/alibabacloud-go/tea/tea"
-	"github.com/xsxdot/aio/pkg/core/logger"
+	"github.com/xsxdot/gokit/logger"
 )
 
 // TestResourceDomainMatchesTarget 测试资源域名匹配（支持通配符）

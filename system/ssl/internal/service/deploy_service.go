@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	errorc "github.com/xsxdot/aio/pkg/core/err"
-	"github.com/xsxdot/aio/pkg/core/logger"
 	"github.com/xsxdot/aio/system/ssl/internal/model"
+	errorc "github.com/xsxdot/gokit/err"
+	"github.com/xsxdot/gokit/logger"
 
 	cas "github.com/alibabacloud-go/cas-20200407/v2/client"
 	cdn "github.com/alibabacloud-go/cdn-20180510/v4/client"
