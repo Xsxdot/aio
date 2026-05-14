@@ -52,6 +52,11 @@ func (c *ExecutorClient) CancelJobByDedupKey(ctx context.Context, env, dedupKey 
 	return nil
 }
 
+// CancelActiveJobsByDedupKeyPrefix 取消 dedup_key 以 prefix 开头的活跃任务（派发键带后缀时与 CancelJobByDedupKey 二选一或一并使用）
+func (c *ExecutorClient) CancelActiveJobsByDedupKeyPrefix(ctx context.Context, env, dedupKeyPrefix string) error {
+	return c.app.JobService.CancelActiveJobsByDedupKeyPrefix(ctx, env, dedupKeyPrefix)
+}
+
 // RequeueJob 重新入队任务
 func (c *ExecutorClient) RequeueJob(ctx context.Context, jobID uint64, runAt int64) error {
 	return c.app.JobService.RequeueJob(ctx, jobID, runAt)

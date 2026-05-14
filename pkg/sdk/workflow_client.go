@@ -152,19 +152,19 @@ func (c *WorkflowClient) RollbackToNode(ctx context.Context, instanceID int64, t
 
 // ExecutionTrail 执行轨迹（SDK 友好版）
 type ExecutionTrail struct {
-	InstanceID    int64
-	Status        string
-	CurrentState  string // 当前状态 JSON
-	ActiveNodeIDs string // 活动节点 ID 列表（JSON 字符串）
-	Checkpoints   []ExecutionTrailCheckpoint
+	InstanceID    int64                      `json:"instanceId"`
+	Status        string                     `json:"status"`
+	CurrentState  string                     `json:"currentState"`   // 当前状态 JSON
+	ActiveNodeIDs string                     `json:"activeNodeIds"`  // 活动节点 ID 列表（JSON 字符串）
+	Checkpoints   []ExecutionTrailCheckpoint `json:"checkpoints"`
 }
 
 // ExecutionTrailCheckpoint 轨迹中的单步快照
 type ExecutionTrailCheckpoint struct {
-	NodeID     string
-	NodeOutput map[string]interface{} // 节点输出
-	StateAfter map[string]interface{} // 节点执行后状态
-	CreatedAt  string
+	NodeID     string                 `json:"nodeId"`
+	NodeOutput map[string]interface{} `json:"nodeOutput"` // 节点输出
+	StateAfter map[string]interface{} `json:"stateAfter"` // 节点执行后状态
+	CreatedAt  string                 `json:"createdAt"`
 }
 
 // GetExecutionTrail 获取执行轨迹
@@ -210,12 +210,12 @@ func (c *WorkflowClient) GetExecutionTrail(ctx context.Context, instanceID int64
 
 // WorkflowDef 工作流定义（SDK 友好版）
 type WorkflowDef struct {
-	ID      int64
-	Env     string
-	Code    string
-	Version int32
-	Name    string
-	DAGJSON string
+	ID      int64  `json:"id"`
+	Env     string `json:"env"`
+	Code    string `json:"code"`
+	Version int32  `json:"version"`
+	Name    string `json:"name"`
+	DAGJSON string `json:"dagJson"`
 }
 
 // GetDef 查询工作流定义，version=0 表示最新版本
@@ -292,16 +292,16 @@ func (c *WorkflowClient) CreateIfNotExists(ctx context.Context, code, name, dagJ
 
 // WorkflowInstance 工作流实例（SDK 友好版）
 type WorkflowInstance struct {
-	ID            int64
-	DefID         int64
-	DefCode       string
-	DefVersion    int32
-	Env           string
-	Status        string
-	InitialState  string // 初始状态 JSON
-	CurrentState  string // 当前状态 JSON
-	ActiveNodeIDs string // 活动节点 ID 列表（JSON 字符串）
-	CreatedAt     string
+	ID            int64  `json:"id"`
+	DefID         int64  `json:"defId"`
+	DefCode       string `json:"defCode"`
+	DefVersion    int32  `json:"defVersion"`
+	Env           string `json:"env"`
+	Status        string `json:"status"`
+	InitialState  string `json:"initialState"`   // 初始状态 JSON
+	CurrentState  string `json:"currentState"`   // 当前状态 JSON
+	ActiveNodeIDs string `json:"activeNodeIds"`  // 活动节点 ID 列表（JSON 字符串）
+	CreatedAt     string `json:"createdAt"`
 }
 
 // GetInstance 获取工作流实例详情

@@ -67,30 +67,54 @@ func (s *ExecutorJobService) SubmitJob(ctx context.Context, req *dto.SubmitJobIn
 		maxAttempts = 3
 	}
 
-	// 检查幂等键（按 env 隔离）
-	existingJob, err := s.dao.GetByDedupKey(ctx, e, req.DedupKey)
-	if err == nil {
-		base.Logger.Info("任务已存在，返回已有任务ID")
-		return uint64(existingJob.ID), nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return 0, err
-	}
-
-	// 计算下次执行时间
-	var nextRunAt *time.Time
-	if req.RunAt > 0 {
-		t := time.Unix(req.RunAt, 0)
-		nextRunAt = &t
-	} else {
-		now := time.Now()
-		nextRunAt = &now
-	}
-
 	retryBackoffType := model.RetryBackoffType(req.RetryBackoffType)
 	if retryBackoffType == "" {
 		retryBackoffType = model.RetryBackoffExponential
 	}
+
+	var nextRunAtTime time.Time
+	if req.RunAt > 0 {
+		nextRunAtTime = time.Unix(req.RunAt, 0)
+	} else {
+		nextRunAtTime = time.Now()
+	}
+
+	// 检查幂等键（按 env 隔离）
+	existingJob, err := s.dao.GetByDedupKey(ctx, e, req.DedupKey)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, err
+	}
+	if err == nil {
+		switch existingJob.Status {
+		case model.JobStatusFailed, model.JobStatusCanceled, model.JobStatusDead:
+			n, resubmitErr := s.dao.ResubmitTerminalJobByDedupKey(ctx, e, req.DedupKey,
+				req.TargetService, req.Method, req.ArgsJSON,
+				strings.TrimSpace(req.CallbackData), strings.TrimSpace(req.Source), strings.TrimSpace(req.SequenceKey),
+				maxAttempts, req.Priority, retryBackoffType, req.RetryIntervalSec, nextRunAtTime)
+			if resubmitErr != nil {
+				return 0, resubmitErr
+			}
+			if n > 0 {
+				base.Logger.Infof("终态任务已按新参数重新入队: dedup_key=%s", req.DedupKey)
+				return uint64(existingJob.ID), nil
+			}
+			jobAgain, err2 := s.dao.GetByDedupKey(ctx, e, req.DedupKey)
+			if err2 != nil {
+				if !errors.Is(err2, gorm.ErrRecordNotFound) {
+					return 0, err2
+				}
+				// 行已不存在，退化为新建
+			} else {
+				base.Logger.Info("任务已存在，返回已有任务ID")
+				return uint64(jobAgain.ID), nil
+			}
+		default:
+			base.Logger.Info("任务已存在，返回已有任务ID")
+			return uint64(existingJob.ID), nil
+		}
+	}
+
+	nextRunAt := &nextRunAtTime
 
 	job := &model.ExecutorJobModel{
 		Env:              e,
@@ -242,6 +266,28 @@ func (s *ExecutorJobService) GetJobByDedupKey(ctx context.Context, env, dedupKey
 		return nil, err
 	}
 	return job, nil
+}
+
+// CancelActiveJobsByDedupKeyPrefix 取消 env 下 dedup_key 以 prefix 开头的 pending/running 任务（与带后缀的派发幂等键配套）
+func (s *ExecutorJobService) CancelActiveJobsByDedupKeyPrefix(ctx context.Context, env, dedupKeyPrefix string) error {
+	p := strings.TrimSpace(dedupKeyPrefix)
+	if p == "" {
+		return errors.New("dedupKeyPrefix 不能为空")
+	}
+	e, err := requireEnv(env)
+	if err != nil {
+		return err
+	}
+	jobs, err := s.dao.ListActiveByDedupKeyPrefix(ctx, e, p)
+	if err != nil {
+		return err
+	}
+	for _, j := range jobs {
+		if err := s.CancelJob(ctx, uint64(j.ID)); err != nil {
+			base.Logger.Infof("按前缀取消任务跳过: job_id=%d err=%v", j.ID, err)
+		}
+	}
+	return nil
 }
 
 // ListJobs 列出任务（按 env 过滤）

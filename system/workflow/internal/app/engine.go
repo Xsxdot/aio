@@ -281,7 +281,7 @@ func (a *App) handleMapSubTaskCompleted(tx *gorm.DB, instance *model.WorkflowIns
 					break
 				}
 			}
-			if cpCount == 0 && !inActive {
+			if edgeTargetEligibleForScheduling(edge, cpCount, inActive) {
 				if !allPredecessorsCompleted(tx, instance.ID, edge.To, dag) {
 					continue
 				}
@@ -306,6 +306,12 @@ func allPredecessorsCompleted(tx *gorm.DB, instanceID int64, nodeID string, dag 
 		if edge.Type == model.EdgeTypeError {
 			continue // error 边不算依赖
 		}
+		if edge.IsLoopback {
+			continue // loopback 回退边不算首次执行依赖
+		}
+		if edge.Condition != "" {
+			continue // 条件边属于互斥路由路径，不要求所有分支前驱都完成
+		}
 		var cpCount int64
 		tx.Model(&model.WorkflowCheckpointModel{}).
 			Where("instance_id = ? AND node_id = ?", instanceID, edge.From).
@@ -315,6 +321,18 @@ func allPredecessorsCompleted(tx *gorm.DB, instanceID int64, nodeID string, dag 
 		}
 	}
 	return true
+}
+
+// edgeTargetEligibleForScheduling 在出边条件已为真时，判断是否将 edge.To 加入下一跳：
+// 非回环边仅在目标节点尚无 checkpoint 时调度（防重复）；回环边允许目标已执行过，以支持评估打回等场景。
+func edgeTargetEligibleForScheduling(edge model.Edge, cpCount int64, inActive bool) bool {
+	if inActive {
+		return false
+	}
+	if edge.IsLoopback {
+		return true
+	}
+	return cpCount == 0
 }
 
 // StartWorkflow 启动一个新的工作流实例，任一起始节点触发失败则将实例标记为 FAILED
@@ -551,7 +569,7 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 							break
 						}
 					}
-					if cpCount == 0 && !inActive {
+					if edgeTargetEligibleForScheduling(edge, cpCount, inActive) {
 						if !allPredecessorsCompleted(tx, instance.ID, edge.To, &dag) {
 							continue
 						}
@@ -619,7 +637,54 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 			return err
 		}
 
+		// --- Loopback 边 checkpoint 清理 ---
+		// 当 loopback 边即将触发时，删除从回环目标到当前节点之间的旧 checkpoint，
+		// 使重跑节点完成后的 forward 边可以重新调度下游节点。
 		outEdges := dag.GetOutgoingEdges(nodeID)
+		var loopbackTargets []string
+		for _, edge := range outEdges {
+			if edge.Type == model.EdgeTypeError || !edge.IsLoopback {
+				continue
+			}
+			pass, err := a.evaluateCondition(edge.Condition, data)
+			if err != nil {
+				a.log.WithErr(err).Errorf("评估 loopback 边 %s->%s 条件失败", edge.From, edge.To)
+				continue
+			}
+			if pass {
+				loopbackTargets = append(loopbackTargets, edge.To)
+			}
+		}
+		if len(loopbackTargets) > 0 {
+			checkpoints, err := a.CheckpointService.ListByInstanceIDOrderByCreatedAscWithTx(ctx, tx, instance.ID)
+			if err != nil {
+				return fmt.Errorf("获取 checkpoint 列表失败: %w", err)
+			}
+			currentCpIndex := len(checkpoints) - 1 // 刚创建的当前节点 checkpoint
+			earliestLoopbackCpIndex := currentCpIndex
+			for _, target := range loopbackTargets {
+				for i := len(checkpoints) - 1; i >= 0; i-- {
+					if checkpoints[i].NodeID == target {
+						if i < earliestLoopbackCpIndex {
+							earliestLoopbackCpIndex = i
+						}
+						break
+					}
+				}
+			}
+			if earliestLoopbackCpIndex < currentCpIndex {
+				if err := a.CheckpointService.DeleteFromIndexRangeWithTx(ctx, tx, instance.ID, earliestLoopbackCpIndex, currentCpIndex); err != nil {
+					return fmt.Errorf("清理 loopback 下游 checkpoint 失败: %w", err)
+				}
+				a.log.WithFields(map[string]interface{}{
+					"instance_id": instance.ID,
+					"from_index":  earliestLoopbackCpIndex,
+					"to_index":    currentCpIndex,
+					"targets":     loopbackTargets,
+				}).Info("Loopback 边触发，已清理下游 checkpoint")
+			}
+		}
+
 		for _, edge := range outEdges {
 			if edge.Type == model.EdgeTypeError {
 				continue
@@ -641,7 +706,7 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 						break
 					}
 				}
-				if cpCount == 0 && !inActive {
+				if edgeTargetEligibleForScheduling(edge, cpCount, inActive) {
 					if !allPredecessorsCompleted(tx, instance.ID, edge.To, &dag) {
 						continue
 					}
@@ -716,7 +781,8 @@ func (a *App) triggerNode(ctx context.Context, instance *model.WorkflowInstanceM
 		payloadBytes, _ := json.Marshal(payload)
 		callbackDataBytes, _ := json.Marshal(map[string]interface{}{"instance_id": instance.ID, "node_id": node.ID, "env": env})
 		callbackData := string(callbackDataBytes)
-		dedupKey := fmt.Sprintf("wf_%d_node_%s", instance.ID, node.ID)
+		// 后缀保证回环重跑时与已成功任务的幂等键区分，Executor 不会对 succeeded 任务用新 Args 重新入队
+		dedupKey := fmt.Sprintf("wf_%d_node_%s_%d", instance.ID, node.ID, time.Now().UnixNano())
 
 		_, err := a.ExecutorClient.SubmitJob(ctx, &executorDto.SubmitJobInput{
 			Env:              env,
@@ -823,6 +889,7 @@ func (a *App) triggerMapNode(ctx context.Context, instance *model.WorkflowInstan
 	if err := json.Unmarshal([]byte(instance.CurrentState), &mapStateObj); err != nil {
 		return a.err.New("解析 CurrentState 用于 Map 子任务派发失败", err)
 	}
+	mapWave := time.Now().UnixNano()
 	for i := 0; i < N; i++ {
 		item := itemsArr[i]
 		subPayload := map[string]interface{}{
@@ -840,7 +907,7 @@ func (a *App) triggerMapNode(ctx context.Context, instance *model.WorkflowInstan
 			"sub_job_id":  i,
 		})
 		callbackData := string(callbackDataBytes)
-		dedupKey := fmt.Sprintf("wf_%d_node_%s_sub_%d", instance.ID, node.ID, i)
+		dedupKey := fmt.Sprintf("wf_%d_node_%s_sub_%d_%d", instance.ID, node.ID, i, mapWave)
 		_, err := a.ExecutorClient.SubmitJob(ctx, &executorDto.SubmitJobInput{
 			Env:              env,
 			TargetService:    serviceName,
@@ -1028,8 +1095,9 @@ func (a *App) RollbackToNode(ctx context.Context, instanceID int64, targetNodeID
 		envToUse = base.ENV
 	}
 	for _, nodeID := range activeNodes {
-		dedupKey := fmt.Sprintf("wf_%d_node_%s", instanceID, nodeID)
-		_ = a.ExecutorClient.CancelJobByDedupKey(ctx, envToUse, dedupKey)
+		prefix := fmt.Sprintf("wf_%d_node_%s", instanceID, nodeID)
+		_ = a.ExecutorClient.CancelJobByDedupKey(ctx, envToUse, prefix)
+		_ = a.ExecutorClient.CancelActiveJobsByDedupKeyPrefix(ctx, envToUse, prefix)
 	}
 	node := dag.GetNode(targetNodeID)
 	if node != nil {
@@ -1124,8 +1192,9 @@ func (a *App) CancelInstance(ctx context.Context, instanceID int64) error {
 		_ = json.Unmarshal([]byte(instance.ActiveNodeIDs), &activeNodes)
 	}
 	for _, nodeID := range activeNodes {
-		dedupKey := fmt.Sprintf("wf_%d_node_%s", instanceID, nodeID)
-		_ = a.ExecutorClient.CancelJobByDedupKey(ctx, env, dedupKey)
+		prefix := fmt.Sprintf("wf_%d_node_%s", instanceID, nodeID)
+		_ = a.ExecutorClient.CancelJobByDedupKey(ctx, env, prefix)
+		_ = a.ExecutorClient.CancelActiveJobsByDedupKeyPrefix(ctx, env, prefix)
 	}
 	return nil
 }

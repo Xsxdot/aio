@@ -23,6 +23,11 @@ func NewExecutorJobDAO() *ExecutorJobDAO {
 	}
 }
 
+// NewExecutorJobDAOWithDB 使用指定数据库（测试等场景）
+func NewExecutorJobDAOWithDB(db *gorm.DB) *ExecutorJobDAO {
+	return &ExecutorJobDAO{db: db}
+}
+
 // Create 创建任务
 func (d *ExecutorJobDAO) Create(ctx context.Context, job *model.ExecutorJobModel) error {
 	return mvc.ExtractDB(ctx, d.db).Create(job).Error
@@ -46,6 +51,19 @@ func (d *ExecutorJobDAO) GetByDedupKey(ctx context.Context, env, dedupKey string
 		return nil, err
 	}
 	return &job, nil
+}
+
+// ListActiveByDedupKeyPrefix 列出 env 下 dedup_key 以 prefix 开头且仍为待执行/执行中的任务（用于工作流取消/回滚）
+func (d *ExecutorJobDAO) ListActiveByDedupKeyPrefix(ctx context.Context, env, dedupKeyPrefix string) ([]*model.ExecutorJobModel, error) {
+	var jobs []*model.ExecutorJobModel
+	err := mvc.ExtractDB(ctx, d.db).Where(
+		"env = ? AND dedup_key LIKE ? AND status IN ?",
+		env, dedupKeyPrefix+"%", []model.JobStatus{model.JobStatusPending, model.JobStatusRunning},
+	).Find(&jobs).Error
+	if err != nil {
+		return nil, err
+	}
+	return jobs, nil
 }
 
 // AcquireJob 领取任务（使用原子更新实现竞争领取，兼容 MySQL 5.7+）
@@ -294,6 +312,44 @@ func (d *ExecutorJobDAO) UpdateArgsJSON(ctx context.Context, jobID uint64, argsJ
 	return mvc.ExtractDB(ctx, d.db).Model(&model.ExecutorJobModel{}).
 		Where("id = ?", jobID).
 		Update("args_json", argsJSON).Error
+}
+
+// ResubmitTerminalJobByDedupKey 将 env+dedup_key 下处于 failed/canceled/dead 的任务原子更新为新提交参数并重置为 pending。
+// 返回 RowsAffected；为 0 表示无匹配行（不存在或非终态）。
+func (d *ExecutorJobDAO) ResubmitTerminalJobByDedupKey(ctx context.Context, env, dedupKey string,
+	targetService, method, argsJSON, callbackData, source, sequenceKey string,
+	maxAttempts, priority int32,
+	retryBackoffType model.RetryBackoffType, retryIntervalSec int32,
+	nextRunAt time.Time,
+) (int64, error) {
+	result := mvc.ExtractDB(ctx, d.db).Model(&model.ExecutorJobModel{}).
+		Where("env = ? AND dedup_key = ?", env, dedupKey).
+		Where("status IN ?", []model.JobStatus{
+			model.JobStatusFailed,
+			model.JobStatusCanceled,
+			model.JobStatusDead,
+		}).
+		Updates(map[string]interface{}{
+			"target_service":     targetService,
+			"method":             method,
+			"args_json":          argsJSON,
+			"callback_data":      callbackData,
+			"source":             source,
+			"sequence_key":       sequenceKey,
+			"max_attempts":       maxAttempts,
+			"priority":           priority,
+			"retry_backoff_type": retryBackoffType,
+			"retry_interval_sec": retryIntervalSec,
+			"status":             model.JobStatusPending,
+			"attempts":           0,
+			"next_run_at":        nextRunAt,
+			"lease_owner":        "",
+			"lease_until":        nil,
+			"last_error":         "",
+			"last_error_type":    "",
+			"result_json":        "",
+		})
+	return result.RowsAffected, result.Error
 }
 
 // Requeue 重新入队任务

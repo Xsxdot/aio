@@ -45,3 +45,9 @@ func (s *WorkflowCheckpointService) DeleteFromIndex(ctx context.Context, instanc
 func (s *WorkflowCheckpointService) DeleteFromIndexWithTx(ctx context.Context, tx *gorm.DB, instanceID int64, fromIndex int) error {
 	return s.dao.DeleteFromIndexWithTx(ctx, tx, instanceID, fromIndex)
 }
+
+// DeleteFromIndexRangeWithTx 在事务内删除指定索引范围 [fromIndex, toIndex) 的 checkpoint。
+// 用于 loopback 边触发时清理回环目标到当前节点之间的旧 checkpoint。
+func (s *WorkflowCheckpointService) DeleteFromIndexRangeWithTx(ctx context.Context, tx *gorm.DB, instanceID int64, fromIndex int, toIndex int) error {
+	return s.dao.DeleteFromIndexRangeWithTx(ctx, tx, instanceID, fromIndex, toIndex)
+}

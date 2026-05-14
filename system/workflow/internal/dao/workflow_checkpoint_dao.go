@@ -74,11 +74,11 @@ func (d *WorkflowCheckpointDao) deleteFromIndexDB(ctx context.Context, gdb *gorm
 	if dialect.IsPostgres(gdb) {
 		// PostgreSQL 与 MySQL 8+ 支持 ROW_NUMBER()
 		return mvc.ExtractDB(ctx, d.db).Exec(`
-			DELETE FROM aio_workflow_checkpoint 
+			DELETE FROM aio_workflow_checkpoint
 			WHERE id IN (
 				SELECT id FROM (
-					SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) - 1 as rn 
-					FROM aio_workflow_checkpoint 
+					SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) - 1 as rn
+					FROM aio_workflow_checkpoint
 					WHERE instance_id = ?
 				) ranked WHERE rn >= ?
 			)`, instanceID, fromIndex).Error
@@ -96,4 +96,37 @@ func (d *WorkflowCheckpointDao) deleteFromIndexDB(ctx context.Context, gdb *gorm
 		return nil
 	}
 	return mvc.ExtractDB(ctx, d.db).Where("id IN ?", ids).Delete(&model.WorkflowCheckpointModel{}).Error
+}
+
+// DeleteFromIndexRangeWithTx 删除指定索引范围 [fromIndex, toIndex) 的 checkpoint。
+// 用于 loopback 边清理：删除回环目标到当前节点之间的旧 checkpoint，保留当前节点的 checkpoint。
+func (d *WorkflowCheckpointDao) DeleteFromIndexRangeWithTx(ctx context.Context, tx *gorm.DB, instanceID int64, fromIndex int, toIndex int) error {
+	if fromIndex >= toIndex {
+		return nil
+	}
+	if dialect.IsPostgres(tx) {
+		return mvc.ExtractDB(ctx, tx).Exec(`
+			DELETE FROM aio_workflow_checkpoint
+			WHERE id IN (
+				SELECT id FROM (
+					SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) - 1 as rn
+					FROM aio_workflow_checkpoint
+					WHERE instance_id = ?
+				) ranked WHERE rn >= ? AND rn < ?
+			)`, instanceID, fromIndex, toIndex).Error
+	}
+	// MySQL 5.7 兜底
+	var ids []uint
+	if err := mvc.ExtractDB(ctx, tx).Model(&model.WorkflowCheckpointModel{}).
+		Where("instance_id = ?", instanceID).
+		Order("created_at ASC").
+		Offset(fromIndex).
+		Limit(toIndex - fromIndex).
+		Pluck("id", &ids).Error; err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return mvc.ExtractDB(ctx, tx).Where("id IN ?", ids).Delete(&model.WorkflowCheckpointModel{}).Error
 }
