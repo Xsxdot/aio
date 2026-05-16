@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+	"errors"
 
 	"github.com/xsxdot/aio/pkg/core/mvc"
 	"github.com/xsxdot/aio/pkg/db/dialect"
@@ -44,6 +45,34 @@ func (d *WorkflowCheckpointDao) ListByInstanceIDOrderByCreatedAsc(ctx context.Co
 	return d.listByInstanceIDOrderByCreatedAscDB(ctx, d.db, instanceID)
 }
 
+func (d *WorkflowCheckpointDao) ListTrailByInstanceIDOrderByCreatedAsc(ctx context.Context, instanceID int64) ([]*model.WorkflowCheckpointModel, error) {
+	var list []*model.WorkflowCheckpointModel
+	err := mvc.ExtractDB(ctx, d.db).Select("node_id", "node_output", "created_at").
+		Where("instance_id = ?", instanceID).
+		Order("created_at ASC").
+		Find(&list).Error
+	if err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (d *WorkflowCheckpointDao) FindLatestStateAfterByInstanceIDAndNodeID(ctx context.Context, instanceID int64, nodeID string) (*model.WorkflowCheckpointModel, error) {
+	var item model.WorkflowCheckpointModel
+	err := mvc.ExtractDB(ctx, d.db).Select("node_id", "state_after", "created_at").
+		Where("instance_id = ? AND node_id = ?", instanceID, nodeID).
+		Order("created_at DESC").
+		Order("id DESC").
+		First(&item).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
 // ListByInstanceIDOrderByCreatedAscWithTx 在事务内按创建时间升序列出 checkpoint
 func (d *WorkflowCheckpointDao) ListByInstanceIDOrderByCreatedAscWithTx(ctx context.Context, tx *gorm.DB, instanceID int64) ([]*model.WorkflowCheckpointModel, error) {
 	return d.listByInstanceIDOrderByCreatedAscDB(ctx, tx, instanceID)
@@ -51,7 +80,7 @@ func (d *WorkflowCheckpointDao) ListByInstanceIDOrderByCreatedAscWithTx(ctx cont
 
 func (d *WorkflowCheckpointDao) listByInstanceIDOrderByCreatedAscDB(ctx context.Context, db *gorm.DB, instanceID int64) ([]*model.WorkflowCheckpointModel, error) {
 	var list []*model.WorkflowCheckpointModel
-	err := mvc.ExtractDB(ctx, d.db).Where("instance_id = ?", instanceID).
+	err := mvc.ExtractDB(ctx, db).Where("instance_id = ?", instanceID).
 		Order("created_at ASC").
 		Find(&list).Error
 	if err != nil {
@@ -121,7 +150,7 @@ func (d *WorkflowCheckpointDao) DeleteFromIndexRangeWithTx(ctx context.Context, 
 		Where("instance_id = ?", instanceID).
 		Order("created_at ASC").
 		Offset(fromIndex).
-		Limit(toIndex - fromIndex).
+		Limit(toIndex-fromIndex).
 		Pluck("id", &ids).Error; err != nil {
 		return err
 	}

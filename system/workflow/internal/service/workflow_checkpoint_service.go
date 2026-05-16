@@ -32,6 +32,16 @@ func (s *WorkflowCheckpointService) ListByInstanceIDOrderByCreatedAsc(ctx contex
 	return s.dao.ListByInstanceIDOrderByCreatedAsc(ctx, instanceID)
 }
 
+// ListTrailByInstanceIDOrderByCreatedAsc 列出执行轨迹需要的轻量 checkpoint 字段，不读取 state_after 大字段。
+func (s *WorkflowCheckpointService) ListTrailByInstanceIDOrderByCreatedAsc(ctx context.Context, instanceID int64) ([]*model.WorkflowCheckpointModel, error) {
+	return s.dao.ListTrailByInstanceIDOrderByCreatedAsc(ctx, instanceID)
+}
+
+// FindLatestStateAfterByInstanceIDAndNodeID 获取指定节点最近一次执行后的完整状态快照。
+func (s *WorkflowCheckpointService) FindLatestStateAfterByInstanceIDAndNodeID(ctx context.Context, instanceID int64, nodeID string) (*model.WorkflowCheckpointModel, error) {
+	return s.dao.FindLatestStateAfterByInstanceIDAndNodeID(ctx, instanceID, nodeID)
+}
+
 // ListByInstanceIDOrderByCreatedAscWithTx 在事务内列出 checkpoint
 func (s *WorkflowCheckpointService) ListByInstanceIDOrderByCreatedAscWithTx(ctx context.Context, tx *gorm.DB, instanceID int64) ([]*model.WorkflowCheckpointModel, error) {
 	return s.dao.ListByInstanceIDOrderByCreatedAscWithTx(ctx, tx, instanceID)

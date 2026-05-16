@@ -373,6 +373,7 @@ func TestWorkflowClientMethods(t *testing.T) {
 	_ = client.ReportNodeCompletedWithJSON
 	_ = client.RollbackToNode
 	_ = client.GetExecutionTrail
+	_ = client.GetExecutionTrailWithOptions
 
 	// 验证 ExecutionTrail 结构
 	trail := &ExecutionTrail{
@@ -384,5 +385,10 @@ func TestWorkflowClientMethods(t *testing.T) {
 	}
 	if trail.InstanceID != 1 {
 		t.Errorf("ExecutionTrail.InstanceID = %v, want 1", trail.InstanceID)
+	}
+
+	options := ExecutionTrailOptions{IncludeStateAfter: true}
+	if !options.IncludeStateAfter {
+		t.Error("ExecutionTrailOptions.IncludeStateAfter = false, want true")
 	}
 }

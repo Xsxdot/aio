@@ -11,6 +11,7 @@ service WorkflowService {
   rpc ReportNodeCompleted(ReportNodeCompletedRequest) returns (ReportNodeCompletedResponse);
   rpc RollbackToNode(RollbackToNodeRequest) returns (RollbackToNodeResponse);
   rpc GetExecutionTrail(GetExecutionTrailRequest) returns (GetExecutionTrailResponse);
+  rpc GetExecutionState(GetExecutionStateRequest) returns (GetExecutionStateResponse);
   rpc GetDef(GetDefRequest) returns (GetDefResponse);
   rpc ListDefs(ListDefsRequest) returns (ListDefsResponse);
   rpc CreateIfNotExists(CreateIfNotExistsRequest) returns (CreateIfNotExistsResponse);
@@ -68,6 +69,7 @@ message RollbackToNodeResponse {
 
 message GetExecutionTrailRequest {
   int64 instance_id = 1;
+  bool include_state_after = 2;
 }
 
 message GetExecutionTrailResponse {
@@ -83,6 +85,19 @@ message ExecutionTrailCheckpoint {
   string node_output_json = 2;
   string state_after_json = 3;
   string created_at = 4;
+}
+
+message GetExecutionStateRequest {
+  int64 instance_id = 1;
+  string node_id = 2;
+}
+
+message GetExecutionStateResponse {
+  int64 instance_id = 1;
+  string node_id = 2;
+  string state_json = 3;
+  string created_at = 4;
+  bool not_found = 5;
 }
 
 message GetDefRequest {

@@ -195,7 +195,9 @@ func (s *WorkflowService) GetExecutionTrail(ctx context.Context, req *pb.GetExec
 		return nil, status.Error(codes.InvalidArgument, "instance_id 不能为空")
 	}
 
-	trail, err := s.client.GetExecutionTrail(ctx, req.InstanceId)
+	trail, err := s.client.GetExecutionTrailWithOptions(ctx, req.InstanceId, app.ExecutionTrailOptions{
+		IncludeStateAfter: req.IncludeStateAfter,
+	})
 	if err != nil {
 		s.log.WithErr(err).Error("获取执行轨迹失败")
 		return nil, status.Error(codes.Internal, err.Error())
@@ -204,7 +206,7 @@ func (s *WorkflowService) GetExecutionTrail(ctx context.Context, req *pb.GetExec
 	checkpoints := make([]*pb.ExecutionTrailCheckpoint, len(trail.Checkpoints))
 	for i, cp := range trail.Checkpoints {
 		nodeOutputJSON := "{}"
-		stateAfterJSON := "{}"
+		stateAfterJSON := ""
 		if cp.NodeOutput != nil {
 			if b, err := json.Marshal(cp.NodeOutput); err == nil {
 				nodeOutputJSON = string(b)
@@ -229,6 +231,29 @@ func (s *WorkflowService) GetExecutionTrail(ctx context.Context, req *pb.GetExec
 		CurrentState:  trail.CurrentState,
 		ActiveNodeIds: trail.ActiveNodeIDs,
 		Checkpoints:   checkpoints,
+	}, nil
+}
+
+// GetExecutionState 按需获取实例当前状态，或指定节点完成后的状态快照。
+func (s *WorkflowService) GetExecutionState(ctx context.Context, req *pb.GetExecutionStateRequest) (*pb.GetExecutionStateResponse, error) {
+	if req.InstanceId <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "instance_id 不能为空")
+	}
+
+	state, err := s.client.GetExecutionState(ctx, req.InstanceId, req.NodeId)
+	if err != nil {
+		s.log.WithErr(err).Error("获取执行状态失败")
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if state == nil {
+		return &pb.GetExecutionStateResponse{InstanceId: req.InstanceId, NodeId: req.NodeId, NotFound: true}, nil
+	}
+	return &pb.GetExecutionStateResponse{
+		InstanceId: state.InstanceID,
+		NodeId:     state.NodeID,
+		StateJson:  state.StateJSON,
+		CreatedAt:  state.CreatedAt,
+		NotFound:   state.NotFound,
 	}, nil
 }
 

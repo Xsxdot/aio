@@ -154,23 +154,33 @@ func (c *WorkflowClient) RollbackToNode(ctx context.Context, instanceID int64, t
 type ExecutionTrail struct {
 	InstanceID    int64                      `json:"instanceId"`
 	Status        string                     `json:"status"`
-	CurrentState  string                     `json:"currentState"`   // 当前状态 JSON
-	ActiveNodeIDs string                     `json:"activeNodeIds"`  // 活动节点 ID 列表（JSON 字符串）
+	CurrentState  string                     `json:"currentState"`  // 当前状态 JSON
+	ActiveNodeIDs string                     `json:"activeNodeIds"` // 活动节点 ID 列表（JSON 字符串）
 	Checkpoints   []ExecutionTrailCheckpoint `json:"checkpoints"`
 }
 
 // ExecutionTrailCheckpoint 轨迹中的单步快照
 type ExecutionTrailCheckpoint struct {
 	NodeID     string                 `json:"nodeId"`
-	NodeOutput map[string]interface{} `json:"nodeOutput"` // 节点输出
-	StateAfter map[string]interface{} `json:"stateAfter"` // 节点执行后状态
+	NodeOutput map[string]interface{} `json:"nodeOutput"`           // 节点输出
+	StateAfter map[string]interface{} `json:"stateAfter,omitempty"` // 节点执行后状态
 	CreatedAt  string                 `json:"createdAt"`
+}
+
+type ExecutionTrailOptions struct {
+	IncludeStateAfter bool `json:"includeStateAfter"`
 }
 
 // GetExecutionTrail 获取执行轨迹
 func (c *WorkflowClient) GetExecutionTrail(ctx context.Context, instanceID int64) (*ExecutionTrail, error) {
+	return c.GetExecutionTrailWithOptions(ctx, instanceID, ExecutionTrailOptions{})
+}
+
+// GetExecutionTrailWithOptions 获取执行轨迹，可按需包含每个 checkpoint 的完整状态快照。
+func (c *WorkflowClient) GetExecutionTrailWithOptions(ctx context.Context, instanceID int64, opts ExecutionTrailOptions) (*ExecutionTrail, error) {
 	resp, err := c.service.GetExecutionTrail(ctx, &workflowpb.GetExecutionTrailRequest{
-		InstanceId: instanceID,
+		InstanceId:        instanceID,
+		IncludeStateAfter: opts.IncludeStateAfter,
 	})
 	if err != nil {
 		return nil, WrapError(err, "get execution trail failed")
@@ -182,13 +192,13 @@ func (c *WorkflowClient) GetExecutionTrail(ctx context.Context, instanceID int64
 		if cp.NodeOutputJson != "" {
 			_ = json.Unmarshal([]byte(cp.NodeOutputJson), &nodeOutput)
 		}
-		if cp.StateAfterJson != "" {
+		if opts.IncludeStateAfter && cp.StateAfterJson != "" {
 			_ = json.Unmarshal([]byte(cp.StateAfterJson), &stateAfter)
 		}
 		if nodeOutput == nil {
 			nodeOutput = make(map[string]interface{})
 		}
-		if stateAfter == nil {
+		if opts.IncludeStateAfter && stateAfter == nil {
 			stateAfter = make(map[string]interface{})
 		}
 		checkpoints[i] = ExecutionTrailCheckpoint{
@@ -205,6 +215,33 @@ func (c *WorkflowClient) GetExecutionTrail(ctx context.Context, instanceID int64
 		CurrentState:  resp.CurrentState,
 		ActiveNodeIDs: resp.ActiveNodeIds,
 		Checkpoints:   checkpoints,
+	}, nil
+}
+
+// ExecutionState 按需状态详情。
+type ExecutionState struct {
+	InstanceID int64  `json:"instanceId"`
+	NodeID     string `json:"nodeId,omitempty"`
+	StateJSON  string `json:"stateJson,omitempty"`
+	CreatedAt  string `json:"createdAt,omitempty"`
+	NotFound   bool   `json:"notFound"`
+}
+
+// GetExecutionState 按需获取实例当前状态，或指定节点完成后的状态快照。
+func (c *WorkflowClient) GetExecutionState(ctx context.Context, instanceID int64, nodeID string) (*ExecutionState, error) {
+	resp, err := c.service.GetExecutionState(ctx, &workflowpb.GetExecutionStateRequest{
+		InstanceId: instanceID,
+		NodeId:     strings.TrimSpace(nodeID),
+	})
+	if err != nil {
+		return nil, WrapError(err, "get execution state failed")
+	}
+	return &ExecutionState{
+		InstanceID: resp.InstanceId,
+		NodeID:     resp.NodeId,
+		StateJSON:  resp.StateJson,
+		CreatedAt:  resp.CreatedAt,
+		NotFound:   resp.NotFound,
 	}, nil
 }
 

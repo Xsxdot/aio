@@ -36,6 +36,7 @@ func (ctrl *WorkflowAdminController) RegisterRoutes(admin fiber.Router) {
 	router.Post("/instances/:id/signal", base.AdminAuth.RequireAdminAuth("admin:workflow:update"), ctrl.SendSignal)
 	router.Get("/instances/:id", base.AdminAuth.RequireAdminAuth("admin:workflow:read"), ctrl.GetInstance)
 	router.Get("/instances/:id/trail", base.AdminAuth.RequireAdminAuth("admin:workflow:read"), ctrl.GetExecutionTrail)
+	router.Get("/instances/:id/state", base.AdminAuth.RequireAdminAuth("admin:workflow:read"), ctrl.GetExecutionState)
 }
 
 func (ctrl *WorkflowAdminController) CreateDef(c *fiber.Ctx) error {
@@ -124,9 +125,33 @@ func (ctrl *WorkflowAdminController) GetExecutionTrail(c *fiber.Ctx) error {
 	if err != nil {
 		return ctrl.err.New("实例ID参数错误", err).WithTraceID(utils.Context(c))
 	}
-	trail, err := ctrl.app.GetExecutionTrail(utils.Context(c), id)
+	includeStateAfter := false
+	if raw := c.Query("include_state_after"); raw != "" {
+		includeStateAfter, err = strconv.ParseBool(raw)
+		if err != nil {
+			return ctrl.err.New("include_state_after 参数错误", err).WithTraceID(utils.Context(c))
+		}
+	}
+	trail, err := ctrl.app.GetExecutionTrailWithOptions(utils.Context(c), id, app.ExecutionTrailOptions{
+		IncludeStateAfter: includeStateAfter,
+	})
 	if err != nil {
 		return err
 	}
 	return result.OK(c, trail)
+}
+
+func (ctrl *WorkflowAdminController) GetExecutionState(c *fiber.Ctx) error {
+	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
+	if err != nil {
+		return ctrl.err.New("实例ID参数错误", err).WithTraceID(utils.Context(c))
+	}
+	state, err := ctrl.app.GetExecutionState(utils.Context(c), id, c.Query("node_id"))
+	if err != nil {
+		return err
+	}
+	if state == nil {
+		return result.OK(c, dto.ExecutionState{InstanceID: id, NodeID: c.Query("node_id"), NotFound: true})
+	}
+	return result.OK(c, state)
 }

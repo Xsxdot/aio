@@ -56,6 +56,15 @@ type ExecutionTrail struct {
 type ExecutionTrailCheckpoint struct {
 	NodeID     string                 `json:"node_id"`
 	NodeOutput map[string]interface{} `json:"node_output"`
-	StateAfter map[string]interface{} `json:"state_after"`
+	StateAfter map[string]interface{} `json:"state_after,omitempty"`
 	CreatedAt  string                 `json:"created_at"`
+}
+
+// ExecutionState 按需状态详情。
+type ExecutionState struct {
+	InstanceID int64  `json:"instance_id"`
+	NodeID     string `json:"node_id,omitempty"`
+	StateJSON  string `json:"state_json,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"`
+	NotFound   bool   `json:"not_found"`
 }

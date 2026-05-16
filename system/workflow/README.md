@@ -203,11 +203,16 @@ worker.Register("parse", func(ctx context.Context, job *sdk.AcquiredJob) (interf
 ### 4. 获取执行轨迹
 
 ```go
-// 可用于前端绘制全息监控图
+// 默认返回轻量轨迹，适合前端绘制执行过程
 trail, _ := client.Workflow.GetExecutionTrail(ctx, instanceID)
 for _, cp := range trail.Checkpoints {
     fmt.Printf("节点: %s | 状态: %v | 完成时间: %s\n", 
         cp.NodeID, cp.NodeOutput, cp.CreatedAt)
 }
+
+// 调试时如需每个 checkpoint 的完整 StateAfter，可显式开启
+fullTrail, _ := client.Workflow.GetExecutionTrailWithOptions(ctx, instanceID, sdk.ExecutionTrailOptions{
+    IncludeStateAfter: true,
+})
 
 ```

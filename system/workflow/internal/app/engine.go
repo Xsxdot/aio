@@ -1118,18 +1118,40 @@ type ExecutionTrail struct {
 type ExecutionTrailCheckpoint struct {
 	NodeID     string                 `json:"node_id"`
 	NodeOutput map[string]interface{} `json:"node_output"`
-	StateAfter map[string]interface{} `json:"state_after"`
+	StateAfter map[string]interface{} `json:"state_after,omitempty"`
 	CreatedAt  string                 `json:"created_at"`
 }
 
-// GetExecutionTrail 获取工作流完整执行轨迹（用于前端绘制执行过程）
+type ExecutionTrailOptions struct {
+	IncludeStateAfter bool
+}
+
+type ExecutionState struct {
+	InstanceID int64  `json:"instance_id"`
+	NodeID     string `json:"node_id,omitempty"`
+	StateJSON  string `json:"state_json,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"`
+	NotFound   bool   `json:"not_found"`
+}
+
+// GetExecutionTrail 获取工作流轻量执行轨迹（用于前端绘制执行过程）
 func (a *App) GetExecutionTrail(ctx context.Context, instanceID int64) (*ExecutionTrail, error) {
+	return a.GetExecutionTrailWithOptions(ctx, instanceID, ExecutionTrailOptions{})
+}
+
+// GetExecutionTrailWithOptions 获取工作流执行轨迹，可按需携带每个 checkpoint 的完整状态快照。
+func (a *App) GetExecutionTrailWithOptions(ctx context.Context, instanceID int64, opts ExecutionTrailOptions) (*ExecutionTrail, error) {
 	instance, err := a.InstanceService.FindById(ctx, instanceID)
 	if err != nil {
 		return nil, a.err.New("获取实例失败", err)
 	}
 
-	checkpoints, err := a.CheckpointService.ListByInstanceIDOrderByCreatedAsc(ctx, instanceID)
+	var checkpoints []*model.WorkflowCheckpointModel
+	if opts.IncludeStateAfter {
+		checkpoints, err = a.CheckpointService.ListByInstanceIDOrderByCreatedAsc(ctx, instanceID)
+	} else {
+		checkpoints, err = a.CheckpointService.ListTrailByInstanceIDOrderByCreatedAsc(ctx, instanceID)
+	}
 	if err != nil {
 		return nil, a.err.New("获取执行快照失败", err)
 	}
@@ -1142,7 +1164,7 @@ func (a *App) GetExecutionTrail(ctx context.Context, instanceID int64) (*Executi
 				a.log.WithErr(err).Warnf("解析 checkpoint node_output 失败，node_id=%s", cp.NodeID)
 			}
 		}
-		if cp.StateAfter != "" {
+		if opts.IncludeStateAfter && cp.StateAfter != "" {
 			if err := json.Unmarshal([]byte(cp.StateAfter), &stateAfter); err != nil {
 				a.log.WithErr(err).Warnf("解析 checkpoint state_after 失败，node_id=%s", cp.NodeID)
 			}
@@ -1150,7 +1172,7 @@ func (a *App) GetExecutionTrail(ctx context.Context, instanceID int64) (*Executi
 		if nodeOutput == nil {
 			nodeOutput = make(map[string]interface{})
 		}
-		if stateAfter == nil {
+		if opts.IncludeStateAfter && stateAfter == nil {
 			stateAfter = make(map[string]interface{})
 		}
 		trail = append(trail, ExecutionTrailCheckpoint{
@@ -1167,6 +1189,39 @@ func (a *App) GetExecutionTrail(ctx context.Context, instanceID int64) (*Executi
 		CurrentState:  instance.CurrentState,
 		ActiveNodeIDs: instance.ActiveNodeIDs,
 		Checkpoints:   trail,
+	}, nil
+}
+
+// GetExecutionState 按需获取实例当前状态，或指定节点完成后的状态快照。
+func (a *App) GetExecutionState(ctx context.Context, instanceID int64, nodeID string) (*ExecutionState, error) {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		instance, err := a.InstanceService.FindById(ctx, instanceID)
+		if err != nil {
+			return nil, a.err.New("获取实例失败", err)
+		}
+		if instance == nil {
+			return &ExecutionState{InstanceID: instanceID, NotFound: true}, nil
+		}
+		return &ExecutionState{
+			InstanceID: instance.ID,
+			StateJSON:  instance.CurrentState,
+			CreatedAt:  instance.CreatedAt.Format(time.RFC3339),
+		}, nil
+	}
+
+	checkpoint, err := a.CheckpointService.FindLatestStateAfterByInstanceIDAndNodeID(ctx, instanceID, nodeID)
+	if err != nil {
+		return nil, a.err.New("获取节点状态快照失败", err)
+	}
+	if checkpoint == nil {
+		return &ExecutionState{InstanceID: instanceID, NodeID: nodeID, NotFound: true}, nil
+	}
+	return &ExecutionState{
+		InstanceID: instanceID,
+		NodeID:     checkpoint.NodeID,
+		StateJSON:  checkpoint.StateAfter,
+		CreatedAt:  checkpoint.CreatedAt.Format(time.RFC3339),
 	}, nil
 }
 

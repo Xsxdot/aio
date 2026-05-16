@@ -39,11 +39,25 @@ func (c *WorkflowClient) RollbackToNode(ctx context.Context, instanceID int64, t
 
 // GetExecutionTrail 获取执行轨迹
 func (c *WorkflowClient) GetExecutionTrail(ctx context.Context, instanceID int64) (*dto.ExecutionTrail, error) {
-	trail, err := c.app.GetExecutionTrail(ctx, instanceID)
+	return c.GetExecutionTrailWithOptions(ctx, instanceID, app.ExecutionTrailOptions{})
+}
+
+// GetExecutionTrailWithOptions 获取执行轨迹，可按需包含每个 checkpoint 的完整状态快照。
+func (c *WorkflowClient) GetExecutionTrailWithOptions(ctx context.Context, instanceID int64, opts app.ExecutionTrailOptions) (*dto.ExecutionTrail, error) {
+	trail, err := c.app.GetExecutionTrailWithOptions(ctx, instanceID, opts)
 	if err != nil {
 		return nil, err
 	}
 	return toDTO(trail), nil
+}
+
+// GetExecutionState 按需获取实例当前状态，或指定节点完成后的状态快照。
+func (c *WorkflowClient) GetExecutionState(ctx context.Context, instanceID int64, nodeID string) (*dto.ExecutionState, error) {
+	state, err := c.app.GetExecutionState(ctx, instanceID, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	return toStateDTO(state), nil
 }
 
 // GetDef 查询定义，version=0 表示最新版本
@@ -132,5 +146,18 @@ func toDTO(t *app.ExecutionTrail) *dto.ExecutionTrail {
 		CurrentState:  t.CurrentState,
 		ActiveNodeIDs: t.ActiveNodeIDs,
 		Checkpoints:   checkpoints,
+	}
+}
+
+func toStateDTO(s *app.ExecutionState) *dto.ExecutionState {
+	if s == nil {
+		return nil
+	}
+	return &dto.ExecutionState{
+		InstanceID: s.InstanceID,
+		NodeID:     s.NodeID,
+		StateJSON:  s.StateJSON,
+		CreatedAt:  s.CreatedAt,
+		NotFound:   s.NotFound,
 	}
 }

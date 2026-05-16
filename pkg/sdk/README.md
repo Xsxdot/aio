@@ -556,6 +556,9 @@ func (c *WorkflowClient) RollbackToNode(ctx context.Context, instanceID int64, t
 
 // 获取执行轨迹
 func (c *WorkflowClient) GetExecutionTrail(ctx context.Context, instanceID int64) (*ExecutionTrail, error)
+
+// 获取执行轨迹，可按需包含每个 checkpoint 的完整状态快照
+func (c *WorkflowClient) GetExecutionTrailWithOptions(ctx context.Context, instanceID int64, opts ExecutionTrailOptions) (*ExecutionTrail, error)
 ```
 
 #### ExecutionTrail
@@ -574,10 +577,13 @@ type ExecutionTrail struct {
 type ExecutionTrailCheckpoint struct {
     NodeID     string
     NodeOutput map[string]interface{} // 节点输出
-    StateAfter map[string]interface{} // 节点执行后状态
+    StateAfter map[string]interface{} // 节点执行后状态，默认不返回
     CreatedAt  string
 }
 ```
+
+`GetExecutionTrail` 默认返回轻量轨迹，不包含每个 checkpoint 的 `StateAfter`。
+如需调试完整状态快照，请使用 `GetExecutionTrailWithOptions(ctx, instanceID, ExecutionTrailOptions{IncludeStateAfter: true})`。
 
 ### ExecutorWorker
 

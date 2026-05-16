@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v3.11.1
-// source: system/workflow/api/proto/workflow.proto
+// source: workflow.proto
 
 package proto
 
@@ -24,6 +24,7 @@ const (
 	WorkflowService_ReportNodeCompleted_FullMethodName = "/xiaozhizhang.workflow.v1.WorkflowService/ReportNodeCompleted"
 	WorkflowService_RollbackToNode_FullMethodName      = "/xiaozhizhang.workflow.v1.WorkflowService/RollbackToNode"
 	WorkflowService_GetExecutionTrail_FullMethodName   = "/xiaozhizhang.workflow.v1.WorkflowService/GetExecutionTrail"
+	WorkflowService_GetExecutionState_FullMethodName   = "/xiaozhizhang.workflow.v1.WorkflowService/GetExecutionState"
 	WorkflowService_GetDef_FullMethodName              = "/xiaozhizhang.workflow.v1.WorkflowService/GetDef"
 	WorkflowService_ListDefs_FullMethodName            = "/xiaozhizhang.workflow.v1.WorkflowService/ListDefs"
 	WorkflowService_CreateIfNotExists_FullMethodName   = "/xiaozhizhang.workflow.v1.WorkflowService/CreateIfNotExists"
@@ -45,6 +46,7 @@ type WorkflowServiceClient interface {
 	ReportNodeCompleted(ctx context.Context, in *ReportNodeCompletedRequest, opts ...grpc.CallOption) (*ReportNodeCompletedResponse, error)
 	RollbackToNode(ctx context.Context, in *RollbackToNodeRequest, opts ...grpc.CallOption) (*RollbackToNodeResponse, error)
 	GetExecutionTrail(ctx context.Context, in *GetExecutionTrailRequest, opts ...grpc.CallOption) (*GetExecutionTrailResponse, error)
+	GetExecutionState(ctx context.Context, in *GetExecutionStateRequest, opts ...grpc.CallOption) (*GetExecutionStateResponse, error)
 	GetDef(ctx context.Context, in *GetDefRequest, opts ...grpc.CallOption) (*GetDefResponse, error)
 	ListDefs(ctx context.Context, in *ListDefsRequest, opts ...grpc.CallOption) (*ListDefsResponse, error)
 	CreateIfNotExists(ctx context.Context, in *CreateIfNotExistsRequest, opts ...grpc.CallOption) (*CreateIfNotExistsResponse, error)
@@ -107,6 +109,16 @@ func (c *workflowServiceClient) GetExecutionTrail(ctx context.Context, in *GetEx
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetExecutionTrailResponse)
 	err := c.cc.Invoke(ctx, WorkflowService_GetExecutionTrail_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowServiceClient) GetExecutionState(ctx context.Context, in *GetExecutionStateRequest, opts ...grpc.CallOption) (*GetExecutionStateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetExecutionStateResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_GetExecutionState_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -204,6 +216,7 @@ type WorkflowServiceServer interface {
 	ReportNodeCompleted(context.Context, *ReportNodeCompletedRequest) (*ReportNodeCompletedResponse, error)
 	RollbackToNode(context.Context, *RollbackToNodeRequest) (*RollbackToNodeResponse, error)
 	GetExecutionTrail(context.Context, *GetExecutionTrailRequest) (*GetExecutionTrailResponse, error)
+	GetExecutionState(context.Context, *GetExecutionStateRequest) (*GetExecutionStateResponse, error)
 	GetDef(context.Context, *GetDefRequest) (*GetDefResponse, error)
 	ListDefs(context.Context, *ListDefsRequest) (*ListDefsResponse, error)
 	CreateIfNotExists(context.Context, *CreateIfNotExistsRequest) (*CreateIfNotExistsResponse, error)
@@ -236,6 +249,9 @@ func (UnimplementedWorkflowServiceServer) RollbackToNode(context.Context, *Rollb
 }
 func (UnimplementedWorkflowServiceServer) GetExecutionTrail(context.Context, *GetExecutionTrailRequest) (*GetExecutionTrailResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetExecutionTrail not implemented")
+}
+func (UnimplementedWorkflowServiceServer) GetExecutionState(context.Context, *GetExecutionStateRequest) (*GetExecutionStateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetExecutionState not implemented")
 }
 func (UnimplementedWorkflowServiceServer) GetDef(context.Context, *GetDefRequest) (*GetDefResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetDef not implemented")
@@ -368,6 +384,24 @@ func _WorkflowService_GetExecutionTrail_Handler(srv interface{}, ctx context.Con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(WorkflowServiceServer).GetExecutionTrail(ctx, req.(*GetExecutionTrailRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowService_GetExecutionState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetExecutionStateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).GetExecutionState(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_GetExecutionState_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).GetExecutionState(ctx, req.(*GetExecutionStateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -544,6 +578,10 @@ var WorkflowService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _WorkflowService_GetExecutionTrail_Handler,
 		},
 		{
+			MethodName: "GetExecutionState",
+			Handler:    _WorkflowService_GetExecutionState_Handler,
+		},
+		{
 			MethodName: "GetDef",
 			Handler:    _WorkflowService_GetDef_Handler,
 		},
@@ -577,5 +615,5 @@ var WorkflowService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "system/workflow/api/proto/workflow.proto",
+	Metadata: "workflow.proto",
 }
