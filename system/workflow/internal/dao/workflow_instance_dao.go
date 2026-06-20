@@ -54,7 +54,7 @@ type ListInstancesFilter struct {
 }
 
 // ListInstances 分页列出实例，支持 def_code、status、时间范围筛选
-func (d *WorkflowInstanceDao) ListInstances(ctx context.Context, filter *ListInstancesFilter, pageNum, pageSize int32) ([]*model.WorkflowInstanceModel, int64, error) {
+func (d *WorkflowInstanceDao) ListInstances(ctx context.Context, filter *ListInstancesFilter, pageNum, pageSize int32) ([]*model.WorkflowInstanceListItem, int64, error) {
 	if pageNum <= 0 {
 		pageNum = 1
 	}
@@ -62,15 +62,15 @@ func (d *WorkflowInstanceDao) ListInstances(ctx context.Context, filter *ListIns
 		pageSize = 10
 	}
 
-	db := mvc.ExtractDB(ctx, d.db).Model(&model.WorkflowInstanceModel{})
+	db := mvc.ExtractDB(ctx, d.db).Model(&model.WorkflowInstanceModel{}).
+		Joins("LEFT JOIN aio_workflow_def ON aio_workflow_def.id = aio_workflow_instance.def_id")
 
 	if filter != nil {
 		if filter.DefID != nil {
 			db = db.Where("def_id = ?", *filter.DefID)
 		}
 		if filter.DefCode != "" {
-			db = db.Joins("INNER JOIN aio_workflow_def ON aio_workflow_def.id = aio_workflow_instance.def_id").
-				Where("aio_workflow_def.code = ?", filter.DefCode)
+			db = db.Where("aio_workflow_def.code = ?", filter.DefCode)
 		}
 		if filter.Status != "" {
 			db = db.Where("aio_workflow_instance.status = ?", filter.Status)
@@ -88,9 +88,18 @@ func (d *WorkflowInstanceDao) ListInstances(ctx context.Context, filter *ListIns
 		return nil, 0, err
 	}
 
-	var items []*model.WorkflowInstanceModel
+	var items []*model.WorkflowInstanceListItem
 	offset := (pageNum - 1) * pageSize
-	if err := db.Order("aio_workflow_instance.created_at desc").Offset(int(offset)).Limit(int(pageSize)).Find(&items).Error; err != nil {
+	if err := db.Select([]string{
+		"aio_workflow_instance.id",
+		"aio_workflow_instance.def_id",
+		"aio_workflow_def.code AS def_code",
+		"aio_workflow_instance.def_version",
+		"aio_workflow_instance.env",
+		"aio_workflow_instance.status",
+		"aio_workflow_instance.active_node_ids",
+		"aio_workflow_instance.created_at",
+	}).Order("aio_workflow_instance.created_at desc").Offset(int(offset)).Limit(int(pageSize)).Scan(&items).Error; err != nil {
 		return nil, 0, err
 	}
 	return items, total, nil

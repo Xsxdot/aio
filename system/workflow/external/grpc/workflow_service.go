@@ -412,7 +412,6 @@ func (s *WorkflowService) ListInstances(ctx context.Context, req *pb.ListInstanc
 	}
 	pbItems := make([]*pb.GetInstanceResponse, len(items))
 	for i, inst := range items {
-		_, defCode, _ := s.client.GetInstance(ctx, inst.ID)
 		createdAt := ""
 		if !inst.CreatedAt.IsZero() {
 			createdAt = inst.CreatedAt.Format("2006-01-02 15:04:05")
@@ -420,12 +419,10 @@ func (s *WorkflowService) ListInstances(ctx context.Context, req *pb.ListInstanc
 		pbItems[i] = &pb.GetInstanceResponse{
 			InstanceId:    inst.ID,
 			DefId:         inst.DefID,
-			DefCode:       defCode,
+			DefCode:       inst.DefCode,
 			DefVersion:    inst.DefVersion,
 			Env:           inst.Env,
 			Status:        string(inst.Status),
-			InitialState:  inst.InitialState,
-			CurrentState:  inst.CurrentState,
 			ActiveNodeIds: inst.ActiveNodeIDs,
 			CreatedAt:     createdAt,
 		}

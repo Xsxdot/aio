@@ -17,6 +17,7 @@ import (
 // 类型别名，供 api/client 等层使用
 type WorkflowDefModel = model.WorkflowDefModel
 type WorkflowInstanceModel = model.WorkflowInstanceModel
+type WorkflowInstanceListItem = model.WorkflowInstanceListItem
 type ListInstancesFilter = dao.ListInstancesFilter
 
 // App 工作流内部应用层编排
@@ -112,7 +113,7 @@ func (a *App) ListDefs(ctx context.Context, env, codeLike string, pageNum, pageS
 }
 
 // ListInstances 分页列出实例
-func (a *App) ListInstances(ctx context.Context, filter *dao.ListInstancesFilter, pageNum, pageSize int32) ([]*model.WorkflowInstanceModel, int64, error) {
+func (a *App) ListInstances(ctx context.Context, filter *dao.ListInstancesFilter, pageNum, pageSize int32) ([]*model.WorkflowInstanceListItem, int64, error) {
 	return a.InstanceService.ListInstances(ctx, filter, pageNum, pageSize)
 }
 

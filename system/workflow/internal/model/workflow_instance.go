@@ -1,6 +1,8 @@
 package model
 
 import (
+	"time"
+
 	"github.com/xsxdot/aio/pkg/core/model/common"
 )
 
@@ -23,6 +25,17 @@ type WorkflowInstanceModel struct {
 	InitialState  string                 `gorm:"column:initial_state;type:json" json:"initial_state" comment:"启动时初始状态JSON，用于回滚到起始节点"`
 	CurrentState  string                 `gorm:"column:current_state;type:json" json:"current_state" comment:"当前全局状态JSON"`
 	ActiveNodeIDs string                 `gorm:"column:active_node_ids;type:json" json:"active_node_ids" comment:"当前活跃节点列表JSON"`
+}
+
+type WorkflowInstanceListItem struct {
+	ID            int64                  `json:"id"`
+	DefID         int64                  `json:"def_id"`
+	DefCode       string                 `json:"def_code"`
+	DefVersion    int32                  `json:"def_version"`
+	Env           string                 `json:"env"`
+	Status        WorkflowInstanceStatus `json:"status"`
+	ActiveNodeIDs string                 `json:"active_node_ids"`
+	CreatedAt     time.Time              `json:"createdAt"`
 }
 
 func (WorkflowInstanceModel) TableName() string {

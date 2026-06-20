@@ -108,7 +108,7 @@ func (c *WorkflowClient) GetInstanceStatus(ctx context.Context, instanceID int64
 }
 
 // ListInstances 分页列出实例
-func (c *WorkflowClient) ListInstances(ctx context.Context, filter *app.ListInstancesFilter, pageNum, pageSize int32) ([]*app.WorkflowInstanceModel, int64, error) {
+func (c *WorkflowClient) ListInstances(ctx context.Context, filter *app.ListInstancesFilter, pageNum, pageSize int32) ([]*app.WorkflowInstanceListItem, int64, error) {
 	return c.app.ListInstances(ctx, filter, pageNum, pageSize)
 }
 

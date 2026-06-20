@@ -229,10 +229,23 @@ func EnableSDKRegisterSelf(client *sdk.Client, bootCfg LocalBootstrap, cfg *SdkR
 
 	handle, err := client.Registry.RegisterSelfWithEnsureService(ctx, svcReq, instReq)
 	if err != nil {
-		log.Panic("failed to register self to registry")
+		log.Panic(registerSelfFailureMessage(bootCfg, svcReq, instReq, err))
 	}
 
 	log.Printf("successfully registered to registry, heartbeat started")
 
 	return handle
+}
+
+func registerSelfFailureMessage(bootCfg LocalBootstrap, svcReq *sdk.EnsureServiceRequest, instReq *sdk.RegisterInstanceRequest, err error) string {
+	return fmt.Sprintf(
+		"failed to register self to registry: registry_addr=%s project=%s service_name=%s env=%s instance_key=%s endpoint=%s err=%v",
+		bootCfg.Aio.RegistryAddr,
+		svcReq.Project,
+		svcReq.Name,
+		instReq.Env,
+		instReq.InstanceKey,
+		instReq.Endpoint,
+		err,
+	)
 }

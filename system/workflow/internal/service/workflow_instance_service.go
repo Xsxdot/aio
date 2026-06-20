@@ -39,6 +39,6 @@ func (s *WorkflowInstanceService) SaveWithTx(ctx context.Context, tx *gorm.DB, e
 }
 
 // ListInstances 分页列出实例
-func (s *WorkflowInstanceService) ListInstances(ctx context.Context, filter *dao.ListInstancesFilter, pageNum, pageSize int32) ([]*model.WorkflowInstanceModel, int64, error) {
+func (s *WorkflowInstanceService) ListInstances(ctx context.Context, filter *dao.ListInstancesFilter, pageNum, pageSize int32) ([]*model.WorkflowInstanceListItem, int64, error) {
 	return s.dao.ListInstances(ctx, filter, pageNum, pageSize)
 }
