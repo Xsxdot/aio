@@ -167,6 +167,26 @@ type AcquireJobRequest struct {
 	LeaseDuration int32  // 租约时长（秒），默认30秒
 }
 
+// AcquireJobsMode 是 SDK 侧批量领取模式。
+type AcquireJobsMode string
+
+const (
+	// AcquireJobsModeOnePerMethod 表示每个 method 使用 server 派生的 consumer slot。
+	AcquireJobsModeOnePerMethod AcquireJobsMode = "ONE_PER_METHOD"
+	// AcquireJobsModeFillSlots 表示按并发 worker 当前空闲 slot 填充任务。
+	AcquireJobsModeFillSlots AcquireJobsMode = "FILL_SLOTS"
+)
+
+// AcquireJobsRequest 批量领取任务请求。
+type AcquireJobsRequest struct {
+	TargetService  string
+	Methods        []string
+	BaseConsumerID string
+	ConsumerIDs    []string
+	LeaseDuration  int32
+	Mode           AcquireJobsMode
+}
+
 // AcquiredJob 已领取的任务信息
 type AcquiredJob struct {
 	JobID         int64  // 任务ID
@@ -176,6 +196,7 @@ type AcquiredJob struct {
 	Method        string // 方法名
 	ArgsJSON      string // 参数 JSON
 	LeaseUntil    int64  // 租约到期时间（Unix 时间戳秒）
+	ConsumerID    string // 实际持有租约的 consumer slot
 }
 
 // AcquireJob 领取任务
@@ -207,7 +228,60 @@ func (c *ExecutorClient) AcquireJob(ctx context.Context, req *AcquireJobRequest)
 		Method:        resp.Method,
 		ArgsJSON:      resp.ArgsJson,
 		LeaseUntil:    resp.LeaseUntil,
+		ConsumerID:    req.ConsumerID,
 	}, nil
+}
+
+// AcquireJobs 批量领取任务。
+//
+// 返回：
+//   - 已领取任务列表；无任务时为空切片
+//   - RPC 或参数错误
+func (c *ExecutorClient) AcquireJobs(ctx context.Context, req *AcquireJobsRequest) ([]*AcquiredJob, error) {
+	pbMode, err := sdkAcquireJobsModeToProto(req.Mode)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.service.AcquireJobs(ctx, &executorpb.AcquireJobsRequest{
+		Env:            c.env,
+		TargetService:  req.TargetService,
+		Methods:        req.Methods,
+		ConsumerIds:    req.ConsumerIDs,
+		BaseConsumerId: req.BaseConsumerID,
+		LeaseDuration:  req.LeaseDuration,
+		Mode:           pbMode,
+	})
+	if err != nil {
+		return nil, WrapError(err, "acquire jobs failed")
+	}
+	jobs := make([]*AcquiredJob, 0, len(resp.GetJobs()))
+	for _, item := range resp.GetJobs() {
+		jobs = append(jobs, &AcquiredJob{
+			JobID:         item.JobId,
+			AttemptNo:     item.AttemptNo,
+			Env:           item.Env,
+			TargetService: item.TargetService,
+			Method:        item.Method,
+			ArgsJSON:      item.ArgsJson,
+			LeaseUntil:    item.LeaseUntil,
+			ConsumerID:    item.ConsumerId,
+		})
+	}
+	return jobs, nil
+}
+
+func sdkAcquireJobsModeToProto(mode AcquireJobsMode) (executorpb.AcquireJobsMode, error) {
+	switch mode {
+	case AcquireJobsModeOnePerMethod:
+		return executorpb.AcquireJobsMode_ACQUIRE_JOBS_MODE_ONE_PER_METHOD, nil
+	case AcquireJobsModeFillSlots:
+		return executorpb.AcquireJobsMode_ACQUIRE_JOBS_MODE_FILL_SLOTS, nil
+	default:
+		return executorpb.AcquireJobsMode_ACQUIRE_JOBS_MODE_UNSPECIFIED, WrapError(
+			status.Error(codes.InvalidArgument, "invalid acquire jobs mode"),
+			"invalid acquire jobs mode",
+		)
+	}
 }
 
 // RenewLease 续租

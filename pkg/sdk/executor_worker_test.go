@@ -17,19 +17,26 @@ import (
 type mockExecutorServiceClient struct {
 	executorpb.ExecutorServiceClient
 
-	mu             sync.Mutex
-	acquireFunc    func(ctx context.Context, in *executorpb.AcquireJobRequest, opts ...grpc.CallOption) (*executorpb.AcquireJobResponse, error)
-	renewLeaseFunc func(ctx context.Context, in *executorpb.RenewLeaseRequest, opts ...grpc.CallOption) (*executorpb.RenewLeaseResponse, error)
-	ackJobFunc     func(ctx context.Context, in *executorpb.AckJobRequest, opts ...grpc.CallOption) (*executorpb.AckJobResponse, error)
+	mu              sync.Mutex
+	acquireFunc     func(ctx context.Context, in *executorpb.AcquireJobRequest, opts ...grpc.CallOption) (*executorpb.AcquireJobResponse, error)
+	acquireJobsFunc func(ctx context.Context, in *executorpb.AcquireJobsRequest, opts ...grpc.CallOption) (*executorpb.AcquireJobsResponse, error)
+	renewLeaseFunc  func(ctx context.Context, in *executorpb.RenewLeaseRequest, opts ...grpc.CallOption) (*executorpb.RenewLeaseResponse, error)
+	ackJobFunc      func(ctx context.Context, in *executorpb.AckJobRequest, opts ...grpc.CallOption) (*executorpb.AckJobResponse, error)
 
 	// 记录调用
-	acquireCalls []acquireCall
-	renewCalls   []renewCall
-	ackCalls     []ackCall
+	acquireCalls     []acquireCall
+	acquireJobsCalls []acquireJobsCall
+	renewCalls       []renewCall
+	ackCalls         []ackCall
 }
 
 type acquireCall struct {
 	req  *executorpb.AcquireJobRequest
+	time time.Time
+}
+
+type acquireJobsCall struct {
+	req  *executorpb.AcquireJobsRequest
 	time time.Time
 }
 
@@ -52,6 +59,17 @@ func (m *mockExecutorServiceClient) AcquireJob(ctx context.Context, in *executor
 		return m.acquireFunc(ctx, in, opts...)
 	}
 	return &executorpb.AcquireJobResponse{JobId: 0}, nil
+}
+
+func (m *mockExecutorServiceClient) AcquireJobs(ctx context.Context, in *executorpb.AcquireJobsRequest, opts ...grpc.CallOption) (*executorpb.AcquireJobsResponse, error) {
+	m.mu.Lock()
+	m.acquireJobsCalls = append(m.acquireJobsCalls, acquireJobsCall{req: in, time: time.Now()})
+	m.mu.Unlock()
+
+	if m.acquireJobsFunc != nil {
+		return m.acquireJobsFunc(ctx, in, opts...)
+	}
+	return &executorpb.AcquireJobsResponse{}, nil
 }
 
 func (m *mockExecutorServiceClient) RenewLease(ctx context.Context, in *executorpb.RenewLeaseRequest, opts ...grpc.CallOption) (*executorpb.RenewLeaseResponse, error) {
@@ -84,6 +102,14 @@ func (m *mockExecutorServiceClient) getAcquireCalls() []acquireCall {
 	return calls
 }
 
+func (m *mockExecutorServiceClient) getAcquireJobsCalls() []acquireJobsCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	calls := make([]acquireJobsCall, len(m.acquireJobsCalls))
+	copy(calls, m.acquireJobsCalls)
+	return calls
+}
+
 func (m *mockExecutorServiceClient) getRenewCalls() []renewCall {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -104,6 +130,7 @@ func (m *mockExecutorServiceClient) reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.acquireCalls = nil
+	m.acquireJobsCalls = nil
 	m.renewCalls = nil
 	m.ackCalls = nil
 }
@@ -135,6 +162,55 @@ func createTestWorker(t *testing.T, mock *mockExecutorServiceClient) (*ExecutorW
 	}
 
 	return worker, s
+}
+
+func TestExecutorClientAcquireJobsMapsRequestAndResponse(t *testing.T) {
+	mock := &mockExecutorServiceClient{}
+	client := &ExecutorClient{env: "dev", service: mock}
+	mock.acquireJobsFunc = func(ctx context.Context, in *executorpb.AcquireJobsRequest, opts ...grpc.CallOption) (*executorpb.AcquireJobsResponse, error) {
+		if in.Env != "dev" {
+			t.Fatalf("env = %q", in.Env)
+		}
+		if in.TargetService != "tk-server" {
+			t.Fatalf("target_service = %q", in.TargetService)
+		}
+		if in.BaseConsumerId != "worker-base" {
+			t.Fatalf("base_consumer_id = %q", in.BaseConsumerId)
+		}
+		if len(in.ConsumerIds) != 0 {
+			t.Fatalf("consumer_ids = %v, want empty for ONE_PER_METHOD", in.ConsumerIds)
+		}
+		if in.Mode != executorpb.AcquireJobsMode_ACQUIRE_JOBS_MODE_ONE_PER_METHOD {
+			t.Fatalf("mode = %v", in.Mode)
+		}
+		return &executorpb.AcquireJobsResponse{Jobs: []*executorpb.AcquiredJobItem{{
+			JobId:         101,
+			AttemptNo:     2,
+			Env:           "dev",
+			TargetService: "tk-server",
+			Method:        "method.a",
+			ArgsJson:      `{}`,
+			LeaseUntil:    999,
+			ConsumerId:    "worker-base-m-method.a",
+		}}}, nil
+	}
+
+	jobs, err := client.AcquireJobs(context.Background(), &AcquireJobsRequest{
+		TargetService:  "tk-server",
+		Methods:        []string{"method.a"},
+		BaseConsumerID: "worker-base",
+		LeaseDuration:  60,
+		Mode:           AcquireJobsModeOnePerMethod,
+	})
+	if err != nil {
+		t.Fatalf("AcquireJobs: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("jobs len = %d, want 1", len(jobs))
+	}
+	if jobs[0].JobID != 101 || jobs[0].AttemptNo != 2 || jobs[0].ConsumerID != "worker-base-m-method.a" {
+		t.Fatalf("job = %#v", jobs[0])
+	}
 }
 
 // TestWorker_SuccessfulJob 测试成功执行任务并 Ack 成功
