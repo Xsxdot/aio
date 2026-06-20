@@ -11,6 +11,9 @@ service ExecutorService {
   
   // AcquireJob 领取任务（Worker 调用）
   rpc AcquireJob(AcquireJobRequest) returns (AcquireJobResponse);
+
+  // AcquireJobs 批量领取任务（Worker 调用）
+  rpc AcquireJobs(AcquireJobsRequest) returns (AcquireJobsResponse);
   
   // RenewLease 续租（长任务周期性续租）
   rpc RenewLease(RenewLeaseRequest) returns (RenewLeaseResponse);
@@ -85,6 +88,43 @@ message AcquireJobResponse {
   string args_json = 5;         // 参数 JSON
   int64 lease_until = 6;        // 租约到期时间（Unix 时间戳秒）
   string env = 7;               // 环境标识
+}
+
+// AcquireJobsMode 批量领取模式
+enum AcquireJobsMode {
+  ACQUIRE_JOBS_MODE_UNSPECIFIED = 0;
+  ACQUIRE_JOBS_MODE_ONE_PER_METHOD = 1; // 每个 method 最多领取一条 job
+  ACQUIRE_JOBS_MODE_FILL_SLOTS = 2;     // 按空闲 slot 数领取 job
+}
+
+// AcquireJobsRequest 批量领取任务请求
+message AcquireJobsRequest {
+  string env = 1;                    // 环境标识（必填，如 dev/prod/test）
+  string target_service = 2;         // 目标服务名
+  repeated string methods = 3;       // 可领取方法集合
+  // ONE_PER_METHOD：忽略 consumer_ids，使用 base_consumer_id 派生每 method slot。
+  // FILL_SLOTS：忽略 base_consumer_id，使用 consumer_ids 作为空闲 slot 列表。
+  repeated string consumer_ids = 4;  // 本轮可用 consumer slot
+  string base_consumer_id = 5;       // ONE_PER_METHOD 使用的基础 consumer ID
+  int32 lease_duration = 6;          // 租约时长（秒），默认30秒
+  AcquireJobsMode mode = 7;          // 批量领取模式
+}
+
+// AcquiredJobItem 是批量领取返回的单条任务
+message AcquiredJobItem {
+  int64 job_id = 1;             // 任务ID
+  int32 attempt_no = 2;         // 当前尝试次数
+  string env = 3;               // 环境标识
+  string target_service = 4;    // 目标服务名
+  string method = 5;            // 方法名
+  string args_json = 6;         // 参数 JSON
+  int64 lease_until = 7;        // 租约到期时间（Unix 时间戳秒）
+  string consumer_id = 8;       // 本任务实际使用的 consumer slot
+}
+
+// AcquireJobsResponse 批量领取任务响应
+message AcquireJobsResponse {
+  repeated AcquiredJobItem jobs = 1; // 空列表表示无可领取任务
 }
 
 // RenewLeaseRequest 续租请求

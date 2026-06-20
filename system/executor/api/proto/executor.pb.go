@@ -83,118 +83,54 @@ func (JobStatus) EnumDescriptor() ([]byte, []int) {
 	return file_executor_proto_rawDescGZIP(), []int{0}
 }
 
-// SubscribeJobAvailableRequest 订阅任务可用请求
-type SubscribeJobAvailableRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Env           string                 `protobuf:"bytes,1,opt,name=env,proto3" json:"env,omitempty"`                                          // 环境标识（必填）
-	TargetService string                 `protobuf:"bytes,2,opt,name=target_service,json=targetService,proto3" json:"target_service,omitempty"` // 目标服务名（必填）
-	Method        string                 `protobuf:"bytes,3,opt,name=method,proto3" json:"method,omitempty"`                                    // 方法名，空表示该 service 下任意方法
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
+// AcquireJobsMode 批量领取模式
+type AcquireJobsMode int32
 
-func (x *SubscribeJobAvailableRequest) Reset() {
-	*x = SubscribeJobAvailableRequest{}
-	mi := &file_executor_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
+const (
+	AcquireJobsMode_ACQUIRE_JOBS_MODE_UNSPECIFIED    AcquireJobsMode = 0
+	AcquireJobsMode_ACQUIRE_JOBS_MODE_ONE_PER_METHOD AcquireJobsMode = 1 // 每个 method 最多领取一条 job
+	AcquireJobsMode_ACQUIRE_JOBS_MODE_FILL_SLOTS     AcquireJobsMode = 2 // 按空闲 slot 数领取 job
+)
 
-func (x *SubscribeJobAvailableRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SubscribeJobAvailableRequest) ProtoMessage() {}
-
-func (x *SubscribeJobAvailableRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
+// Enum value maps for AcquireJobsMode.
+var (
+	AcquireJobsMode_name = map[int32]string{
+		0: "ACQUIRE_JOBS_MODE_UNSPECIFIED",
+		1: "ACQUIRE_JOBS_MODE_ONE_PER_METHOD",
+		2: "ACQUIRE_JOBS_MODE_FILL_SLOTS",
 	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SubscribeJobAvailableRequest.ProtoReflect.Descriptor instead.
-func (*SubscribeJobAvailableRequest) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *SubscribeJobAvailableRequest) GetEnv() string {
-	if x != nil {
-		return x.Env
+	AcquireJobsMode_value = map[string]int32{
+		"ACQUIRE_JOBS_MODE_UNSPECIFIED":    0,
+		"ACQUIRE_JOBS_MODE_ONE_PER_METHOD": 1,
+		"ACQUIRE_JOBS_MODE_FILL_SLOTS":     2,
 	}
-	return ""
+)
+
+func (x AcquireJobsMode) Enum() *AcquireJobsMode {
+	p := new(AcquireJobsMode)
+	*p = x
+	return p
 }
 
-func (x *SubscribeJobAvailableRequest) GetTargetService() string {
-	if x != nil {
-		return x.TargetService
-	}
-	return ""
+func (x AcquireJobsMode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (x *SubscribeJobAvailableRequest) GetMethod() string {
-	if x != nil {
-		return x.Method
-	}
-	return ""
+func (AcquireJobsMode) Descriptor() protoreflect.EnumDescriptor {
+	return file_executor_proto_enumTypes[1].Descriptor()
 }
 
-// JobAvailableHint 任务可用 hint（推送通知）
-type JobAvailableHint struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetService string                 `protobuf:"bytes,1,opt,name=target_service,json=targetService,proto3" json:"target_service,omitempty"` // 目标服务名
-	Method        string                 `protobuf:"bytes,2,opt,name=method,proto3" json:"method,omitempty"`                                    // 方法名
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+func (AcquireJobsMode) Type() protoreflect.EnumType {
+	return &file_executor_proto_enumTypes[1]
 }
 
-func (x *JobAvailableHint) Reset() {
-	*x = JobAvailableHint{}
-	mi := &file_executor_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
+func (x AcquireJobsMode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
 }
 
-func (x *JobAvailableHint) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*JobAvailableHint) ProtoMessage() {}
-
-func (x *JobAvailableHint) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use JobAvailableHint.ProtoReflect.Descriptor instead.
-func (*JobAvailableHint) Descriptor() ([]byte, []int) {
+// Deprecated: Use AcquireJobsMode.Descriptor instead.
+func (AcquireJobsMode) EnumDescriptor() ([]byte, []int) {
 	return file_executor_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *JobAvailableHint) GetTargetService() string {
-	if x != nil {
-		return x.TargetService
-	}
-	return ""
-}
-
-func (x *JobAvailableHint) GetMethod() string {
-	if x != nil {
-		return x.Method
-	}
-	return ""
 }
 
 // SubmitJobRequest 提交任务请求
@@ -219,7 +155,7 @@ type SubmitJobRequest struct {
 
 func (x *SubmitJobRequest) Reset() {
 	*x = SubmitJobRequest{}
-	mi := &file_executor_proto_msgTypes[2]
+	mi := &file_executor_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -231,7 +167,7 @@ func (x *SubmitJobRequest) String() string {
 func (*SubmitJobRequest) ProtoMessage() {}
 
 func (x *SubmitJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[2]
+	mi := &file_executor_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -244,7 +180,7 @@ func (x *SubmitJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitJobRequest.ProtoReflect.Descriptor instead.
 func (*SubmitJobRequest) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{2}
+	return file_executor_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *SubmitJobRequest) GetEnv() string {
@@ -348,7 +284,7 @@ type SubmitJobResponse struct {
 
 func (x *SubmitJobResponse) Reset() {
 	*x = SubmitJobResponse{}
-	mi := &file_executor_proto_msgTypes[3]
+	mi := &file_executor_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -360,7 +296,7 @@ func (x *SubmitJobResponse) String() string {
 func (*SubmitJobResponse) ProtoMessage() {}
 
 func (x *SubmitJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[3]
+	mi := &file_executor_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -373,7 +309,7 @@ func (x *SubmitJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitJobResponse.ProtoReflect.Descriptor instead.
 func (*SubmitJobResponse) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{3}
+	return file_executor_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *SubmitJobResponse) GetJobId() int64 {
@@ -397,7 +333,7 @@ type AcquireJobRequest struct {
 
 func (x *AcquireJobRequest) Reset() {
 	*x = AcquireJobRequest{}
-	mi := &file_executor_proto_msgTypes[4]
+	mi := &file_executor_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -409,7 +345,7 @@ func (x *AcquireJobRequest) String() string {
 func (*AcquireJobRequest) ProtoMessage() {}
 
 func (x *AcquireJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[4]
+	mi := &file_executor_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -422,7 +358,7 @@ func (x *AcquireJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcquireJobRequest.ProtoReflect.Descriptor instead.
 func (*AcquireJobRequest) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{4}
+	return file_executor_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *AcquireJobRequest) GetEnv() string {
@@ -476,7 +412,7 @@ type AcquireJobResponse struct {
 
 func (x *AcquireJobResponse) Reset() {
 	*x = AcquireJobResponse{}
-	mi := &file_executor_proto_msgTypes[5]
+	mi := &file_executor_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -488,7 +424,7 @@ func (x *AcquireJobResponse) String() string {
 func (*AcquireJobResponse) ProtoMessage() {}
 
 func (x *AcquireJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[5]
+	mi := &file_executor_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -501,7 +437,7 @@ func (x *AcquireJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcquireJobResponse.ProtoReflect.Descriptor instead.
 func (*AcquireJobResponse) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{5}
+	return file_executor_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *AcquireJobResponse) GetJobId() int64 {
@@ -553,6 +489,247 @@ func (x *AcquireJobResponse) GetEnv() string {
 	return ""
 }
 
+// AcquireJobsRequest 批量领取任务请求
+type AcquireJobsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Env           string                 `protobuf:"bytes,1,opt,name=env,proto3" json:"env,omitempty"`                                          // 环境标识（必填，如 dev/prod/test）
+	TargetService string                 `protobuf:"bytes,2,opt,name=target_service,json=targetService,proto3" json:"target_service,omitempty"` // 目标服务名
+	Methods       []string               `protobuf:"bytes,3,rep,name=methods,proto3" json:"methods,omitempty"`                                  // 可领取方法集合
+	// ONE_PER_METHOD：忽略 consumer_ids，使用 base_consumer_id 派生每 method slot。
+	// FILL_SLOTS：忽略 base_consumer_id，使用 consumer_ids 作为空闲 slot 列表。
+	ConsumerIds    []string        `protobuf:"bytes,4,rep,name=consumer_ids,json=consumerIds,proto3" json:"consumer_ids,omitempty"`               // 本轮可用 consumer slot
+	BaseConsumerId string          `protobuf:"bytes,5,opt,name=base_consumer_id,json=baseConsumerId,proto3" json:"base_consumer_id,omitempty"`    // ONE_PER_METHOD 使用的基础 consumer ID
+	LeaseDuration  int32           `protobuf:"varint,6,opt,name=lease_duration,json=leaseDuration,proto3" json:"lease_duration,omitempty"`        // 租约时长（秒），默认30秒
+	Mode           AcquireJobsMode `protobuf:"varint,7,opt,name=mode,proto3,enum=xiaozhizhang.executor.v1.AcquireJobsMode" json:"mode,omitempty"` // 批量领取模式
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *AcquireJobsRequest) Reset() {
+	*x = AcquireJobsRequest{}
+	mi := &file_executor_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AcquireJobsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AcquireJobsRequest) ProtoMessage() {}
+
+func (x *AcquireJobsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_executor_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AcquireJobsRequest.ProtoReflect.Descriptor instead.
+func (*AcquireJobsRequest) Descriptor() ([]byte, []int) {
+	return file_executor_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *AcquireJobsRequest) GetEnv() string {
+	if x != nil {
+		return x.Env
+	}
+	return ""
+}
+
+func (x *AcquireJobsRequest) GetTargetService() string {
+	if x != nil {
+		return x.TargetService
+	}
+	return ""
+}
+
+func (x *AcquireJobsRequest) GetMethods() []string {
+	if x != nil {
+		return x.Methods
+	}
+	return nil
+}
+
+func (x *AcquireJobsRequest) GetConsumerIds() []string {
+	if x != nil {
+		return x.ConsumerIds
+	}
+	return nil
+}
+
+func (x *AcquireJobsRequest) GetBaseConsumerId() string {
+	if x != nil {
+		return x.BaseConsumerId
+	}
+	return ""
+}
+
+func (x *AcquireJobsRequest) GetLeaseDuration() int32 {
+	if x != nil {
+		return x.LeaseDuration
+	}
+	return 0
+}
+
+func (x *AcquireJobsRequest) GetMode() AcquireJobsMode {
+	if x != nil {
+		return x.Mode
+	}
+	return AcquireJobsMode_ACQUIRE_JOBS_MODE_UNSPECIFIED
+}
+
+// AcquiredJobItem 是批量领取返回的单条任务
+type AcquiredJobItem struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         int64                  `protobuf:"varint,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`                        // 任务ID
+	AttemptNo     int32                  `protobuf:"varint,2,opt,name=attempt_no,json=attemptNo,proto3" json:"attempt_no,omitempty"`            // 当前尝试次数
+	Env           string                 `protobuf:"bytes,3,opt,name=env,proto3" json:"env,omitempty"`                                          // 环境标识
+	TargetService string                 `protobuf:"bytes,4,opt,name=target_service,json=targetService,proto3" json:"target_service,omitempty"` // 目标服务名
+	Method        string                 `protobuf:"bytes,5,opt,name=method,proto3" json:"method,omitempty"`                                    // 方法名
+	ArgsJson      string                 `protobuf:"bytes,6,opt,name=args_json,json=argsJson,proto3" json:"args_json,omitempty"`                // 参数 JSON
+	LeaseUntil    int64                  `protobuf:"varint,7,opt,name=lease_until,json=leaseUntil,proto3" json:"lease_until,omitempty"`         // 租约到期时间（Unix 时间戳秒）
+	ConsumerId    string                 `protobuf:"bytes,8,opt,name=consumer_id,json=consumerId,proto3" json:"consumer_id,omitempty"`          // 本任务实际使用的 consumer slot
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AcquiredJobItem) Reset() {
+	*x = AcquiredJobItem{}
+	mi := &file_executor_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AcquiredJobItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AcquiredJobItem) ProtoMessage() {}
+
+func (x *AcquiredJobItem) ProtoReflect() protoreflect.Message {
+	mi := &file_executor_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AcquiredJobItem.ProtoReflect.Descriptor instead.
+func (*AcquiredJobItem) Descriptor() ([]byte, []int) {
+	return file_executor_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *AcquiredJobItem) GetJobId() int64 {
+	if x != nil {
+		return x.JobId
+	}
+	return 0
+}
+
+func (x *AcquiredJobItem) GetAttemptNo() int32 {
+	if x != nil {
+		return x.AttemptNo
+	}
+	return 0
+}
+
+func (x *AcquiredJobItem) GetEnv() string {
+	if x != nil {
+		return x.Env
+	}
+	return ""
+}
+
+func (x *AcquiredJobItem) GetTargetService() string {
+	if x != nil {
+		return x.TargetService
+	}
+	return ""
+}
+
+func (x *AcquiredJobItem) GetMethod() string {
+	if x != nil {
+		return x.Method
+	}
+	return ""
+}
+
+func (x *AcquiredJobItem) GetArgsJson() string {
+	if x != nil {
+		return x.ArgsJson
+	}
+	return ""
+}
+
+func (x *AcquiredJobItem) GetLeaseUntil() int64 {
+	if x != nil {
+		return x.LeaseUntil
+	}
+	return 0
+}
+
+func (x *AcquiredJobItem) GetConsumerId() string {
+	if x != nil {
+		return x.ConsumerId
+	}
+	return ""
+}
+
+// AcquireJobsResponse 批量领取任务响应
+type AcquireJobsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Jobs          []*AcquiredJobItem     `protobuf:"bytes,1,rep,name=jobs,proto3" json:"jobs,omitempty"` // 空列表表示无可领取任务
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AcquireJobsResponse) Reset() {
+	*x = AcquireJobsResponse{}
+	mi := &file_executor_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AcquireJobsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AcquireJobsResponse) ProtoMessage() {}
+
+func (x *AcquireJobsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_executor_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AcquireJobsResponse.ProtoReflect.Descriptor instead.
+func (*AcquireJobsResponse) Descriptor() ([]byte, []int) {
+	return file_executor_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *AcquireJobsResponse) GetJobs() []*AcquiredJobItem {
+	if x != nil {
+		return x.Jobs
+	}
+	return nil
+}
+
 // RenewLeaseRequest 续租请求
 type RenewLeaseRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
@@ -566,7 +743,7 @@ type RenewLeaseRequest struct {
 
 func (x *RenewLeaseRequest) Reset() {
 	*x = RenewLeaseRequest{}
-	mi := &file_executor_proto_msgTypes[6]
+	mi := &file_executor_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -578,7 +755,7 @@ func (x *RenewLeaseRequest) String() string {
 func (*RenewLeaseRequest) ProtoMessage() {}
 
 func (x *RenewLeaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[6]
+	mi := &file_executor_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -591,7 +768,7 @@ func (x *RenewLeaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewLeaseRequest.ProtoReflect.Descriptor instead.
 func (*RenewLeaseRequest) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{6}
+	return file_executor_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RenewLeaseRequest) GetJobId() int64 {
@@ -634,7 +811,7 @@ type RenewLeaseResponse struct {
 
 func (x *RenewLeaseResponse) Reset() {
 	*x = RenewLeaseResponse{}
-	mi := &file_executor_proto_msgTypes[7]
+	mi := &file_executor_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -646,7 +823,7 @@ func (x *RenewLeaseResponse) String() string {
 func (*RenewLeaseResponse) ProtoMessage() {}
 
 func (x *RenewLeaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[7]
+	mi := &file_executor_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -659,7 +836,7 @@ func (x *RenewLeaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewLeaseResponse.ProtoReflect.Descriptor instead.
 func (*RenewLeaseResponse) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{7}
+	return file_executor_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RenewLeaseResponse) GetSuccess() bool {
@@ -702,7 +879,7 @@ type AckJobRequest struct {
 
 func (x *AckJobRequest) Reset() {
 	*x = AckJobRequest{}
-	mi := &file_executor_proto_msgTypes[8]
+	mi := &file_executor_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -714,7 +891,7 @@ func (x *AckJobRequest) String() string {
 func (*AckJobRequest) ProtoMessage() {}
 
 func (x *AckJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[8]
+	mi := &file_executor_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -727,7 +904,7 @@ func (x *AckJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckJobRequest.ProtoReflect.Descriptor instead.
 func (*AckJobRequest) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{8}
+	return file_executor_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *AckJobRequest) GetJobId() int64 {
@@ -811,7 +988,7 @@ type AckJobResponse struct {
 
 func (x *AckJobResponse) Reset() {
 	*x = AckJobResponse{}
-	mi := &file_executor_proto_msgTypes[9]
+	mi := &file_executor_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -823,7 +1000,7 @@ func (x *AckJobResponse) String() string {
 func (*AckJobResponse) ProtoMessage() {}
 
 func (x *AckJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[9]
+	mi := &file_executor_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -836,7 +1013,7 @@ func (x *AckJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckJobResponse.ProtoReflect.Descriptor instead.
 func (*AckJobResponse) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{9}
+	return file_executor_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *AckJobResponse) GetSuccess() bool {
@@ -863,7 +1040,7 @@ type GetJobRequest struct {
 
 func (x *GetJobRequest) Reset() {
 	*x = GetJobRequest{}
-	mi := &file_executor_proto_msgTypes[10]
+	mi := &file_executor_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -875,7 +1052,7 @@ func (x *GetJobRequest) String() string {
 func (*GetJobRequest) ProtoMessage() {}
 
 func (x *GetJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[10]
+	mi := &file_executor_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -888,7 +1065,7 @@ func (x *GetJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetJobRequest.ProtoReflect.Descriptor instead.
 func (*GetJobRequest) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{10}
+	return file_executor_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetJobRequest) GetJobId() int64 {
@@ -926,7 +1103,7 @@ type JobResponse struct {
 
 func (x *JobResponse) Reset() {
 	*x = JobResponse{}
-	mi := &file_executor_proto_msgTypes[11]
+	mi := &file_executor_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -938,7 +1115,7 @@ func (x *JobResponse) String() string {
 func (*JobResponse) ProtoMessage() {}
 
 func (x *JobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[11]
+	mi := &file_executor_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -951,7 +1128,7 @@ func (x *JobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobResponse.ProtoReflect.Descriptor instead.
 func (*JobResponse) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{11}
+	return file_executor_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *JobResponse) GetId() int64 {
@@ -1101,7 +1278,7 @@ type ListJobsRequest struct {
 
 func (x *ListJobsRequest) Reset() {
 	*x = ListJobsRequest{}
-	mi := &file_executor_proto_msgTypes[12]
+	mi := &file_executor_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1113,7 +1290,7 @@ func (x *ListJobsRequest) String() string {
 func (*ListJobsRequest) ProtoMessage() {}
 
 func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[12]
+	mi := &file_executor_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1126,7 +1303,7 @@ func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListJobsRequest.ProtoReflect.Descriptor instead.
 func (*ListJobsRequest) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{12}
+	return file_executor_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListJobsRequest) GetEnv() string {
@@ -1175,7 +1352,7 @@ type ListJobsResponse struct {
 
 func (x *ListJobsResponse) Reset() {
 	*x = ListJobsResponse{}
-	mi := &file_executor_proto_msgTypes[13]
+	mi := &file_executor_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1187,7 +1364,7 @@ func (x *ListJobsResponse) String() string {
 func (*ListJobsResponse) ProtoMessage() {}
 
 func (x *ListJobsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[13]
+	mi := &file_executor_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1200,7 +1377,7 @@ func (x *ListJobsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListJobsResponse.ProtoReflect.Descriptor instead.
 func (*ListJobsResponse) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{13}
+	return file_executor_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListJobsResponse) GetJobs() []*JobResponse {
@@ -1227,7 +1404,7 @@ type CancelJobRequest struct {
 
 func (x *CancelJobRequest) Reset() {
 	*x = CancelJobRequest{}
-	mi := &file_executor_proto_msgTypes[14]
+	mi := &file_executor_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1239,7 +1416,7 @@ func (x *CancelJobRequest) String() string {
 func (*CancelJobRequest) ProtoMessage() {}
 
 func (x *CancelJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[14]
+	mi := &file_executor_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1252,7 +1429,7 @@ func (x *CancelJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelJobRequest.ProtoReflect.Descriptor instead.
 func (*CancelJobRequest) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{14}
+	return file_executor_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *CancelJobRequest) GetJobId() int64 {
@@ -1273,7 +1450,7 @@ type CancelJobResponse struct {
 
 func (x *CancelJobResponse) Reset() {
 	*x = CancelJobResponse{}
-	mi := &file_executor_proto_msgTypes[15]
+	mi := &file_executor_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1285,7 +1462,7 @@ func (x *CancelJobResponse) String() string {
 func (*CancelJobResponse) ProtoMessage() {}
 
 func (x *CancelJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[15]
+	mi := &file_executor_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1298,7 +1475,7 @@ func (x *CancelJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelJobResponse.ProtoReflect.Descriptor instead.
 func (*CancelJobResponse) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{15}
+	return file_executor_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CancelJobResponse) GetSuccess() bool {
@@ -1326,7 +1503,7 @@ type RequeueJobRequest struct {
 
 func (x *RequeueJobRequest) Reset() {
 	*x = RequeueJobRequest{}
-	mi := &file_executor_proto_msgTypes[16]
+	mi := &file_executor_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1338,7 +1515,7 @@ func (x *RequeueJobRequest) String() string {
 func (*RequeueJobRequest) ProtoMessage() {}
 
 func (x *RequeueJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[16]
+	mi := &file_executor_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1351,7 +1528,7 @@ func (x *RequeueJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequeueJobRequest.ProtoReflect.Descriptor instead.
 func (*RequeueJobRequest) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{16}
+	return file_executor_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *RequeueJobRequest) GetJobId() int64 {
@@ -1379,7 +1556,7 @@ type RequeueJobResponse struct {
 
 func (x *RequeueJobResponse) Reset() {
 	*x = RequeueJobResponse{}
-	mi := &file_executor_proto_msgTypes[17]
+	mi := &file_executor_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1391,7 +1568,7 @@ func (x *RequeueJobResponse) String() string {
 func (*RequeueJobResponse) ProtoMessage() {}
 
 func (x *RequeueJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[17]
+	mi := &file_executor_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1404,7 +1581,7 @@ func (x *RequeueJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequeueJobResponse.ProtoReflect.Descriptor instead.
 func (*RequeueJobResponse) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{17}
+	return file_executor_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *RequeueJobResponse) GetSuccess() bool {
@@ -1432,7 +1609,7 @@ type UpdateJobArgsRequest struct {
 
 func (x *UpdateJobArgsRequest) Reset() {
 	*x = UpdateJobArgsRequest{}
-	mi := &file_executor_proto_msgTypes[18]
+	mi := &file_executor_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1444,7 +1621,7 @@ func (x *UpdateJobArgsRequest) String() string {
 func (*UpdateJobArgsRequest) ProtoMessage() {}
 
 func (x *UpdateJobArgsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[18]
+	mi := &file_executor_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1457,7 +1634,7 @@ func (x *UpdateJobArgsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateJobArgsRequest.ProtoReflect.Descriptor instead.
 func (*UpdateJobArgsRequest) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{18}
+	return file_executor_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *UpdateJobArgsRequest) GetJobId() int64 {
@@ -1485,7 +1662,7 @@ type UpdateJobArgsResponse struct {
 
 func (x *UpdateJobArgsResponse) Reset() {
 	*x = UpdateJobArgsResponse{}
-	mi := &file_executor_proto_msgTypes[19]
+	mi := &file_executor_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1497,7 +1674,7 @@ func (x *UpdateJobArgsResponse) String() string {
 func (*UpdateJobArgsResponse) ProtoMessage() {}
 
 func (x *UpdateJobArgsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_executor_proto_msgTypes[19]
+	mi := &file_executor_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1510,7 +1687,7 @@ func (x *UpdateJobArgsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateJobArgsResponse.ProtoReflect.Descriptor instead.
 func (*UpdateJobArgsResponse) Descriptor() ([]byte, []int) {
-	return file_executor_proto_rawDescGZIP(), []int{19}
+	return file_executor_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *UpdateJobArgsResponse) GetSuccess() bool {
@@ -1531,14 +1708,7 @@ var File_executor_proto protoreflect.FileDescriptor
 
 const file_executor_proto_rawDesc = "" +
 	"\n" +
-	"\x0eexecutor.proto\x12\x18xiaozhizhang.executor.v1\"o\n" +
-	"\x1cSubscribeJobAvailableRequest\x12\x10\n" +
-	"\x03env\x18\x01 \x01(\tR\x03env\x12%\n" +
-	"\x0etarget_service\x18\x02 \x01(\tR\rtargetService\x12\x16\n" +
-	"\x06method\x18\x03 \x01(\tR\x06method\"Q\n" +
-	"\x10JobAvailableHint\x12%\n" +
-	"\x0etarget_service\x18\x01 \x01(\tR\rtargetService\x12\x16\n" +
-	"\x06method\x18\x02 \x01(\tR\x06method\"\xaf\x03\n" +
+	"\x0eexecutor.proto\x12\x18xiaozhizhang.executor.v1\"\xaf\x03\n" +
 	"\x10SubmitJobRequest\x12\x10\n" +
 	"\x03env\x18\x01 \x01(\tR\x03env\x12%\n" +
 	"\x0etarget_service\x18\x02 \x01(\tR\rtargetService\x12\x16\n" +
@@ -1572,7 +1742,29 @@ const file_executor_proto_rawDesc = "" +
 	"\targs_json\x18\x05 \x01(\tR\bargsJson\x12\x1f\n" +
 	"\vlease_until\x18\x06 \x01(\x03R\n" +
 	"leaseUntil\x12\x10\n" +
-	"\x03env\x18\a \x01(\tR\x03env\"\x93\x01\n" +
+	"\x03env\x18\a \x01(\tR\x03env\"\x9a\x02\n" +
+	"\x12AcquireJobsRequest\x12\x10\n" +
+	"\x03env\x18\x01 \x01(\tR\x03env\x12%\n" +
+	"\x0etarget_service\x18\x02 \x01(\tR\rtargetService\x12\x18\n" +
+	"\amethods\x18\x03 \x03(\tR\amethods\x12!\n" +
+	"\fconsumer_ids\x18\x04 \x03(\tR\vconsumerIds\x12(\n" +
+	"\x10base_consumer_id\x18\x05 \x01(\tR\x0ebaseConsumerId\x12%\n" +
+	"\x0elease_duration\x18\x06 \x01(\x05R\rleaseDuration\x12=\n" +
+	"\x04mode\x18\a \x01(\x0e2).xiaozhizhang.executor.v1.AcquireJobsModeR\x04mode\"\xf7\x01\n" +
+	"\x0fAcquiredJobItem\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\x03R\x05jobId\x12\x1d\n" +
+	"\n" +
+	"attempt_no\x18\x02 \x01(\x05R\tattemptNo\x12\x10\n" +
+	"\x03env\x18\x03 \x01(\tR\x03env\x12%\n" +
+	"\x0etarget_service\x18\x04 \x01(\tR\rtargetService\x12\x16\n" +
+	"\x06method\x18\x05 \x01(\tR\x06method\x12\x1b\n" +
+	"\targs_json\x18\x06 \x01(\tR\bargsJson\x12\x1f\n" +
+	"\vlease_until\x18\a \x01(\x03R\n" +
+	"leaseUntil\x12\x1f\n" +
+	"\vconsumer_id\x18\b \x01(\tR\n" +
+	"consumerId\"T\n" +
+	"\x13AcquireJobsResponse\x12=\n" +
+	"\x04jobs\x18\x01 \x03(\v2).xiaozhizhang.executor.v1.AcquiredJobItemR\x04jobs\"\x93\x01\n" +
 	"\x11RenewLeaseRequest\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\x03R\x05jobId\x12\x1d\n" +
 	"\n" +
@@ -1668,11 +1860,16 @@ const file_executor_proto_rawDesc = "" +
 	"\x14JOB_STATUS_SUCCEEDED\x10\x03\x12\x15\n" +
 	"\x11JOB_STATUS_FAILED\x10\x04\x12\x17\n" +
 	"\x13JOB_STATUS_CANCELED\x10\x05\x12\x13\n" +
-	"\x0fJOB_STATUS_DEAD\x10\x062\xa3\b\n" +
+	"\x0fJOB_STATUS_DEAD\x10\x06*|\n" +
+	"\x0fAcquireJobsMode\x12!\n" +
+	"\x1dACQUIRE_JOBS_MODE_UNSPECIFIED\x10\x00\x12$\n" +
+	" ACQUIRE_JOBS_MODE_ONE_PER_METHOD\x10\x01\x12 \n" +
+	"\x1cACQUIRE_JOBS_MODE_FILL_SLOTS\x10\x022\x90\b\n" +
 	"\x0fExecutorService\x12d\n" +
 	"\tSubmitJob\x12*.xiaozhizhang.executor.v1.SubmitJobRequest\x1a+.xiaozhizhang.executor.v1.SubmitJobResponse\x12g\n" +
 	"\n" +
-	"AcquireJob\x12+.xiaozhizhang.executor.v1.AcquireJobRequest\x1a,.xiaozhizhang.executor.v1.AcquireJobResponse\x12g\n" +
+	"AcquireJob\x12+.xiaozhizhang.executor.v1.AcquireJobRequest\x1a,.xiaozhizhang.executor.v1.AcquireJobResponse\x12j\n" +
+	"\vAcquireJobs\x12,.xiaozhizhang.executor.v1.AcquireJobsRequest\x1a-.xiaozhizhang.executor.v1.AcquireJobsResponse\x12g\n" +
 	"\n" +
 	"RenewLease\x12+.xiaozhizhang.executor.v1.RenewLeaseRequest\x1a,.xiaozhizhang.executor.v1.RenewLeaseResponse\x12[\n" +
 	"\x06AckJob\x12'.xiaozhizhang.executor.v1.AckJobRequest\x1a(.xiaozhizhang.executor.v1.AckJobResponse\x12X\n" +
@@ -1681,8 +1878,7 @@ const file_executor_proto_rawDesc = "" +
 	"\tCancelJob\x12*.xiaozhizhang.executor.v1.CancelJobRequest\x1a+.xiaozhizhang.executor.v1.CancelJobResponse\x12g\n" +
 	"\n" +
 	"RequeueJob\x12+.xiaozhizhang.executor.v1.RequeueJobRequest\x1a,.xiaozhizhang.executor.v1.RequeueJobResponse\x12p\n" +
-	"\rUpdateJobArgs\x12..xiaozhizhang.executor.v1.UpdateJobArgsRequest\x1a/.xiaozhizhang.executor.v1.UpdateJobArgsResponse\x12}\n" +
-	"\x15SubscribeJobAvailable\x126.xiaozhizhang.executor.v1.SubscribeJobAvailableRequest\x1a*.xiaozhizhang.executor.v1.JobAvailableHint0\x01B.Z,xiaozhizhang/system/executor/api/proto;protob\x06proto3"
+	"\rUpdateJobArgs\x12..xiaozhizhang.executor.v1.UpdateJobArgsRequest\x1a/.xiaozhizhang.executor.v1.UpdateJobArgsResponseB.Z,xiaozhizhang/system/executor/api/proto;protob\x06proto3"
 
 var (
 	file_executor_proto_rawDescOnce sync.Once
@@ -1696,61 +1892,65 @@ func file_executor_proto_rawDescGZIP() []byte {
 	return file_executor_proto_rawDescData
 }
 
-var file_executor_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_executor_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_executor_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_executor_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_executor_proto_goTypes = []any{
-	(JobStatus)(0),                       // 0: xiaozhizhang.executor.v1.JobStatus
-	(*SubscribeJobAvailableRequest)(nil), // 1: xiaozhizhang.executor.v1.SubscribeJobAvailableRequest
-	(*JobAvailableHint)(nil),             // 2: xiaozhizhang.executor.v1.JobAvailableHint
-	(*SubmitJobRequest)(nil),             // 3: xiaozhizhang.executor.v1.SubmitJobRequest
-	(*SubmitJobResponse)(nil),            // 4: xiaozhizhang.executor.v1.SubmitJobResponse
-	(*AcquireJobRequest)(nil),            // 5: xiaozhizhang.executor.v1.AcquireJobRequest
-	(*AcquireJobResponse)(nil),           // 6: xiaozhizhang.executor.v1.AcquireJobResponse
-	(*RenewLeaseRequest)(nil),            // 7: xiaozhizhang.executor.v1.RenewLeaseRequest
-	(*RenewLeaseResponse)(nil),           // 8: xiaozhizhang.executor.v1.RenewLeaseResponse
-	(*AckJobRequest)(nil),                // 9: xiaozhizhang.executor.v1.AckJobRequest
-	(*AckJobResponse)(nil),               // 10: xiaozhizhang.executor.v1.AckJobResponse
-	(*GetJobRequest)(nil),                // 11: xiaozhizhang.executor.v1.GetJobRequest
-	(*JobResponse)(nil),                  // 12: xiaozhizhang.executor.v1.JobResponse
-	(*ListJobsRequest)(nil),              // 13: xiaozhizhang.executor.v1.ListJobsRequest
-	(*ListJobsResponse)(nil),             // 14: xiaozhizhang.executor.v1.ListJobsResponse
-	(*CancelJobRequest)(nil),             // 15: xiaozhizhang.executor.v1.CancelJobRequest
-	(*CancelJobResponse)(nil),            // 16: xiaozhizhang.executor.v1.CancelJobResponse
-	(*RequeueJobRequest)(nil),            // 17: xiaozhizhang.executor.v1.RequeueJobRequest
-	(*RequeueJobResponse)(nil),           // 18: xiaozhizhang.executor.v1.RequeueJobResponse
-	(*UpdateJobArgsRequest)(nil),         // 19: xiaozhizhang.executor.v1.UpdateJobArgsRequest
-	(*UpdateJobArgsResponse)(nil),        // 20: xiaozhizhang.executor.v1.UpdateJobArgsResponse
+	(JobStatus)(0),                // 0: xiaozhizhang.executor.v1.JobStatus
+	(AcquireJobsMode)(0),          // 1: xiaozhizhang.executor.v1.AcquireJobsMode
+	(*SubmitJobRequest)(nil),      // 2: xiaozhizhang.executor.v1.SubmitJobRequest
+	(*SubmitJobResponse)(nil),     // 3: xiaozhizhang.executor.v1.SubmitJobResponse
+	(*AcquireJobRequest)(nil),     // 4: xiaozhizhang.executor.v1.AcquireJobRequest
+	(*AcquireJobResponse)(nil),    // 5: xiaozhizhang.executor.v1.AcquireJobResponse
+	(*AcquireJobsRequest)(nil),    // 6: xiaozhizhang.executor.v1.AcquireJobsRequest
+	(*AcquiredJobItem)(nil),       // 7: xiaozhizhang.executor.v1.AcquiredJobItem
+	(*AcquireJobsResponse)(nil),   // 8: xiaozhizhang.executor.v1.AcquireJobsResponse
+	(*RenewLeaseRequest)(nil),     // 9: xiaozhizhang.executor.v1.RenewLeaseRequest
+	(*RenewLeaseResponse)(nil),    // 10: xiaozhizhang.executor.v1.RenewLeaseResponse
+	(*AckJobRequest)(nil),         // 11: xiaozhizhang.executor.v1.AckJobRequest
+	(*AckJobResponse)(nil),        // 12: xiaozhizhang.executor.v1.AckJobResponse
+	(*GetJobRequest)(nil),         // 13: xiaozhizhang.executor.v1.GetJobRequest
+	(*JobResponse)(nil),           // 14: xiaozhizhang.executor.v1.JobResponse
+	(*ListJobsRequest)(nil),       // 15: xiaozhizhang.executor.v1.ListJobsRequest
+	(*ListJobsResponse)(nil),      // 16: xiaozhizhang.executor.v1.ListJobsResponse
+	(*CancelJobRequest)(nil),      // 17: xiaozhizhang.executor.v1.CancelJobRequest
+	(*CancelJobResponse)(nil),     // 18: xiaozhizhang.executor.v1.CancelJobResponse
+	(*RequeueJobRequest)(nil),     // 19: xiaozhizhang.executor.v1.RequeueJobRequest
+	(*RequeueJobResponse)(nil),    // 20: xiaozhizhang.executor.v1.RequeueJobResponse
+	(*UpdateJobArgsRequest)(nil),  // 21: xiaozhizhang.executor.v1.UpdateJobArgsRequest
+	(*UpdateJobArgsResponse)(nil), // 22: xiaozhizhang.executor.v1.UpdateJobArgsResponse
 }
 var file_executor_proto_depIdxs = []int32{
-	0,  // 0: xiaozhizhang.executor.v1.AckJobRequest.status:type_name -> xiaozhizhang.executor.v1.JobStatus
-	0,  // 1: xiaozhizhang.executor.v1.JobResponse.status:type_name -> xiaozhizhang.executor.v1.JobStatus
-	0,  // 2: xiaozhizhang.executor.v1.ListJobsRequest.status:type_name -> xiaozhizhang.executor.v1.JobStatus
-	12, // 3: xiaozhizhang.executor.v1.ListJobsResponse.jobs:type_name -> xiaozhizhang.executor.v1.JobResponse
-	3,  // 4: xiaozhizhang.executor.v1.ExecutorService.SubmitJob:input_type -> xiaozhizhang.executor.v1.SubmitJobRequest
-	5,  // 5: xiaozhizhang.executor.v1.ExecutorService.AcquireJob:input_type -> xiaozhizhang.executor.v1.AcquireJobRequest
-	7,  // 6: xiaozhizhang.executor.v1.ExecutorService.RenewLease:input_type -> xiaozhizhang.executor.v1.RenewLeaseRequest
-	9,  // 7: xiaozhizhang.executor.v1.ExecutorService.AckJob:input_type -> xiaozhizhang.executor.v1.AckJobRequest
-	11, // 8: xiaozhizhang.executor.v1.ExecutorService.GetJob:input_type -> xiaozhizhang.executor.v1.GetJobRequest
-	13, // 9: xiaozhizhang.executor.v1.ExecutorService.ListJobs:input_type -> xiaozhizhang.executor.v1.ListJobsRequest
-	15, // 10: xiaozhizhang.executor.v1.ExecutorService.CancelJob:input_type -> xiaozhizhang.executor.v1.CancelJobRequest
-	17, // 11: xiaozhizhang.executor.v1.ExecutorService.RequeueJob:input_type -> xiaozhizhang.executor.v1.RequeueJobRequest
-	19, // 12: xiaozhizhang.executor.v1.ExecutorService.UpdateJobArgs:input_type -> xiaozhizhang.executor.v1.UpdateJobArgsRequest
-	1,  // 13: xiaozhizhang.executor.v1.ExecutorService.SubscribeJobAvailable:input_type -> xiaozhizhang.executor.v1.SubscribeJobAvailableRequest
-	4,  // 14: xiaozhizhang.executor.v1.ExecutorService.SubmitJob:output_type -> xiaozhizhang.executor.v1.SubmitJobResponse
-	6,  // 15: xiaozhizhang.executor.v1.ExecutorService.AcquireJob:output_type -> xiaozhizhang.executor.v1.AcquireJobResponse
-	8,  // 16: xiaozhizhang.executor.v1.ExecutorService.RenewLease:output_type -> xiaozhizhang.executor.v1.RenewLeaseResponse
-	10, // 17: xiaozhizhang.executor.v1.ExecutorService.AckJob:output_type -> xiaozhizhang.executor.v1.AckJobResponse
-	12, // 18: xiaozhizhang.executor.v1.ExecutorService.GetJob:output_type -> xiaozhizhang.executor.v1.JobResponse
-	14, // 19: xiaozhizhang.executor.v1.ExecutorService.ListJobs:output_type -> xiaozhizhang.executor.v1.ListJobsResponse
-	16, // 20: xiaozhizhang.executor.v1.ExecutorService.CancelJob:output_type -> xiaozhizhang.executor.v1.CancelJobResponse
-	18, // 21: xiaozhizhang.executor.v1.ExecutorService.RequeueJob:output_type -> xiaozhizhang.executor.v1.RequeueJobResponse
-	20, // 22: xiaozhizhang.executor.v1.ExecutorService.UpdateJobArgs:output_type -> xiaozhizhang.executor.v1.UpdateJobArgsResponse
-	2,  // 23: xiaozhizhang.executor.v1.ExecutorService.SubscribeJobAvailable:output_type -> xiaozhizhang.executor.v1.JobAvailableHint
-	14, // [14:24] is the sub-list for method output_type
-	4,  // [4:14] is the sub-list for method input_type
-	4,  // [4:4] is the sub-list for extension type_name
-	4,  // [4:4] is the sub-list for extension extendee
-	0,  // [0:4] is the sub-list for field type_name
+	1,  // 0: xiaozhizhang.executor.v1.AcquireJobsRequest.mode:type_name -> xiaozhizhang.executor.v1.AcquireJobsMode
+	7,  // 1: xiaozhizhang.executor.v1.AcquireJobsResponse.jobs:type_name -> xiaozhizhang.executor.v1.AcquiredJobItem
+	0,  // 2: xiaozhizhang.executor.v1.AckJobRequest.status:type_name -> xiaozhizhang.executor.v1.JobStatus
+	0,  // 3: xiaozhizhang.executor.v1.JobResponse.status:type_name -> xiaozhizhang.executor.v1.JobStatus
+	0,  // 4: xiaozhizhang.executor.v1.ListJobsRequest.status:type_name -> xiaozhizhang.executor.v1.JobStatus
+	14, // 5: xiaozhizhang.executor.v1.ListJobsResponse.jobs:type_name -> xiaozhizhang.executor.v1.JobResponse
+	2,  // 6: xiaozhizhang.executor.v1.ExecutorService.SubmitJob:input_type -> xiaozhizhang.executor.v1.SubmitJobRequest
+	4,  // 7: xiaozhizhang.executor.v1.ExecutorService.AcquireJob:input_type -> xiaozhizhang.executor.v1.AcquireJobRequest
+	6,  // 8: xiaozhizhang.executor.v1.ExecutorService.AcquireJobs:input_type -> xiaozhizhang.executor.v1.AcquireJobsRequest
+	9,  // 9: xiaozhizhang.executor.v1.ExecutorService.RenewLease:input_type -> xiaozhizhang.executor.v1.RenewLeaseRequest
+	11, // 10: xiaozhizhang.executor.v1.ExecutorService.AckJob:input_type -> xiaozhizhang.executor.v1.AckJobRequest
+	13, // 11: xiaozhizhang.executor.v1.ExecutorService.GetJob:input_type -> xiaozhizhang.executor.v1.GetJobRequest
+	15, // 12: xiaozhizhang.executor.v1.ExecutorService.ListJobs:input_type -> xiaozhizhang.executor.v1.ListJobsRequest
+	17, // 13: xiaozhizhang.executor.v1.ExecutorService.CancelJob:input_type -> xiaozhizhang.executor.v1.CancelJobRequest
+	19, // 14: xiaozhizhang.executor.v1.ExecutorService.RequeueJob:input_type -> xiaozhizhang.executor.v1.RequeueJobRequest
+	21, // 15: xiaozhizhang.executor.v1.ExecutorService.UpdateJobArgs:input_type -> xiaozhizhang.executor.v1.UpdateJobArgsRequest
+	3,  // 16: xiaozhizhang.executor.v1.ExecutorService.SubmitJob:output_type -> xiaozhizhang.executor.v1.SubmitJobResponse
+	5,  // 17: xiaozhizhang.executor.v1.ExecutorService.AcquireJob:output_type -> xiaozhizhang.executor.v1.AcquireJobResponse
+	8,  // 18: xiaozhizhang.executor.v1.ExecutorService.AcquireJobs:output_type -> xiaozhizhang.executor.v1.AcquireJobsResponse
+	10, // 19: xiaozhizhang.executor.v1.ExecutorService.RenewLease:output_type -> xiaozhizhang.executor.v1.RenewLeaseResponse
+	12, // 20: xiaozhizhang.executor.v1.ExecutorService.AckJob:output_type -> xiaozhizhang.executor.v1.AckJobResponse
+	14, // 21: xiaozhizhang.executor.v1.ExecutorService.GetJob:output_type -> xiaozhizhang.executor.v1.JobResponse
+	16, // 22: xiaozhizhang.executor.v1.ExecutorService.ListJobs:output_type -> xiaozhizhang.executor.v1.ListJobsResponse
+	18, // 23: xiaozhizhang.executor.v1.ExecutorService.CancelJob:output_type -> xiaozhizhang.executor.v1.CancelJobResponse
+	20, // 24: xiaozhizhang.executor.v1.ExecutorService.RequeueJob:output_type -> xiaozhizhang.executor.v1.RequeueJobResponse
+	22, // 25: xiaozhizhang.executor.v1.ExecutorService.UpdateJobArgs:output_type -> xiaozhizhang.executor.v1.UpdateJobArgsResponse
+	16, // [16:26] is the sub-list for method output_type
+	6,  // [6:16] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_executor_proto_init() }
@@ -1763,8 +1963,8 @@ func file_executor_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_executor_proto_rawDesc), len(file_executor_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   20,
+			NumEnums:      2,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
