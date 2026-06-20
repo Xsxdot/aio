@@ -320,6 +320,72 @@ func TestExecutorWorkerUsesSingleBatchPollForRegisteredMethods(t *testing.T) {
 	}
 }
 
+func TestConcurrentExecutorWorkerUsesOneBatchAcquireForFreeSlots(t *testing.T) {
+	mock := &mockExecutorServiceClient{}
+	client := &ExecutorClient{service: mock}
+	worker, err := client.NewConcurrentWorker(&ConcurrentWorkerConfig{
+		WorkerConfig: WorkerConfig{
+			TargetService:   "test-service",
+			ConsumerID:      "test-worker",
+			LeaseDuration:   30,
+			EnableAutoRenew: false,
+			TaskTimeout:     5 * time.Second,
+			PollInterval:    100 * time.Millisecond,
+		},
+		MaxConcurrent: 2,
+	})
+	if err != nil {
+		t.Fatalf("new concurrent worker: %v", err)
+	}
+
+	if err := worker.Register("method.a", func(ctx context.Context, job *AcquiredJob) (interface{}, error) {
+		return nil, nil
+	}); err != nil {
+		t.Fatalf("register method.a: %v", err)
+	}
+	if err := worker.Register("method.b", func(ctx context.Context, job *AcquiredJob) (interface{}, error) {
+		return nil, nil
+	}); err != nil {
+		t.Fatalf("register method.b: %v", err)
+	}
+
+	acquireJobsCalled := make(chan struct{}, 1)
+	mock.acquireJobsFunc = func(ctx context.Context, in *executorpb.AcquireJobsRequest, opts ...grpc.CallOption) (*executorpb.AcquireJobsResponse, error) {
+		if in.Mode != executorpb.AcquireJobsMode_ACQUIRE_JOBS_MODE_FILL_SLOTS {
+			t.Fatalf("mode = %v", in.Mode)
+		}
+		if !sameStringSet(in.Methods, []string{"method.a", "method.b"}) {
+			t.Fatalf("methods = %v", in.Methods)
+		}
+		if len(in.ConsumerIds) != 2 {
+			t.Fatalf("consumer_ids len = %d, want 2: %v", len(in.ConsumerIds), in.ConsumerIds)
+		}
+		if in.BaseConsumerId != "" {
+			t.Fatalf("base_consumer_id = %q, want empty", in.BaseConsumerId)
+		}
+		select {
+		case acquireJobsCalled <- struct{}{}:
+		default:
+		}
+		return &executorpb.AcquireJobsResponse{}, nil
+	}
+
+	if err := worker.Start(); err != nil {
+		t.Fatalf("start concurrent worker: %v", err)
+	}
+	defer worker.Stop()
+
+	select {
+	case <-acquireJobsCalled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("AcquireJobs was not called; legacy AcquireJob calls = %d", len(mock.getAcquireCalls()))
+	}
+
+	if legacyCalls := mock.getAcquireCalls(); len(legacyCalls) != 0 {
+		t.Fatalf("legacy AcquireJob calls = %d, want 0", len(legacyCalls))
+	}
+}
+
 // TestWorker_SuccessfulJob 测试成功执行任务并 Ack 成功
 func TestWorker_SuccessfulJob(t *testing.T) {
 	mock := &mockExecutorServiceClient{}

@@ -1,13 +1,16 @@
-// Package sdk 提供 ConcurrentExecutorWorker，在 ExecutorWorker 之上实现单轮询 + ConsumerID 池，
-// 支持「任务等待期间继续拉取新任务」，同时空闲时仅调用 1 次 AcquireJob/轮询。
+// Package sdk 提供 ConcurrentExecutorWorker，在 ExecutorWorker 之上实现单轮批量轮询 + ConsumerID 池，
+// 支持「任务等待期间继续拉取新任务」，同时空闲时仅调用 1 次 AcquireJobs/轮询。
 package sdk
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
+
+	"github.com/xsxdot/gokit/logger"
 )
 
 // ConcurrentWorkerConfig 并发 Worker 配置
@@ -22,7 +25,7 @@ type ConcurrentWorkerConfig struct {
 // DefaultConcurrentWorkerConfig 默认并发 Worker 配置
 func DefaultConcurrentWorkerConfig(targetService string) *ConcurrentWorkerConfig {
 	return &ConcurrentWorkerConfig{
-		WorkerConfig:   *DefaultWorkerConfig(targetService),
+		WorkerConfig:  *DefaultWorkerConfig(targetService),
 		MaxConcurrent: 10,
 	}
 }
@@ -34,15 +37,16 @@ type concurrentMethodHandler struct {
 }
 
 // ConcurrentExecutorWorker 并发 Executor Worker
-// 单一轮询循环 + ConsumerID 池，每轮最多 1 次 AcquireJob 调用，支持多任务并发执行。
+// 单一批量轮询循环 + ConsumerID 池，每轮最多 1 次 AcquireJobs 调用，支持多任务并发执行。
 type ConcurrentExecutorWorker struct {
 	client *ExecutorClient
 	config *ConcurrentWorkerConfig
+	log    *logger.Log
 
 	handlers   map[string]*concurrentMethodHandler
 	handlersMu sync.RWMutex
 
-	// 每个 method 一个轮询 goroutine，共享同一个 freeSlots 池
+	// 一个批量轮询 goroutine，共享同一个 freeSlots 池。
 	freeSlots chan string
 
 	isRunning  bool
@@ -97,6 +101,7 @@ func (c *ExecutorClient) NewConcurrentWorker(config *ConcurrentWorkerConfig) (*C
 	return &ConcurrentExecutorWorker{
 		client:     c,
 		config:     config,
+		log:        logger.GetLogger().WithEntryName("ConcurrentExecutorWorker"),
 		handlers:   make(map[string]*concurrentMethodHandler),
 		freeSlots:  freeSlots,
 		stopCtx:    ctx,
@@ -136,23 +141,19 @@ func (w *ConcurrentExecutorWorker) Start() error {
 		return fmt.Errorf("worker already started")
 	}
 
-	w.handlersMu.RLock()
-	methods := make([]string, 0, len(w.handlers))
-	for m := range w.handlers {
-		methods = append(methods, m)
-	}
-	w.handlersMu.RUnlock()
-
-	for _, method := range methods {
-		m := method
-		w.wg.Add(1)
-		go func() {
-			defer w.wg.Done()
-			w.pollLoop(m)
-		}()
-	}
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
+		w.pollLoop()
+	}()
 
 	w.isRunning = true
+	w.log.
+		WithField("target_service", w.config.TargetService).
+		WithField("method_count", len(w.registeredMethods())).
+		WithField("max_concurrent", w.config.MaxConcurrent).
+		WithField("poll_interval", w.config.PollInterval.String()).
+		Info("Concurrent executor worker batch poll started")
 	return nil
 }
 
@@ -179,8 +180,38 @@ func (w *ConcurrentExecutorWorker) IsRunning() bool {
 	return w.isRunning
 }
 
-// pollLoop 单一轮询循环：每轮最多 1 次 AcquireJob，使用池中的空闲 ConsumerID
-func (w *ConcurrentExecutorWorker) pollLoop(method string) {
+func (w *ConcurrentExecutorWorker) registeredMethods() []string {
+	w.handlersMu.RLock()
+	defer w.handlersMu.RUnlock()
+
+	methods := make([]string, 0, len(w.handlers))
+	for method := range w.handlers {
+		methods = append(methods, method)
+	}
+	sort.Strings(methods)
+	return methods
+}
+
+func (w *ConcurrentExecutorWorker) takeFreeSlots() []string {
+	slots := make([]string, 0, w.config.MaxConcurrent)
+	for {
+		select {
+		case consumerID := <-w.freeSlots:
+			slots = append(slots, consumerID)
+		default:
+			return slots
+		}
+	}
+}
+
+func (w *ConcurrentExecutorWorker) releaseSlots(slots []string) {
+	for _, consumerID := range slots {
+		w.freeSlots <- consumerID
+	}
+}
+
+// pollLoop 单一批量轮询循环：每轮最多 1 次 AcquireJobs，使用池中的空闲 ConsumerID 列表。
+func (w *ConcurrentExecutorWorker) pollLoop() {
 	ticker := time.NewTicker(w.config.PollInterval)
 	defer ticker.Stop()
 
@@ -189,42 +220,118 @@ func (w *ConcurrentExecutorWorker) pollLoop(method string) {
 		case <-w.stopCtx.Done():
 			return
 		case <-ticker.C:
-			w.tryAcquireAndExecute(method)
+			w.tryAcquireAndExecuteBatch()
 		}
 	}
 }
 
-// tryAcquireAndExecute 尝试领取并执行（每轮最多 1 次 API 调用）
-func (w *ConcurrentExecutorWorker) tryAcquireAndExecute(method string) {
-	select {
-	case consumerID := <-w.freeSlots:
-		acquireCtx, cancel := context.WithTimeout(w.stopCtx, 5*time.Second)
-		job, err := w.client.AcquireJob(acquireCtx, &AcquireJobRequest{
-			TargetService: w.config.TargetService,
-			Method:        method,
-			ConsumerID:    consumerID,
-			LeaseDuration: w.config.LeaseDuration,
-		})
-		cancel()
+// tryAcquireAndExecuteBatch 尝试批量领取并执行（每轮最多 1 次 API 调用）。
+func (w *ConcurrentExecutorWorker) tryAcquireAndExecuteBatch() {
+	methods := w.registeredMethods()
+	if len(methods) == 0 {
+		return
+	}
+	freeSlots := w.takeFreeSlots()
+	if len(freeSlots) == 0 {
+		return
+	}
 
-		if err != nil || job == nil {
-			w.freeSlots <- consumerID
-			return
+	acquireCtx, cancel := context.WithTimeout(w.stopCtx, 5*time.Second)
+	jobs, err := w.client.AcquireJobs(acquireCtx, &AcquireJobsRequest{
+		TargetService: w.config.TargetService,
+		Methods:       methods,
+		ConsumerIDs:   freeSlots,
+		LeaseDuration: w.config.LeaseDuration,
+		Mode:          AcquireJobsModeFillSlots,
+	})
+	cancel()
+
+	if err != nil {
+		w.releaseSlots(freeSlots)
+		w.log.
+			WithErr(err).
+			WithField("target_service", w.config.TargetService).
+			WithField("method_count", len(methods)).
+			WithField("free_slot_count", len(freeSlots)).
+			Error("Concurrent executor worker batch acquire failed")
+		return
+	}
+
+	if len(jobs) == 0 {
+		w.releaseSlots(freeSlots)
+		return
+	}
+
+	w.log.
+		WithField("target_service", w.config.TargetService).
+		WithField("method_count", len(methods)).
+		WithField("free_slot_count", len(freeSlots)).
+		WithField("job_count", len(jobs)).
+		Info("Concurrent executor worker batch acquire succeeded")
+
+	freeSlotSet := make(map[string]struct{}, len(freeSlots))
+	assignedSlots := make(map[string]struct{}, len(jobs))
+	for _, consumerID := range freeSlots {
+		freeSlotSet[consumerID] = struct{}{}
+	}
+
+	for _, job := range jobs {
+		consumerID := job.ConsumerID
+		if _, ok := freeSlotSet[consumerID]; !ok {
+			w.log.
+				WithField("job_id", job.JobID).
+				WithField("method", job.Method).
+				WithField("consumer_id", consumerID).
+				Error("Concurrent executor worker received job for unknown consumer slot")
+			w.ackMissingHandlerJob(job, consumerID)
+			continue
 		}
+		assignedSlots[consumerID] = struct{}{}
 
 		w.handlersMu.RLock()
-		h, exists := w.handlers[method]
+		h, exists := w.handlers[job.Method]
 		w.handlersMu.RUnlock()
 
 		if !exists {
+			w.log.
+				WithField("job_id", job.JobID).
+				WithField("method", job.Method).
+				WithField("consumer_id", consumerID).
+				Error("Concurrent executor worker received job without registered handler")
+			w.ackMissingHandlerJob(job, consumerID)
 			w.freeSlots <- consumerID
-			return
+			continue
 		}
 
 		w.wg.Add(1)
 		go w.runHandlerAndRelease(job, consumerID, h.handler)
-	default:
-		// 无空闲 slot，本轮不调用 API
+	}
+
+	unusedSlots := make([]string, 0, len(freeSlots))
+	for _, consumerID := range freeSlots {
+		if _, assigned := assignedSlots[consumerID]; !assigned {
+			unusedSlots = append(unusedSlots, consumerID)
+		}
+	}
+	// RPC 前已经把这些 slot 从池里取出；未被 server 分配任务的 slot 必须立刻归还，否则并发度会被悄悄吃掉。
+	w.releaseSlots(unusedSlots)
+}
+
+func (w *ConcurrentExecutorWorker) ackMissingHandlerJob(job *AcquiredJob, consumerID string) {
+	ackCtx, ackCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer ackCancel()
+
+	err := w.ackJobWithConsumerID(ackCtx, job, consumerID, nil, &JobFailedError{
+		Message:    fmt.Sprintf("handler not registered: %s", job.Method),
+		RetryAfter: 5,
+	})
+	if err != nil {
+		w.log.
+			WithErr(err).
+			WithField("job_id", job.JobID).
+			WithField("method", job.Method).
+			WithField("consumer_id", consumerID).
+			Error("Concurrent executor worker failed to ack missing-handler job")
 	}
 }
 
@@ -267,11 +374,18 @@ func (w *ConcurrentExecutorWorker) executeJobWithConsumerID(ctx context.Context,
 	ackCtx, ackCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer ackCancel()
 
-	w.ackJobWithConsumerID(ackCtx, job, consumerID, result, handlerErr)
+	if err := w.ackJobWithConsumerID(ackCtx, job, consumerID, result, handlerErr); err != nil {
+		w.log.
+			WithErr(err).
+			WithField("job_id", job.JobID).
+			WithField("method", job.Method).
+			WithField("consumer_id", consumerID).
+			Error("Concurrent executor worker ack failed")
+	}
 }
 
 // ackJobWithConsumerID 确认任务结果
-func (w *ConcurrentExecutorWorker) ackJobWithConsumerID(ctx context.Context, job *AcquiredJob, consumerID string, result interface{}, handlerErr error) {
+func (w *ConcurrentExecutorWorker) ackJobWithConsumerID(ctx context.Context, job *AcquiredJob, consumerID string, result interface{}, handlerErr error) error {
 	req := &AckJobRequest{
 		JobID:      job.JobID,
 		AttemptNo:  job.AttemptNo,
@@ -301,7 +415,7 @@ func (w *ConcurrentExecutorWorker) ackJobWithConsumerID(ctx context.Context, job
 		}
 	}
 
-	_ = w.client.AckJob(ctx, req)
+	return w.client.AckJob(ctx, req)
 }
 
 // autoRenewLeaseWithConsumerID 自动续租
