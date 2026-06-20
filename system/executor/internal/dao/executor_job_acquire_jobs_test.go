@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -302,4 +303,30 @@ func TestExecutorJobDAOAcquireJobsCreatesAttemptsWithIncrementedAttemptNo(t *tes
 			t.Fatalf("worker_id = %q", attempts[0].WorkerID)
 		}
 	})
+}
+
+func TestPostgresValuesBuildersCastComparableColumns(t *testing.T) {
+	methodSlotSQL, methodSlotArgs := buildMethodSlotValues([]MethodSlot{{Method: "method.a", ConsumerID: "slot-0"}})
+	if !strings.Contains(methodSlotSQL, "?::text, ?::text, ?::bigint") {
+		t.Fatalf("method slot values SQL = %q, want explicit text/text/bigint casts", methodSlotSQL)
+	}
+	if _, ok := methodSlotArgs[2].(int); !ok {
+		t.Fatalf("method slot ord arg type = %T, want int", methodSlotArgs[2])
+	}
+
+	consumerSQL, consumerArgs := buildConsumerValues([]MethodSlot{{ConsumerID: "slot-0"}})
+	if !strings.Contains(consumerSQL, "?::text, ?::bigint") {
+		t.Fatalf("consumer values SQL = %q, want explicit text/bigint casts", consumerSQL)
+	}
+	if _, ok := consumerArgs[1].(int); !ok {
+		t.Fatalf("consumer ord arg type = %T, want int", consumerArgs[1])
+	}
+
+	methodSQL, methodArgs := buildMethodValues([]string{"method.a"})
+	if !strings.Contains(methodSQL, "?::text") {
+		t.Fatalf("method values SQL = %q, want explicit text cast", methodSQL)
+	}
+	if _, ok := methodArgs[0].(string); !ok {
+		t.Fatalf("method arg type = %T, want string", methodArgs[0])
+	}
 }

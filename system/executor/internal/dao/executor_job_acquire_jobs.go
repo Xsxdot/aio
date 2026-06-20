@@ -483,7 +483,9 @@ func buildMethodSlotValues(slots []MethodSlot) (string, []interface{}) {
 	parts := make([]string, 0, len(slots))
 	args := make([]interface{}, 0, len(slots)*3)
 	for i, slot := range slots {
-		parts = append(parts, "(?, ?, ?)")
+		// PostgreSQL 对 VALUES 里的占位符类型推断可能与 row_number()/表字段比较错位；
+		// 这里显式定型，避免出现 text = bigint 这类运行时 operator 错误。
+		parts = append(parts, "(?::text, ?::text, ?::bigint)")
 		args = append(args, slot.Method, slot.ConsumerID, i+1)
 	}
 	return strings.Join(parts, ","), args
@@ -493,7 +495,7 @@ func buildConsumerValues(slots []MethodSlot) (string, []interface{}) {
 	parts := make([]string, 0, len(slots))
 	args := make([]interface{}, 0, len(slots)*2)
 	for i, slot := range slots {
-		parts = append(parts, "(?, ?)")
+		parts = append(parts, "(?::text, ?::bigint)")
 		args = append(args, slot.ConsumerID, i+1)
 	}
 	return strings.Join(parts, ","), args
@@ -503,7 +505,7 @@ func buildMethodValues(methods []string) (string, []interface{}) {
 	parts := make([]string, 0, len(methods))
 	args := make([]interface{}, 0, len(methods))
 	for _, method := range methods {
-		parts = append(parts, "(?)")
+		parts = append(parts, "(?::text)")
 		args = append(args, method)
 	}
 	return strings.Join(parts, ","), args
