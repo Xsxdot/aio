@@ -169,6 +169,154 @@ func (s *ExecutorJobService) AcquireJob(ctx context.Context, env, targetService,
 	return job, nil
 }
 
+// AcquireJobsRequest 是服务层批量领取任务入参。
+type AcquireJobsRequest struct {
+	Env            string
+	TargetService  string
+	Methods        []string
+	BaseConsumerID string
+	ConsumerIDs    []string
+	LeaseDuration  int32
+	Mode           dao.AcquireJobsMode
+}
+
+// AcquiredJobResult 是服务层批量领取任务结果。
+type AcquiredJobResult struct {
+	Job        *model.ExecutorJobModel
+	AttemptNo  int32
+	ConsumerID string
+}
+
+// AcquireJobs 批量领取任务。
+//
+// 参数：
+//   - ctx: 请求上下文
+//   - req: 批量领取参数
+//
+// 返回：
+//   - 已领取任务列表；无任务时为空切片
+//   - 参数或数据库错误
+//
+// 注意：
+//   - ONE_PER_METHOD 下 server 由 base_consumer_id 派生每 method slot
+//   - FILL_SLOTS 下 consumer_ids 表示 SDK 当前空闲 slot 池
+func (s *ExecutorJobService) AcquireJobs(ctx context.Context, req AcquireJobsRequest) ([]*AcquiredJobResult, error) {
+	fail := func(err error) ([]*AcquiredJobResult, error) {
+		base.Logger.WithErr(err).
+			WithField("mode", req.Mode).
+			WithField("method_count", len(req.Methods)).
+			WithField("slot_count", len(req.ConsumerIDs)).
+			Error("批量领取任务参数错误")
+		return nil, err
+	}
+
+	e, err := requireEnv(req.Env)
+	if err != nil {
+		return fail(err)
+	}
+	targetService := strings.TrimSpace(req.TargetService)
+	if targetService == "" {
+		return fail(errors.New("targetService 不能为空"))
+	}
+	methods := normalizeNonEmptyStrings(req.Methods)
+	if len(methods) == 0 {
+		return fail(errors.New("methods 不能为空"))
+	}
+	if hasDuplicate(methods) {
+		return fail(errors.New("methods 不能重复"))
+	}
+	if req.Mode != dao.AcquireJobsModeOnePerMethod && req.Mode != dao.AcquireJobsModeFillSlots {
+		return fail(errors.New("mode 不合法"))
+	}
+
+	var methodSlots []dao.MethodSlot
+	switch req.Mode {
+	case dao.AcquireJobsModeOnePerMethod:
+		baseConsumerID := strings.TrimSpace(req.BaseConsumerID)
+		if baseConsumerID == "" {
+			return fail(errors.New("base_consumer_id 不能为空"))
+		}
+		methodSlots = make([]dao.MethodSlot, 0, len(methods))
+		for _, method := range methods {
+			// 使用 method 原文派生 slot，避免 hash 碰撞并保留排障可读性。
+			methodSlots = append(methodSlots, dao.MethodSlot{
+				Method:     method,
+				ConsumerID: baseConsumerID + "-m-" + method,
+			})
+		}
+	case dao.AcquireJobsModeFillSlots:
+		consumerIDs := normalizeNonEmptyStrings(req.ConsumerIDs)
+		if len(consumerIDs) == 0 {
+			return fail(errors.New("consumer_ids 不能为空"))
+		}
+		if hasDuplicate(consumerIDs) {
+			return fail(errors.New("consumer_ids 不能重复"))
+		}
+		methodSlots = make([]dao.MethodSlot, 0, len(consumerIDs))
+		for _, consumerID := range consumerIDs {
+			methodSlots = append(methodSlots, dao.MethodSlot{ConsumerID: consumerID})
+		}
+	}
+	if req.LeaseDuration <= 0 {
+		req.LeaseDuration = 30
+	}
+
+	leases, err := s.dao.AcquireJobs(ctx, dao.AcquireJobsInput{
+		Env:           e,
+		TargetService: targetService,
+		Methods:       methods,
+		MethodSlots:   methodSlots,
+		LeaseDuration: req.LeaseDuration,
+		Mode:          req.Mode,
+	})
+	if err != nil {
+		base.Logger.WithErr(err).
+			WithField("mode", req.Mode).
+			WithField("method_count", len(methods)).
+			WithField("slot_count", len(methodSlots)).
+			Error("批量领取任务失败")
+		return nil, err
+	}
+	out := make([]*AcquiredJobResult, 0, len(leases))
+	for _, lease := range leases {
+		out = append(out, &AcquiredJobResult{
+			Job:        lease.Job,
+			AttemptNo:  lease.AttemptNo,
+			ConsumerID: lease.ConsumerID,
+		})
+	}
+	if len(out) > 0 {
+		base.Logger.WithField("mode", req.Mode).
+			WithField("job_count", len(out)).
+			WithField("method_count", len(methods)).
+			WithField("slot_count", len(methodSlots)).
+			Info("批量领取任务成功")
+	}
+	return out, nil
+}
+
+func normalizeNonEmptyStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func hasDuplicate(values []string) bool {
+	seen := make(map[string]struct{}, len(values))
+	for _, v := range values {
+		if _, ok := seen[v]; ok {
+			return true
+		}
+		seen[v] = struct{}{}
+	}
+	return false
+}
+
 // RenewLease 续租
 func (s *ExecutorJobService) RenewLease(ctx context.Context, jobID uint64, attemptNo int32, consumerID string, extendDuration int32) (*model.ExecutorJobModel, error) {
 	if extendDuration <= 0 {

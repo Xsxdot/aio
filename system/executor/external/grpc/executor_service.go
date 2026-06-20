@@ -3,13 +3,16 @@ package grpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/xsxdot/aio/system/executor/api/client"
 	"github.com/xsxdot/aio/system/executor/api/dto"
 	pb "github.com/xsxdot/aio/system/executor/api/proto"
 	"github.com/xsxdot/aio/system/executor/internal/app"
+	"github.com/xsxdot/aio/system/executor/internal/dao"
 	"github.com/xsxdot/aio/system/executor/internal/model"
+	servicepkg "github.com/xsxdot/aio/system/executor/internal/service"
 	"github.com/xsxdot/gokit/logger"
 
 	"google.golang.org/grpc"
@@ -131,6 +134,61 @@ func (s *ExecutorService) AcquireJob(ctx context.Context, req *pb.AcquireJobRequ
 		LeaseUntil:    leaseUntil,
 		Env:           job.Env,
 	}, nil
+}
+
+// AcquireJobs 批量领取任务。
+func (s *ExecutorService) AcquireJobs(ctx context.Context, req *pb.AcquireJobsRequest) (*pb.AcquireJobsResponse, error) {
+	if strings.TrimSpace(req.Env) == "" {
+		return nil, status.Error(codes.InvalidArgument, "env 不能为空")
+	}
+	mode, err := protoAcquireJobsModeToDAO(req.Mode)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	jobs, err := s.app.JobService.AcquireJobs(ctx, servicepkg.AcquireJobsRequest{
+		Env:            req.Env,
+		TargetService:  req.TargetService,
+		Methods:        req.Methods,
+		BaseConsumerID: req.BaseConsumerId,
+		ConsumerIDs:    req.ConsumerIds,
+		LeaseDuration:  req.LeaseDuration,
+		Mode:           mode,
+	})
+	if err != nil {
+		s.log.WithErr(err).WithField("mode", req.Mode).Error("批量领取任务失败")
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	resp := &pb.AcquireJobsResponse{Jobs: make([]*pb.AcquiredJobItem, 0, len(jobs))}
+	for _, item := range jobs {
+		leaseUntil := int64(0)
+		if item.Job.LeaseUntil != nil {
+			leaseUntil = item.Job.LeaseUntil.Unix()
+		}
+		resp.Jobs = append(resp.Jobs, &pb.AcquiredJobItem{
+			JobId:         item.Job.ID,
+			AttemptNo:     item.AttemptNo,
+			Env:           item.Job.Env,
+			TargetService: item.Job.TargetService,
+			Method:        item.Job.Method,
+			ArgsJson:      item.Job.ArgsJSON,
+			LeaseUntil:    leaseUntil,
+			ConsumerId:    item.ConsumerID,
+		})
+	}
+	return resp, nil
+}
+
+func protoAcquireJobsModeToDAO(mode pb.AcquireJobsMode) (dao.AcquireJobsMode, error) {
+	switch mode {
+	case pb.AcquireJobsMode_ACQUIRE_JOBS_MODE_ONE_PER_METHOD:
+		return dao.AcquireJobsModeOnePerMethod, nil
+	case pb.AcquireJobsMode_ACQUIRE_JOBS_MODE_FILL_SLOTS:
+		return dao.AcquireJobsModeFillSlots, nil
+	default:
+		return "", errors.New("mode 不合法")
+	}
 }
 
 // RenewLease 续租
