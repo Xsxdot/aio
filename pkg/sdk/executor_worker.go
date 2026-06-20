@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
+	"github.com/xsxdot/gokit/logger"
 	"github.com/xsxdot/gokit/scheduler"
 )
 
@@ -77,7 +79,6 @@ func DefaultWorkerConfig(targetService string) *WorkerConfig {
 type methodHandler struct {
 	method  string
 	handler JobHandler
-	taskID  string // scheduler 任务 ID
 }
 
 // ExecutorWorker Executor Worker（开箱即用的任务消费者）
@@ -85,6 +86,7 @@ type ExecutorWorker struct {
 	client    *ExecutorClient
 	config    *WorkerConfig
 	scheduler *scheduler.Scheduler
+	log       *logger.Log
 
 	// 方法注册表
 	handlers   map[string]*methodHandler
@@ -93,6 +95,7 @@ type ExecutorWorker struct {
 	// 生命周期控制
 	isRunning  bool
 	runningMu  sync.Mutex
+	pollTaskID string
 	stopCtx    context.Context
 	stopCancel context.CancelFunc
 	wg         sync.WaitGroup
@@ -163,6 +166,7 @@ func (c *ExecutorClient) newWorkerWithScheduler(s *scheduler.Scheduler, config *
 		client:       c,
 		config:       config,
 		scheduler:    s,
+		log:          logger.GetLogger().WithEntryName("ExecutorWorker"),
 		handlers:     make(map[string]*methodHandler),
 		stopCtx:      ctx,
 		stopCancel:   cancel,
@@ -187,36 +191,10 @@ func (w *ExecutorWorker) Register(method string, handler JobHandler) error {
 		return fmt.Errorf("method %s already registered", method)
 	}
 
-	// 创建 scheduler 任务
-	taskName := fmt.Sprintf("executor-worker-%s-%s", w.config.TargetService, method)
-	task := scheduler.NewIntervalTask(
-		taskName,
-		time.Now(), // 立即开始
-		w.config.PollInterval,
-		scheduler.TaskExecuteModeLocal,     // 本地执行，不需要分布式锁
-		w.config.TaskTimeout+5*time.Second, // 任务超时略长于实际执行超时
-		func(ctx context.Context) error {
-			return w.processMethod(ctx, method)
-		},
-	)
-
 	// 保存处理器
 	w.handlers[method] = &methodHandler{
 		method:  method,
 		handler: handler,
-		taskID:  task.GetID(),
-	}
-
-	// 如果 worker 已启动，立即添加任务到 scheduler
-	w.runningMu.Lock()
-	isRunning := w.isRunning
-	w.runningMu.Unlock()
-
-	if isRunning {
-		if err := w.scheduler.AddTask(task); err != nil {
-			delete(w.handlers, method)
-			return fmt.Errorf("failed to add task to scheduler: %w", err)
-		}
 	}
 
 	return nil
@@ -227,13 +205,9 @@ func (w *ExecutorWorker) Unregister(method string) error {
 	w.handlersMu.Lock()
 	defer w.handlersMu.Unlock()
 
-	handler, exists := w.handlers[method]
-	if !exists {
+	if _, exists := w.handlers[method]; !exists {
 		return fmt.Errorf("method %s not registered", method)
 	}
-
-	// 从 scheduler 移除任务
-	w.scheduler.RemoveTask(handler.taskID)
 
 	// 删除处理器
 	delete(w.handlers, method)
@@ -257,40 +231,28 @@ func (w *ExecutorWorker) Start() error {
 		}
 	}
 
-	// 将所有已注册的方法添加到 scheduler
-	w.handlersMu.RLock()
-	handlers := make([]*methodHandler, 0, len(w.handlers))
-	for _, h := range w.handlers {
-		handlers = append(handlers, h)
+	taskName := fmt.Sprintf("executor-worker-%s-batch-poll", w.config.TargetService)
+	task := scheduler.NewIntervalTask(
+		taskName,
+		time.Now(),
+		w.config.PollInterval,
+		scheduler.TaskExecuteModeLocal,     // 本地执行，不需要分布式锁
+		w.config.TaskTimeout+5*time.Second, // 领取 RPC 超时独立于 handler 执行超时
+		func(ctx context.Context) error {
+			return w.processBatch(ctx)
+		},
+	)
+	if err := w.scheduler.AddTask(task); err != nil {
+		return fmt.Errorf("failed to add batch poll task: %w", err)
 	}
-	w.handlersMu.RUnlock()
-
-	for _, h := range handlers {
-		taskName := fmt.Sprintf("executor-worker-%s-%s", w.config.TargetService, h.method)
-		task := scheduler.NewIntervalTask(
-			taskName,
-			time.Now(),
-			w.config.PollInterval,
-			scheduler.TaskExecuteModeLocal,
-			w.config.TaskTimeout+5*time.Second,
-			func(ctx context.Context) error {
-				return w.processMethod(ctx, h.method)
-			},
-		)
-
-		// 更新 taskID
-		w.handlersMu.Lock()
-		if handler, exists := w.handlers[h.method]; exists {
-			handler.taskID = task.GetID()
-		}
-		w.handlersMu.Unlock()
-
-		if err := w.scheduler.AddTask(task); err != nil {
-			return fmt.Errorf("failed to add task for method %s: %w", h.method, err)
-		}
-	}
+	w.pollTaskID = task.GetID()
 
 	w.isRunning = true
+	w.log.
+		WithField("target_service", w.config.TargetService).
+		WithField("method_count", len(w.registeredMethods())).
+		WithField("poll_interval", w.config.PollInterval.String()).
+		Info("Executor worker batch poll started")
 	return nil
 }
 
@@ -306,16 +268,10 @@ func (w *ExecutorWorker) Stop() error {
 	// 取消所有正在执行的任务
 	w.stopCancel()
 
-	// 从 scheduler 移除所有任务
-	w.handlersMu.RLock()
-	taskIDs := make([]string, 0, len(w.handlers))
-	for _, h := range w.handlers {
-		taskIDs = append(taskIDs, h.taskID)
-	}
-	w.handlersMu.RUnlock()
-
-	for _, taskID := range taskIDs {
-		w.scheduler.RemoveTask(taskID)
+	// 从 scheduler 移除唯一的批量轮询任务
+	if w.pollTaskID != "" {
+		w.scheduler.RemoveTask(w.pollTaskID)
+		w.pollTaskID = ""
 	}
 
 	// 如果 scheduler 是内部创建的，停止 scheduler
@@ -344,41 +300,104 @@ func (w *ExecutorWorker) GetScheduler() *scheduler.Scheduler {
 	return w.scheduler
 }
 
-// processMethod 处理指定方法的任务（由 scheduler 周期调用）
-func (w *ExecutorWorker) processMethod(ctx context.Context, method string) error {
-	// 获取处理器
+func (w *ExecutorWorker) registeredMethods() []string {
 	w.handlersMu.RLock()
-	handler, exists := w.handlers[method]
-	w.handlersMu.RUnlock()
+	defer w.handlersMu.RUnlock()
 
-	if !exists {
-		return fmt.Errorf("method %s not registered", method)
+	methods := make([]string, 0, len(w.handlers))
+	for method := range w.handlers {
+		methods = append(methods, method)
+	}
+	sort.Strings(methods)
+	return methods
+}
+
+// processBatch 批量领取当前注册方法的任务（由 scheduler 周期调用）
+func (w *ExecutorWorker) processBatch(ctx context.Context) error {
+	methods := w.registeredMethods()
+	if len(methods) == 0 {
+		return nil
 	}
 
 	// 领取任务
 	acquireCtx, acquireCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer acquireCancel()
 
-	job, err := w.client.AcquireJob(acquireCtx, &AcquireJobRequest{
-		TargetService: w.config.TargetService,
-		Method:        method,
-		ConsumerID:    w.config.ConsumerID,
-		LeaseDuration: w.config.LeaseDuration,
+	jobs, err := w.client.AcquireJobs(acquireCtx, &AcquireJobsRequest{
+		TargetService:  w.config.TargetService,
+		Methods:        methods,
+		BaseConsumerID: w.config.ConsumerID,
+		LeaseDuration:  w.config.LeaseDuration,
+		Mode:           AcquireJobsModeOnePerMethod,
 	})
 	if err != nil {
-		return fmt.Errorf("acquire job failed: %w", err)
+		w.log.
+			WithErr(err).
+			WithField("target_service", w.config.TargetService).
+			WithField("method_count", len(methods)).
+			Error("Executor worker batch acquire failed")
+		return fmt.Errorf("acquire jobs failed: %w", err)
 	}
 
 	// 没有任务，返回 nil（不算错误）
-	if job == nil {
+	if len(jobs) == 0 {
 		return nil
 	}
 
-	// 执行任务
-	w.wg.Add(1)
-	defer w.wg.Done()
+	w.log.
+		WithField("target_service", w.config.TargetService).
+		WithField("method_count", len(methods)).
+		WithField("job_count", len(jobs)).
+		Info("Executor worker batch acquire succeeded")
 
-	return w.executeJob(ctx, job, handler.handler)
+	for _, job := range jobs {
+		w.dispatchBatchJob(job)
+	}
+
+	return nil
+}
+
+func (w *ExecutorWorker) dispatchBatchJob(job *AcquiredJob) {
+	w.handlersMu.RLock()
+	handler, exists := w.handlers[job.Method]
+	w.handlersMu.RUnlock()
+
+	if !exists {
+		w.log.
+			WithField("job_id", job.JobID).
+			WithField("method", job.Method).
+			WithField("consumer_id", job.ConsumerID).
+			Error("Executor worker received job without registered handler")
+
+		ackCtx, ackCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer ackCancel()
+		err := w.ackJob(ackCtx, job, nil, &JobFailedError{
+			Message:    fmt.Sprintf("handler not registered: %s", job.Method),
+			RetryAfter: 5,
+		})
+		if err != nil {
+			w.log.
+				WithErr(err).
+				WithField("job_id", job.JobID).
+				WithField("method", job.Method).
+				WithField("consumer_id", job.ConsumerID).
+				Error("Executor worker failed to ack missing-handler job")
+		}
+		return
+	}
+
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
+		if err := w.executeJob(w.stopCtx, job, handler.handler); err != nil {
+			w.log.
+				WithErr(err).
+				WithField("job_id", job.JobID).
+				WithField("method", job.Method).
+				WithField("consumer_id", job.ConsumerID).
+				Error("Executor worker job execution failed")
+		}
+	}()
 }
 
 // executeJob 执行任务
@@ -424,9 +443,10 @@ func (w *ExecutorWorker) executeJob(ctx context.Context, job *AcquiredJob, handl
 // ackJob 确认任务结果
 func (w *ExecutorWorker) ackJob(ctx context.Context, job *AcquiredJob, result interface{}, handlerErr error) error {
 	req := &AckJobRequest{
-		JobID:      job.JobID,
-		AttemptNo:  job.AttemptNo,
-		ConsumerID: w.config.ConsumerID,
+		JobID:     job.JobID,
+		AttemptNo: job.AttemptNo,
+		// 批量领取时 server 会派生或分配实际 slot，Ack 必须使用返回值才能通过租约校验。
+		ConsumerID: job.ConsumerID,
 	}
 
 	if handlerErr != nil {
@@ -479,7 +499,8 @@ func (w *ExecutorWorker) autoRenewLease(ctx context.Context, job *AcquiredJob) {
 				renewCtx,
 				job.JobID,
 				job.AttemptNo,
-				w.config.ConsumerID,
+				// 批量领取时 server 会派生或分配实际 slot，续租必须使用返回值才能延长正确租约。
+				job.ConsumerID,
 				w.config.ExtendDuration,
 			)
 			renewCancel()

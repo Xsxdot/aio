@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -68,6 +69,39 @@ func (m *mockExecutorServiceClient) AcquireJobs(ctx context.Context, in *executo
 
 	if m.acquireJobsFunc != nil {
 		return m.acquireJobsFunc(ctx, in, opts...)
+	}
+	if m.acquireFunc != nil {
+		resp := &executorpb.AcquireJobsResponse{}
+		for _, method := range in.Methods {
+			consumerID := in.BaseConsumerId
+			if in.Mode == executorpb.AcquireJobsMode_ACQUIRE_JOBS_MODE_ONE_PER_METHOD {
+				consumerID = fmt.Sprintf("%s-m-%s", in.BaseConsumerId, method)
+			}
+			job, err := m.AcquireJob(ctx, &executorpb.AcquireJobRequest{
+				Env:           in.Env,
+				TargetService: in.TargetService,
+				Method:        method,
+				ConsumerId:    consumerID,
+				LeaseDuration: in.LeaseDuration,
+			}, opts...)
+			if err != nil {
+				return nil, err
+			}
+			if job.GetJobId() == 0 {
+				continue
+			}
+			resp.Jobs = append(resp.Jobs, &executorpb.AcquiredJobItem{
+				JobId:         job.JobId,
+				AttemptNo:     job.AttemptNo,
+				Env:           job.Env,
+				TargetService: job.TargetService,
+				Method:        job.Method,
+				ArgsJson:      job.ArgsJson,
+				LeaseUntil:    job.LeaseUntil,
+				ConsumerId:    consumerID,
+			})
+		}
+		return resp, nil
 	}
 	return &executorpb.AcquireJobsResponse{}, nil
 }
@@ -164,6 +198,22 @@ func createTestWorker(t *testing.T, mock *mockExecutorServiceClient) (*ExecutorW
 	return worker, s
 }
 
+func sameStringSet(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	gotCopy := append([]string(nil), got...)
+	wantCopy := append([]string(nil), want...)
+	sort.Strings(gotCopy)
+	sort.Strings(wantCopy)
+	for i := range gotCopy {
+		if gotCopy[i] != wantCopy[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestExecutorClientAcquireJobsMapsRequestAndResponse(t *testing.T) {
 	mock := &mockExecutorServiceClient{}
 	client := &ExecutorClient{env: "dev", service: mock}
@@ -210,6 +260,63 @@ func TestExecutorClientAcquireJobsMapsRequestAndResponse(t *testing.T) {
 	}
 	if jobs[0].JobID != 101 || jobs[0].AttemptNo != 2 || jobs[0].ConsumerID != "worker-base-m-method.a" {
 		t.Fatalf("job = %#v", jobs[0])
+	}
+}
+
+func TestExecutorWorkerUsesSingleBatchPollForRegisteredMethods(t *testing.T) {
+	mock := &mockExecutorServiceClient{}
+	worker, s := createTestWorker(t, mock)
+
+	if err := worker.Register("method.a", func(ctx context.Context, job *AcquiredJob) (interface{}, error) {
+		return nil, nil
+	}); err != nil {
+		t.Fatalf("register method.a: %v", err)
+	}
+	if err := worker.Register("method.b", func(ctx context.Context, job *AcquiredJob) (interface{}, error) {
+		return nil, nil
+	}); err != nil {
+		t.Fatalf("register method.b: %v", err)
+	}
+
+	acquireJobsCalled := make(chan struct{}, 1)
+	mock.acquireJobsFunc = func(ctx context.Context, in *executorpb.AcquireJobsRequest, opts ...grpc.CallOption) (*executorpb.AcquireJobsResponse, error) {
+		if in.Mode != executorpb.AcquireJobsMode_ACQUIRE_JOBS_MODE_ONE_PER_METHOD {
+			t.Fatalf("mode = %v", in.Mode)
+		}
+		if !sameStringSet(in.Methods, []string{"method.a", "method.b"}) {
+			t.Fatalf("methods = %v", in.Methods)
+		}
+		if in.BaseConsumerId != "test-worker" {
+			t.Fatalf("base_consumer_id = %q", in.BaseConsumerId)
+		}
+		if len(in.ConsumerIds) != 0 {
+			t.Fatalf("consumer_ids = %v, want empty", in.ConsumerIds)
+		}
+		select {
+		case acquireJobsCalled <- struct{}{}:
+		default:
+		}
+		return &executorpb.AcquireJobsResponse{}, nil
+	}
+
+	if err := s.Start(); err != nil {
+		t.Fatalf("failed to start scheduler: %v", err)
+	}
+	defer s.Stop()
+
+	if err := worker.Start(); err != nil {
+		t.Fatalf("failed to start worker: %v", err)
+	}
+	defer worker.Stop()
+
+	select {
+	case <-acquireJobsCalled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("AcquireJobs was not called; legacy AcquireJob calls = %d", len(mock.getAcquireCalls()))
+	}
+
+	if legacyCalls := mock.getAcquireCalls(); len(legacyCalls) != 0 {
+		t.Fatalf("legacy AcquireJob calls = %d, want 0", len(legacyCalls))
 	}
 }
 
