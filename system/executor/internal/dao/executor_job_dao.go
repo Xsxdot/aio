@@ -154,7 +154,7 @@ func (d *ExecutorJobDAO) AcquireJob(ctx context.Context, env, targetService, met
 
 				// 4. 创建尝试记录
 				attempt = model.ExecutorJobAttemptModel{
-					JobID:     uint64(job.ID),
+					JobID:     job.ID,
 					AttemptNo: job.Attempts,
 					WorkerID:  consumerID,
 					Status:    model.JobStatusRunning,

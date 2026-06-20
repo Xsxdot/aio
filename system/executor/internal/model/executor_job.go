@@ -43,10 +43,10 @@ type ExecutorJobModel struct {
 	NextRunAt *time.Time `gorm:"column:next_run_at;index:idx_env_target_status_next;index:idx_next_run;index:idx_env_target_method_status_next" json:"next_run_at" comment:"下次执行时间"`
 
 	// 重试信息
-	MaxAttempts       int32            `gorm:"column:max_attempts;default:3;not null" json:"max_attempts" comment:"最大重试次数"`
-	Attempts          int32            `gorm:"column:attempts;default:0;not null" json:"attempts" comment:"已尝试次数"`
-	RetryBackoffType  RetryBackoffType `gorm:"column:retry_backoff_type;size:20;default:exponential" json:"retry_backoff_type" comment:"重试退避类型"`
-	RetryIntervalSec  int32            `gorm:"column:retry_interval_sec;default:0" json:"retry_interval_sec" comment:"固定间隔秒数，仅 fixed 时有效"`
+	MaxAttempts      int32            `gorm:"column:max_attempts;default:3;not null" json:"max_attempts" comment:"最大重试次数"`
+	Attempts         int32            `gorm:"column:attempts;default:0;not null" json:"attempts" comment:"已尝试次数"`
+	RetryBackoffType RetryBackoffType `gorm:"column:retry_backoff_type;size:20;default:exponential" json:"retry_backoff_type" comment:"重试退避类型"`
+	RetryIntervalSec int32            `gorm:"column:retry_interval_sec;default:0" json:"retry_interval_sec" comment:"固定间隔秒数，仅 fixed 时有效"`
 
 	// 租约信息
 	LeaseOwner string     `gorm:"column:lease_owner;size:100;index:idx_lease_owner" json:"lease_owner" comment:"租约持有者（consumer_id）"`
@@ -76,7 +76,7 @@ func (ExecutorJobModel) TableName() string {
 // ExecutorJobAttemptModel 任务尝试记录表（审计用）
 type ExecutorJobAttemptModel struct {
 	common.Model
-	JobID      uint64     `gorm:"column:job_id;not null;index:idx_job_id" json:"job_id" comment:"任务ID"`
+	JobID      int64      `gorm:"column:job_id;not null;index:idx_job_id" json:"job_id" comment:"任务ID"`
 	AttemptNo  int32      `gorm:"column:attempt_no;not null" json:"attempt_no" comment:"尝试次数"`
 	WorkerID   string     `gorm:"column:worker_id;size:100" json:"worker_id" comment:"执行者ID"`
 	Status     JobStatus  `gorm:"column:status;size:20;not null" json:"status" comment:"执行状态"`
