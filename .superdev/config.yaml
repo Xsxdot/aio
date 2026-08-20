@@ -41,12 +41,12 @@ pipelines:
                 template: builtin://vue-go-combined-build
                 vars:
                     artifact: ${artifact}
-                    backend_dir: ${workspace}/xiaozhizhang
+                    backend_dir: ${workspace}
                     binary_output: ${output}/aio
                     files:
                         - from: ${output}/aio
                           to: aio
-                        - from: ${workspace}/xiaozhizhang/resources/prod.yaml
+                        - from: ${workspace}/resources/prod.yaml
                           to: resources/prod.yaml
                         - from: ${workspace}/admin/dist
                           to: web
@@ -84,11 +84,11 @@ services:
           env: dev
           location: local
           control_mode: managed
-          working_dir: xiaozhizhang
+          working_dir: .
           log_type: process
           runtime:
             type: language
-            cwd: xiaozhizhang
+            cwd: .
             config:
                 program: .
           logs:
