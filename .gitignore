@@ -177,3 +177,14 @@ factory.yaml
 
 
 
+
+# ---- 单仓合并后新增（2026-08-20）----
+# 上方的 /dist/ 是根锚定规则，只忽略仓库根的 dist，不覆盖 admin/dist。
+# 本仓库被 12 个项目当 Go 依赖 import，任何进入跟踪的文件都会被打进
+# module zip 分发到每个下游的 module cache，构建产物必须挡在外面。
+admin/dist/
+admin/dist-ssr/
+
+# 生产环境变量：当前为空文件，一旦填入真实域名或密钥会随公开仓库泄露，
+# 因此不纳入跟踪，改由部署流水线注入。
+admin/.env.production

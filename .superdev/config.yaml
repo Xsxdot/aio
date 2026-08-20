@@ -1,0 +1,149 @@
+environments:
+    - id: env_b8520866a3e7cf2b
+      name: dev
+      is_dev: true
+      order: 0
+    - id: env_52a3f6bee3d123be
+      name: prod
+      is_dev: false
+      order: 1
+id: project_a31051ffecc0f2f7
+log_rules:
+    - enabled: false
+      id: b632d587-5044-4d38-b4bf-b4b7c81efc44
+      keywords:
+        - msg":"gRPC 请求完成"
+      logic: or
+      name: BASE
+      type: exclude
+name: aio
+pipelines:
+    - id: deploy-server-admin-prod
+      name: Deploy Server Admin Prod
+      services:
+        - server
+        - 'Admin: Dev Server'
+      artifact_kind: file
+      variables:
+        app_name: aio
+        artifact: ${artifacts}/aio-${version}.tar.gz
+      environments:
+        prod: {}
+      roles:
+        local01_targets:
+            hosts:
+                - a3ce9fb2-dafb-43f5-9041-e59a1461f913
+      pipeline:
+        build:
+            - name: Build Server Admin
+              type: include
+              with:
+                template: builtin://vue-go-combined-build
+                vars:
+                    artifact: ${artifact}
+                    backend_dir: ${workspace}/xiaozhizhang
+                    binary_output: ${output}/aio
+                    files:
+                        - from: ${output}/aio
+                          to: aio
+                        - from: ${workspace}/xiaozhizhang/resources/prod.yaml
+                          to: resources/prod.yaml
+                        - from: ${workspace}/admin/dist
+                          to: web
+                    frontend_build_cmd: HUSKY=0 pnpm install --frozen-lockfile && pnpm build
+                    frontend_dir: ${workspace}/admin
+                    go_build_env: GOOS=linux GOARCH=amd64 CGO_ENABLED=0
+                    go_package: .
+                version: 1.0.0
+        deploy:
+            - name: Deploy Server Admin
+              type: include
+              with:
+                template: builtin://systemd-seamless-deploy
+                vars:
+                    app_name: aio
+                    artifact: ${artifact}
+                    current_dir: /opt/aio/current
+                    exec_start: /opt/aio/current/aio -env=prod -config /opt/aio/current/resources/prod.yaml
+                    health_path: /api/ping
+                    port: "9000"
+                    release_dir: /opt/aio/releases
+                    role: local01_targets
+                    service_name: aio
+                    skip_http_check: "false"
+                    working_dir: /opt/aio/current
+                version: 1.0.0
+services:
+    - id: svc_b2757cbbb2702cd1
+      name: server
+      required: false
+      order: 0
+      language: go
+      deployments:
+        - id: dep_1fb2b769790aaf3e
+          env: dev
+          location: local
+          control_mode: managed
+          working_dir: xiaozhizhang
+          log_type: process
+          runtime:
+            type: language
+            cwd: xiaozhizhang
+            config:
+                program: .
+          logs:
+            type: process
+        - id: b6e4adb6-d4c5-45f1-bdf3-228f8d0079d3
+          env: prod
+          location: remote
+          control_mode: managed
+          hosts:
+            - a3ce9fb2-dafb-43f5-9041-e59a1461f913
+          log_type: journalctl
+          log_target: aio.service
+          runtime:
+            type: systemd
+            service_name: aio.service
+            release_dir: /opt/aio/releases
+            current_dir: /opt/aio/current
+            exec_start: /opt/aio/current/aio -env=prod -config /opt/aio/current/resources/prod.yaml
+          logs:
+            type: journalctl
+            target: aio.service
+          start_command: systemctl start aio.service
+          stop_command: systemctl stop aio.service
+    - id: svc_00625c137fd30748
+      name: 'Admin: Dev Server'
+      required: false
+      order: 1
+      language: node
+      deployments:
+        - id: dep_fd5bde7fb2a91c00
+          env: dev
+          location: local
+          control_mode: managed
+          working_dir: admin
+          log_type: process
+          runtime:
+            type: language
+            cwd: admin
+            config:
+                package_manager: pnpm
+                program_args:
+                    - --host
+                    - 127.0.0.1
+                    - --port
+                    - "5175"
+                    - --strictPort
+                script: dev
+          logs:
+            type: process
+          web:
+            enabled: true
+            url: http://localhost:5175
+            default_path: /
+            readiness:
+                type: http
+                timeout_seconds: 30
+            ai_debug:
+                enabled: true

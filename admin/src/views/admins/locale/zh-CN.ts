@@ -1,0 +1,75 @@
+export default {
+  'admins.list.title': '管理员列表',
+  'admins.search.placeholder': '请输入账号或备注关键词',
+  'admins.search.statusPlaceholder': '请选择状态',
+  'admins.search': '搜索',
+  'admins.reset': '重置',
+  'admins.refresh': '刷新',
+  'admins.create.button': '新增管理员',
+  'admins.create.title': '新增管理员',
+  'admins.create.submit': '确定',
+  'admins.create.cancel': '取消',
+
+  'admins.column.id': 'ID',
+  'admins.column.account': '账号',
+  'admins.column.isSuper': '超级管理员',
+  'admins.column.roles': '角色',
+  'admins.column.status': '状态',
+  'admins.column.remark': '备注',
+  'admins.column.createdAt': '创建时间',
+  'admins.column.actions': '操作',
+
+  'admins.status.enabled': '启用',
+  'admins.status.disabled': '禁用',
+  'admins.isSuper.yes': '是',
+  'admins.isSuper.no': '否',
+
+  'admins.form.account': '账号',
+  'admins.form.accountPlaceholder': '请输入管理员账号',
+  'admins.form.accountRequired': '账号不能为空',
+  'admins.form.accountLength': '账号长度必须在 3-50 个字符之间',
+  'admins.form.password': '密码',
+  'admins.form.passwordPlaceholder': '请输入密码',
+  'admins.form.passwordRequired': '密码不能为空',
+  'admins.form.passwordLength': '密码长度至少 6 个字符',
+  'admins.form.remark': '备注',
+  'admins.form.remarkPlaceholder': '请输入备注信息（选填）',
+
+  'admins.resetPassword.title': '重置管理员密码',
+  'admins.resetPassword.warning': '即将重置管理员 [{account}] 的密码',
+  'admins.resetPassword.submit': '确定重置',
+  'admins.resetPassword.cancel': '取消',
+  'admins.form.newPassword': '新密码',
+  'admins.form.newPasswordPlaceholder': '请输入新密码',
+  'admins.form.newPasswordRequired': '新密码不能为空',
+  'admins.form.confirmPassword': '确认密码',
+  'admins.form.confirmPasswordPlaceholder': '请再次输入新密码',
+  'admins.form.confirmPasswordRequired': '确认密码不能为空',
+  'admins.form.passwordMismatch': '两次输入的密码不一致',
+
+  'admins.action.resetPassword': '重置密码',
+  'admins.action.enable': '启用',
+  'admins.action.disable': '禁用',
+  'admins.action.delete': '删除',
+
+  'admins.confirm.enable.content': '确定要启用该管理员吗？',
+  'admins.confirm.disable.content': '确定要禁用该管理员吗？',
+  'admins.confirm.delete.content': '确定要删除该管理员吗？删除后无法恢复！',
+
+  'admins.message.load.failed': '加载管理员列表失败',
+  'admins.message.create.success': '管理员创建成功',
+  'admins.message.create.failed': '管理员创建失败',
+  'admins.message.resetPassword.success': '密码重置成功',
+  'admins.message.resetPassword.failed': '密码重置失败',
+  'admins.message.enable.success': '管理员启用成功',
+  'admins.message.enable.failed': '管理员启用失败',
+  'admins.message.disable.success': '管理员禁用成功',
+  'admins.message.disable.failed': '管理员禁用失败',
+  'admins.message.delete.success': '管理员删除成功',
+  'admins.message.delete.failed': '管理员删除失败',
+};
+
+
+
+
+

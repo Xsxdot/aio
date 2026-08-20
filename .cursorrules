@@ -438,3 +438,62 @@ system/<component>/
   - **[SHOULD]** 重要函数编写注释，说明输入、输出和边界条件。
   - **[SHOULD]** API 需有完整文档，和前端/调用方对齐。
   - **[MUST]** 数据库变更要有迁移脚本，并通过迁移工具统一执行。
+
+
+---
+
+## 前端架构及代码规范
+
+### 1. 前端架构
+- 使用Vue3
+- 使用Arco Design Vue
+- 使用Pinia管理状态
+- 使用Vite构建
+- 使用Vue Router管理路由，路由文件放在admin/src/router/routes/modules文件夹中
+
+### 2. 代码规范
+- 结构和API放在admin/src/api文件夹中，接口都是以{baseUrl}/admin/开头的
+- 后端为common.Flag类型的，需要的值是数字1或2，1为是，2为否。
+- 公共组件放在admin/src/components文件夹中
+- 页面放在admin/src/views文件夹中，主页面不要太复杂，合理使用组件化，组件放在admin/src/views/{页面}/components文件夹中，无论一级菜单是哪个，页面都放在admin/src/views文件夹中
+- 页面要支持国际化，公共国际化文件放在admin/src/locale文件夹中，页面内部的国际化文件放在页面文件夹的locale文件夹中，比如admin/src/views/login/locale，但也要注册在admin/src/locale/en-US.ts和admin/src/locale/zh-CN.ts中
+en-US.ts
+```
+export default {
+  'login.form.title': 'Login to Arco Design Pro',
+  'login.form.userName.errMsg': 'Username cannot be empty',
+  'login.form.password.errMsg': 'Password cannot be empty',
+};
+```
+zh-CN.ts
+```
+export default {
+  'login.form.title': '登录到Arco Design Pro',
+  'login.form.userName.errMsg': '用户名不能为空',
+  'login.form.password.errMsg': '密码不能为空',
+};
+```
+- 开发前要合理安排页面结构和样式，要做的简单的一目了然，复杂的结构清晰，可以参考admin/src/template文件夹下的页面,这些是官方示例
+- 公共组件要考虑复用性，尽量减少重复代码
+- 修改完不要自行启动项目验证，我已经启动了，并且会自动刷新
+- 简单的编辑表单和详情表单可以用a-drawer从右侧弹出，复杂的做单独页面，如果使用单独页面来编辑或者查看详情，不要销毁列表页，以免返回列表页时，数据丢失，又回到第一页
+- 列表页的搜索条件要合理，复杂的话可以折叠使用率较少的，点击展开
+- 列表页的表格要考虑分页，分页要考虑每页显示多少条，以及当前页码，以及总条数，以及总页数，需要分页返回的数据，请求格式和返回格式如下
+```
+请求格式
+        Page         int              `json:"page" form:"page" default:"1"`
+        PageSize     int              `json:"pageSize" form:"pageSize" default:"10"`
+返回格式
+{
+  "content": [
+    {
+      "id": 1,
+      "name": "张三"
+    },
+    {
+      "id": 2,
+      "name": "李四"
+    }
+  ],
+  "total": 100,
+}
