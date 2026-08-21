@@ -366,7 +366,10 @@ func (s *ExecutorJobService) AckJob(ctx context.Context, jobID uint64, attemptNo
 		handler := s.handlers[source]
 		s.mu.RUnlock()
 		if handler != nil {
-			handler.OnJobCompleted(ctx, jobID, callbackData, resultJSON)
+			if cbErr := handler.OnJobCompleted(ctx, jobID, callbackData, resultJSON); cbErr != nil {
+				base.Logger.WithErr(cbErr).WithField("job_id", jobID).
+					WithField("source", source).Error("任务完成回调失败")
+			}
 		}
 		return nil
 	}
@@ -380,7 +383,10 @@ func (s *ExecutorJobService) AckJob(ctx context.Context, jobID uint64, attemptNo
 			s.mu.RUnlock()
 			if handler != nil {
 				errorPayloadBytes, _ := json.Marshal(map[string]string{"error_msg": errorMsg})
-				handler.OnJobCompleted(ctx, jobID, callbackData, string(errorPayloadBytes))
+				if cbErr := handler.OnJobCompleted(ctx, jobID, callbackData, string(errorPayloadBytes)); cbErr != nil {
+					base.Logger.WithErr(cbErr).WithField("job_id", jobID).
+						WithField("source", source).Error("任务最终失败回调失败")
+				}
 			}
 		}
 	}

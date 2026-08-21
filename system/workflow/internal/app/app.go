@@ -147,33 +147,37 @@ func (a *App) CreateIfNotExists(ctx context.Context, env, code, name, dagJSON st
 	return id, true, nil
 }
 
-// OnJobCompleted 实现 executor 任务完成处理器，在 AckJob 成功且 Source=workflow 时触发
-func (a *App) OnJobCompleted(ctx context.Context, jobID uint64, callbackData, resultJSON string) {
+// OnJobCompleted 实现 executor 任务完成处理器，在 AckJob 成功且 Source=workflow 时触发。
+// 返回错误表示本次回调未成功应用，承载回调的任务应重试。
+func (a *App) OnJobCompleted(ctx context.Context, jobID uint64, callbackData, resultJSON string) error {
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(callbackData), &data); err != nil {
 		a.log.WithErr(err).Errorf("解析任务 %d callback_data 失败", jobID)
-		return
+		return a.err.New("解析 callback_data 失败", err).WithTraceID(ctx)
 	}
 
 	instanceID, nodeID, callbackEnv, subJobID, err := parseWorkflowCallbackData(data)
 	if err != nil {
 		a.log.WithErr(err).Errorf("任务 %d callback_data 格式无效，跳过回调", jobID)
-		return
+		return a.err.New("callback_data 格式无效", err).WithTraceID(ctx)
 	}
 
 	var output map[string]interface{}
 	if resultJSON != "" {
 		if parseErr := json.Unmarshal([]byte(resultJSON), &output); parseErr != nil {
-			a.log.WithErr(parseErr).Warnf("任务 %d result_json 解析失败，将使用空 output", jobID)
+			a.log.WithErr(parseErr).Errorf("任务 %d result_json 解析失败", jobID)
+			return a.err.New("解析 result_json 失败", parseErr).WithTraceID(ctx)
 		}
 	}
 	if output == nil {
 		output = make(map[string]interface{})
 	}
 
-	if err := a.ReportNodeCompleted(ctx, instanceID, nodeID, output, callbackEnv, subJobID); err != nil {
+	if err := a.ReportNodeCompletedFromJob(ctx, int64(jobID), instanceID, nodeID, output, callbackEnv, subJobID); err != nil {
 		a.log.WithErr(err).Errorf("任务 %d 回调 ReportNodeCompleted 失败", jobID)
+		return err
 	}
+	return nil
 }
 
 // parseWorkflowCallbackData 从 callback_data 中解析 instance_id、node_id、env、sub_job_id（Map 子任务时有值）

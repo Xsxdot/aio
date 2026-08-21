@@ -401,17 +401,53 @@ func (a *App) StartWorkflow(ctx context.Context, defCode string, initialData map
 	return instance.ID, nil
 }
 
-// ReportNodeCompleted 报告节点执行完成，引擎将自动推进状态机
-// env 用于触发后续节点时 Executor 任务隔离，空则用实例存储的 Env，再空则用 base.ENV
-// subJobID 为 Map 子任务时传入（>=0），否则传 -1 或不传
+// ReportNodeCompleted 上报节点完成并推进工作流（无幂等保护的入口）。
+//
+// 参数：
+//   - instanceID / nodeID: 目标实例与节点
+//   - output: 节点输出；含 error_msg 键时走 error 边
+//   - env: Executor 任务隔离环境，空则取实例的 Env
+//   - subJobID: Map 子任务序号，非 Map 场景不传
+//
+// 注意：供 condition 节点递归与人工审批推进使用，这两类调用不来自可重试
+// 载体，无需幂等。来自 executor 回调的推进必须用 ReportNodeCompletedFromJob。
 func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID string, output map[string]interface{}, env string, subJobID ...int) error {
+	return a.reportNodeCompleted(ctx, 0, instanceID, nodeID, output, env, subJobID...)
+}
+
+// ReportNodeCompletedFromJob 上报由 executor 任务触发的节点完成，带幂等保护。
+//
+// 参数：
+//   - jobID: 触发本次回调的 executor 任务 ID，用作幂等键；必须 > 0
+//   - 其余参数同 ReportNodeCompleted
+//
+// 返回：nil 表示本次推进成功，或该 jobID 已被处理过（重复回调，调用方应视为成功）。
+// 非 nil 表示推进失败，调用方应让承载本次回调的任务重试。
+//
+// 注意：幂等登记与状态推进在同一事务内完成，因此「登记成功但推进失败」
+// 不可能发生——两者一起回滚。
+func (a *App) ReportNodeCompletedFromJob(ctx context.Context, jobID int64, instanceID int64, nodeID string, output map[string]interface{}, env string, subJobID ...int) error {
+	if jobID <= 0 {
+		return a.err.New("ReportNodeCompletedFromJob 要求 jobID > 0", nil).WithTraceID(ctx)
+	}
+	return a.reportNodeCompleted(ctx, jobID, instanceID, nodeID, output, env, subJobID...)
+}
+
+// reportNodeCompleted 在单个事务中登记回调幂等标记、推进工作流并派发下游任务。
+func (a *App) reportNodeCompleted(ctx context.Context, jobID int64, instanceID int64, nodeID string, output map[string]interface{}, env string, subJobID ...int) error {
 	subID := -1
 	if len(subJobID) > 0 {
 		subID = subJobID[0]
 	}
+	a.log.WithField("job_id", jobID).
+		WithField("instance_id", instanceID).
+		WithField("node_id", nodeID).
+		WithField("sub_job_id", subID).
+		Debug("开始处理节点完成回调")
 	var nextNodeIDs []string
 	var instance model.WorkflowInstanceModel
 	var dag model.DAG
+	var skippedAsDuplicate bool
 
 	// 用 ExtractDB 而非 base.DB：triggerNode 对 condition 节点会递归回到本方法、
 	// 对 approval 节点会进入 updateInstanceStatusToWaitingWithLock，而外层事务
@@ -419,6 +455,23 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 	// 外层又在等内层返回，必然死锁。ExtractDB 复用外层事务（SavePoint），
 	// 无外层事务时行为与 base.DB 完全一致。
 	err := mvc.ExtractDB(ctx, base.DB).Transaction(func(tx *gorm.DB) error {
+		// 幂等登记必须在推进逻辑之前、且与推进同事务：承载回调的 outbox 任务
+		// 会重试，而 applyStateReducer 的 append 模式重放会重复追加输出，
+		// 造成状态污染（nova 的 Map 节点大量使用该模式汇聚结果）。
+		if jobID > 0 {
+			if a.AppliedCallbackDao == nil {
+				return a.err.New("回调幂等 DAO 未初始化", nil).WithTraceID(ctx)
+			}
+			applied, mErr := a.AppliedCallbackDao.MarkApplied(ctx, tx, jobID, instanceID, nodeID)
+			if mErr != nil {
+				return mErr
+			}
+			if !applied {
+				skippedAsDuplicate = true
+				return nil
+			}
+		}
+
 		// 1. 获取实例并加锁
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", instanceID).First(&instance).Error; err != nil {
 			return err
@@ -760,8 +813,27 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 	})
 
 	if err != nil {
+		a.log.WithErr(err).
+			WithField("job_id", jobID).
+			WithField("instance_id", instanceID).
+			WithField("node_id", nodeID).
+			Error("完成节点流转失败")
 		return a.err.New("完成节点流转失败", err)
 	}
+	if skippedAsDuplicate {
+		// 必须打日志：否则重复回调静默发生，排查时完全看不见。
+		a.log.WithField("job_id", jobID).
+			WithField("instance_id", instanceID).
+			WithField("node_id", nodeID).
+			Info("回调重复，命中幂等标记已跳过")
+		return nil
+	}
+
+	a.log.WithField("job_id", jobID).
+		WithField("instance_id", instanceID).
+		WithField("node_id", nodeID).
+		WithField("next_nodes", nextNodeIDs).
+		Info("节点完成，工作流推进成功")
 
 	return nil
 }
