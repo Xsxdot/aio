@@ -1,3 +1,7 @@
+// 本文件定义工作流回调幂等标记模型。
+//
+// 职责：为 executor 任务完成回调提供跨重试的唯一记录。
+// 边界：只描述持久化结构，不参与回调路由或工作流状态推进。
 package model
 
 import "github.com/xsxdot/aio/pkg/core/model/common"
