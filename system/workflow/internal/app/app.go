@@ -32,18 +32,18 @@ type App struct {
 	err                *errorc.ErrorBuilder
 }
 
-// NewApp 创建内部 App
+// NewApp 创建内部 App。
+//
+// 参数 acDao 为回调幂等标记 DAO：ReportNodeCompletedFromJob 依赖它做重放去重，
+// 传 nil 会让该入口在运行期直接报错。仅不涉及该入口的测试可显式传 nil，
+// 生产装配必须传入真实实例（见 system/workflow/module.go）。
 func NewApp(
 	defSvc *service.WorkflowDefService,
 	instSvc *service.WorkflowInstanceService,
 	cpSvc *service.WorkflowCheckpointService,
 	execClient *executorClient.ExecutorClient,
-	acDaos ...*dao.WorkflowAppliedCallbackDao,
+	acDao *dao.WorkflowAppliedCallbackDao,
 ) *App {
-	var acDao *dao.WorkflowAppliedCallbackDao
-	if len(acDaos) > 0 {
-		acDao = acDaos[0]
-	}
 	return &App{
 		DefService:         defSvc,
 		InstanceService:    instSvc,

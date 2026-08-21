@@ -183,5 +183,5 @@ func newExecutionTrailTestApp(t *testing.T) (*App, *service.WorkflowCheckpointSe
 		t.Fatalf("create checkpoints: %v", err)
 	}
 
-	return NewApp(nil, instSvc, cpSvc, nil), cpSvc, instance.ID
+	return NewApp(nil, instSvc, cpSvc, nil, nil), cpSvc, instance.ID
 }
