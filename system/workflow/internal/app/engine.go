@@ -444,6 +444,15 @@ func (a *App) reportNodeCompleted(ctx context.Context, jobID int64, instanceID i
 		WithField("node_id", nodeID).
 		WithField("sub_job_id", subID).
 		Debug("开始处理节点完成回调")
+
+	// 跳数护栏：condition 节点不落地即递归回本方法，而回环边被 detectCycle
+	// 豁免，纯 condition 回环是合法 DAG 却会无限递归。详见 engine_hop_guard.go。
+	ctx, hopGuard, outermostAdvance, hopExceeded := enterAdvanceHop(ctx, nodeID)
+	if hopExceeded {
+		// 返回错误让整条嵌套事务回滚；由最外层统一善后（终结实例）。
+		return a.err.New("单次推进的同步递归跳数超过上限，DAG 可能存在纯 condition 回环", nil).WithTraceID(ctx)
+	}
+
 	var nextNodeIDs []string
 	var instance model.WorkflowInstanceModel
 	var dag model.DAG
@@ -813,6 +822,13 @@ func (a *App) reportNodeCompleted(ctx context.Context, jobID int64, instanceID i
 	})
 
 	if err != nil {
+		// 超限善后只在最外层做：此时整条递归链已随事务回滚，ctx 上不再挂事务，
+		// failInstanceForHopLimit 会另开事务把实例终结掉。返回 nil 是为了让承载
+		// 本次回调的 outbox 任务正常 ack —— 纯同步回环重试再多次也不会收敛。
+		if outermostAdvance && hopGuard.limitHit {
+			a.failInstanceForHopLimit(ctx, instanceID, hopGuard.path)
+			return nil
+		}
 		a.log.WithErr(err).
 			WithField("job_id", jobID).
 			WithField("instance_id", instanceID).
