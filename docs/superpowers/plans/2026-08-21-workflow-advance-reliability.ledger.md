@@ -10,3 +10,4 @@
 | 2026-08-21 | Task 5 完成；双裁决 1 轮 | AckJob 两项 outbox 测试、`go build ./...`、executor/workflow 回归通过；测试夹具补全 base.DB 与唯一内存库隔离。 | `3305819..5263557`，实现提交 `5263557` |
 | 2026-08-21 | Task 6 完成；双裁决 1 轮 | worker 三项测试、`go build ./...`、executor/workflow 回归通过；`go test ./...` 原始失败为未改动 `utils/geo_test.go`：got `31.41433338613556/121.35496556612459`、want `0/0`，已复现并确认基线原因，留终审 triage。 | `270fbd1..bd7803a`，实现提交 `bd7803a` |
 | 2026-08-21 | Task 7 跳过（按计划） | 当前为 handoff 执行 worktree，未启动真实 MySQL/PostgreSQL；真机嵌套加锁与 ON CONFLICT 验证未验证，留待审核者本地执行，未用 SQLite 结果替代。 | `3a29520..3a29520` |
+| 2026-08-21 | 整分支终审；修复波 1/范围复审 1 轮 | 相对 `3077dee` 完整 diff 完成约束扫描；补齐两个新增生产文件头。最终 `go build ./...` 通过，相关包通过；全量测试唯一失败仍为未改动 `utils/geo_test.go` 的零值期望错误。 | `af818fd..bd28667`，终审修复提交 `bd28667` |
