@@ -9,6 +9,7 @@ import (
 
 	"github.com/expr-lang/expr"
 	"github.com/xsxdot/aio/base"
+	"github.com/xsxdot/aio/pkg/core/mvc"
 	executorDto "github.com/xsxdot/aio/system/executor/api/dto"
 	"github.com/xsxdot/aio/system/workflow/internal/model"
 	errorc "github.com/xsxdot/gokit/err"
@@ -412,7 +413,12 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 	var instance model.WorkflowInstanceModel
 	var dag model.DAG
 
-	err := base.DB.Transaction(func(tx *gorm.DB) error {
+	// 用 ExtractDB 而非 base.DB：triggerNode 对 condition 节点会递归回到本方法、
+	// 对 approval 节点会进入 updateInstanceStatusToWaitingWithLock，而外层事务
+	// 已对本实例行持有 FOR UPDATE。若这里另开事务，内层会等外层释放行锁、
+	// 外层又在等内层返回，必然死锁。ExtractDB 复用外层事务（SavePoint），
+	// 无外层事务时行为与 base.DB 完全一致。
+	err := mvc.ExtractDB(ctx, base.DB).Transaction(func(tx *gorm.DB) error {
 		// 1. 获取实例并加锁
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", instanceID).First(&instance).Error; err != nil {
 			return err
@@ -955,7 +961,8 @@ func filterStateForExpr(state map[string]interface{}) map[string]interface{} {
 
 // updateInstanceStatusToWaitingWithLock 带事务和行锁更新实例状态为 WAITING，与 ReportNodeCompleted 并发安全
 func (a *App) updateInstanceStatusToWaitingWithLock(ctx context.Context, instanceID int64) error {
-	return base.DB.Transaction(func(tx *gorm.DB) error {
+	// 同 ReportNodeCompleted：本方法会被事务内的 triggerNode 调用，必须复用外层事务
+	return mvc.ExtractDB(ctx, base.DB).Transaction(func(tx *gorm.DB) error {
 		inst, err := a.InstanceService.FindByIdForUpdate(ctx, tx, instanceID)
 		if err != nil {
 			return err
@@ -1000,7 +1007,8 @@ func (a *App) RollbackToNode(ctx context.Context, instanceID int64, targetNodeID
 	var stateToRestore string
 	var deleteFromIndex int = -1
 
-	err := base.DB.Transaction(func(tx *gorm.DB) error {
+	// 统一走 ExtractDB：与其他事务入口保持一致，避免以后被移入事务后踩死锁
+	err := mvc.ExtractDB(ctx, base.DB).Transaction(func(tx *gorm.DB) error {
 		// 1. 获取实例并加行锁
 		inst, err := a.InstanceService.FindByIdForUpdate(ctx, tx, instanceID)
 		if err != nil {
@@ -1261,7 +1269,8 @@ func (a *App) RetryNode(ctx context.Context, instanceID int64, nodeID string) er
 	var stateToRestore string
 	var deleteFromIndex int = -1
 
-	err := base.DB.Transaction(func(tx *gorm.DB) error {
+	// 统一走 ExtractDB：与其他事务入口保持一致，避免以后被移入事务后踩死锁
+	err := mvc.ExtractDB(ctx, base.DB).Transaction(func(tx *gorm.DB) error {
 		inst, err := a.InstanceService.FindByIdForUpdate(ctx, tx, instanceID)
 		if err != nil {
 			return err
@@ -1338,7 +1347,8 @@ func (a *App) SendSignal(ctx context.Context, instanceID int64, signalName strin
 	var instance model.WorkflowInstanceModel
 	var dag model.DAG
 
-	err := base.DB.Transaction(func(tx *gorm.DB) error {
+	// 统一走 ExtractDB：与其他事务入口保持一致，避免以后被移入事务后踩死锁
+	err := mvc.ExtractDB(ctx, base.DB).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", instanceID).First(&instance).Error; err != nil {
 			return err
 		}
