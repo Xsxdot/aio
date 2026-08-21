@@ -22,6 +22,7 @@ func AutoMigrate(db *gorm.DB, log *logger.Log) error {
 		&model.WorkflowDefModel{},
 		&model.WorkflowInstanceModel{},
 		&model.WorkflowCheckpointModel{},
+		&model.WorkflowAppliedCallbackModel{},
 	)
 
 	if err != nil {

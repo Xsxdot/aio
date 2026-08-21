@@ -26,8 +26,10 @@ type App struct {
 	InstanceService   *service.WorkflowInstanceService
 	CheckpointService *service.WorkflowCheckpointService
 	ExecutorClient    *executorClient.ExecutorClient
-	log               *logger.Log
-	err               *errorc.ErrorBuilder
+	// AppliedCallbackDao 回调幂等标记，仅供 ReportNodeCompletedFromJob 在推进事务内使用
+	AppliedCallbackDao *dao.WorkflowAppliedCallbackDao
+	log                *logger.Log
+	err                *errorc.ErrorBuilder
 }
 
 // NewApp 创建内部 App
@@ -36,14 +38,20 @@ func NewApp(
 	instSvc *service.WorkflowInstanceService,
 	cpSvc *service.WorkflowCheckpointService,
 	execClient *executorClient.ExecutorClient,
+	acDaos ...*dao.WorkflowAppliedCallbackDao,
 ) *App {
+	var acDao *dao.WorkflowAppliedCallbackDao
+	if len(acDaos) > 0 {
+		acDao = acDaos[0]
+	}
 	return &App{
-		DefService:        defSvc,
-		InstanceService:   instSvc,
-		CheckpointService: cpSvc,
-		ExecutorClient:    execClient,
-		log:               logger.GetLogger().WithEntryName("WorkflowApp"),
-		err:               errorc.NewErrorBuilder("WorkflowApp"),
+		DefService:         defSvc,
+		InstanceService:    instSvc,
+		CheckpointService:  cpSvc,
+		ExecutorClient:     execClient,
+		AppliedCallbackDao: acDao,
+		log:                logger.GetLogger().WithEntryName("WorkflowApp"),
+		err:                errorc.NewErrorBuilder("WorkflowApp"),
 	}
 }
 

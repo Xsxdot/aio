@@ -157,7 +157,14 @@ func main() {
 				base.Logger.WithErr(err).Error("任务执行器清理任务执行失败")
 				return err
 			}
-			base.Logger.Info("任务执行器清理任务执行完成")
+			// 幂等标记保留 7 天：outbox 回调任务最多重试 5 次、总窗口远小于 7 天，
+			// 超过该窗口的标记不可能再被重放命中。
+			deleted, err := appRoot.WorkflowModule.CleanupAppliedCallbacks(ctx, time.Now().AddDate(0, 0, -7))
+			if err != nil {
+				base.Logger.WithErr(err).Error("回调幂等标记清理失败")
+				return err
+			}
+			base.Logger.WithField("applied_callback_deleted", deleted).Info("任务执行器清理任务执行完成")
 			return nil
 		},
 	)
