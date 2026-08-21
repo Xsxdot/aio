@@ -1,4 +1,9 @@
 # AI 服务配置示例
+# 工作流模块
+workflow:
+  # 任务完成回调投递方式：留空或 outbox（默认，可重试）；sync 退回同步回调（过渡用，将移除）
+  callback-mode: ""
+
 ai:
   # 供应商配置
   providers:

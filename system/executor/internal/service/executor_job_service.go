@@ -4,15 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/xsxdot/aio/base"
+	"github.com/xsxdot/aio/pkg/core/mvc"
 	"github.com/xsxdot/aio/system/executor/api/callback"
 	"github.com/xsxdot/aio/system/executor/api/dto"
 	"github.com/xsxdot/aio/system/executor/internal/dao"
 	"github.com/xsxdot/aio/system/executor/internal/model"
+	errorc "github.com/xsxdot/gokit/err"
 
 	"gorm.io/gorm"
 )
@@ -31,6 +34,7 @@ type ExecutorJobService struct {
 	dao      *dao.ExecutorJobDAO
 	handlers map[string]callback.JobCompletionHandler // 按 Source 注册的任务完成处理器
 	mu       sync.RWMutex
+	err      *errorc.ErrorBuilder
 }
 
 // NewExecutorJobService 创建任务服务实例
@@ -38,6 +42,7 @@ func NewExecutorJobService() *ExecutorJobService {
 	return &ExecutorJobService{
 		dao:      dao.NewExecutorJobDAO(),
 		handlers: make(map[string]callback.JobCompletionHandler),
+		err:      errorc.NewErrorBuilder("ExecutorJobService"),
 	}
 }
 
@@ -326,7 +331,7 @@ func (s *ExecutorJobService) RenewLease(ctx context.Context, jobID uint64, attem
 	job, err := s.dao.RenewLease(ctx, jobID, attemptNo, consumerID, extendDuration)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("任务不存在或租约信息不匹配")
+			return nil, s.err.New("任务不存在或租约信息不匹配", err).WithTraceID(ctx)
 		}
 		return nil, err
 	}
@@ -336,62 +341,153 @@ func (s *ExecutorJobService) RenewLease(ctx context.Context, jobID uint64, attem
 	return job, nil
 }
 
-// AckJob 确认任务执行结果
+// AckJob 确认任务执行结果。
+//
+// 参数：
+//   - jobID / attemptNo / consumerID: 定位任务与校验租约归属
+//   - status: 本次执行结果
+//   - errorMsg / errorType / resultJSON: 执行输出
+//   - retryAfter / stopRetry / addMaxAttempts: 重试控制
+//
+// 返回：确认失败或 outbox 提交失败时返回错误，调用方应重试整个 Ack。
+//
+// 注意：状态更新与回调 outbox 任务在同一事务内提交，因此不存在
+// 「任务已终态但回调丢失」的窗口——这正是本方法改造前的永久卡死成因。
 func (s *ExecutorJobService) AckJob(ctx context.Context, jobID uint64, attemptNo int32, consumerID string,
 	status model.JobStatus, errorMsg, resultJSON string, retryAfter int32,
 	stopRetry bool, addMaxAttempts int32, errorType string) error {
 
-	// Ack 前获取 Source、CallbackData（成功和最终失败时均需回调）
-	var source, callbackData string
-	job, preErr := s.dao.GetByID(ctx, jobID)
-	if preErr == nil && job.Source != "" {
-		source = job.Source
-		callbackData = job.CallbackData
-	}
+	return mvc.ExtractDB(ctx, base.DB).Transaction(func(tx *gorm.DB) error {
+		txCtx := mvc.WithTxToContext(ctx, tx)
 
-	err := s.dao.AckJob(ctx, jobID, attemptNo, consumerID, status, errorMsg, resultJSON, retryAfter,
-		stopRetry, addMaxAttempts, errorType)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("任务不存在或租约信息不匹配")
+		job, preErr := s.dao.GetByID(txCtx, jobID)
+		var source, callbackData, env string
+		if preErr == nil && job != nil {
+			source, callbackData, env = job.Source, job.CallbackData, job.Env
 		}
-		return err
-	}
 
-	base.Logger.Info("任务确认成功")
+		if err := s.dao.AckJob(txCtx, jobID, attemptNo, consumerID, status,
+			errorMsg, resultJSON, retryAfter, stopRetry, addMaxAttempts, errorType); err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return s.err.New("任务不存在或租约信息不匹配", err).WithTraceID(ctx)
+			}
+			return err
+		}
 
-	// 成功时按 Source 路由到对应 Handler
-	if status == model.JobStatusSucceeded && source != "" {
-		s.mu.RLock()
-		handler := s.handlers[source]
-		s.mu.RUnlock()
-		if handler != nil {
-			if cbErr := handler.OnJobCompleted(ctx, jobID, callbackData, resultJSON); cbErr != nil {
-				base.Logger.WithErr(cbErr).WithField("job_id", jobID).
-					WithField("source", source).Error("任务完成回调失败")
+		base.Logger.WithField("job_id", jobID).WithField("status", status).Info("任务确认成功")
+
+		if source == "" {
+			return nil
+		}
+
+		payloadJSON := resultJSON
+		needCallback := false
+		switch status {
+		case model.JobStatusSucceeded:
+			needCallback = true
+		case model.JobStatusFailed:
+			// 重试耗尽转死信时，Workflow 需要收到回调以走 error 边。
+			// 必须在同事务内回读——DAO 刚写入的状态尚未提交，走 base.DB 读不到。
+			after, aErr := s.dao.GetByID(txCtx, jobID)
+			if aErr == nil && after != nil && after.Status == model.JobStatusDead {
+				needCallback = true
+				b, marshalErr := json.Marshal(map[string]string{"error_msg": errorMsg})
+				if marshalErr != nil {
+					return s.err.New("序列化失败回调载荷失败", marshalErr).WithTraceID(ctx)
+				}
+				payloadJSON = string(b)
 			}
 		}
-		return nil
-	}
+		if !needCallback {
+			return nil
+		}
 
-	// 最终失败（重试耗尽或 stopRetry）时，Workflow 等组件需要收到回调以走 error 边
-	if status == model.JobStatusFailed && source != "" {
-		jobAfter, errAfter := s.dao.GetByID(ctx, jobID)
-		if errAfter == nil && jobAfter.Status == model.JobStatusDead {
+		if !callbackViaOutbox() {
+			// 过渡开关：退回改造前的同步回调。稳定后连同本分支一并删除。
 			s.mu.RLock()
 			handler := s.handlers[source]
 			s.mu.RUnlock()
-			if handler != nil {
-				errorPayloadBytes, _ := json.Marshal(map[string]string{"error_msg": errorMsg})
-				if cbErr := handler.OnJobCompleted(ctx, jobID, callbackData, string(errorPayloadBytes)); cbErr != nil {
-					base.Logger.WithErr(cbErr).WithField("job_id", jobID).
-						WithField("source", source).Error("任务最终失败回调失败")
-				}
+			if handler == nil {
+				return nil
 			}
+			if cbErr := handler.OnJobCompleted(ctx, jobID, callbackData, payloadJSON); cbErr != nil {
+				base.Logger.WithErr(cbErr).WithField("job_id", jobID).WithField("source", source).
+					Error("同步回调失败（sync 模式无重试，工作流可能卡死）")
+			}
+			return nil
 		}
+
+		return s.submitCallbackOutbox(txCtx, env, source, jobID, callbackData, payloadJSON)
+	})
+}
+
+// submitCallbackOutbox 在当前事务内提交一条承载完成回调的 outbox 任务。
+//
+// 注意：Source 必须留空。若非空，这条回调任务自身 Ack 时会再次生成回调任务，
+// 形成无限递归。
+func (s *ExecutorJobService) submitCallbackOutbox(ctx context.Context, env, source string,
+	jobID uint64, callbackData, resultJSON string) error {
+	payload := callback.CallbackPayload{
+		JobID:        jobID,
+		Source:       source,
+		CallbackData: callbackData,
+		ResultJSON:   resultJSON,
+	}
+	argsJSON, err := json.Marshal(payload)
+	if err != nil {
+		return s.err.New("序列化回调载荷失败", err).WithTraceID(ctx)
 	}
 
+	dedupKey := callback.OutboxDedupKeyPrefix + strconv.FormatUint(jobID, 10)
+	if _, err := s.SubmitJob(ctx, &dto.SubmitJobInput{
+		Env:              env,
+		TargetService:    callback.InternalTargetService,
+		Method:           callback.MethodJobCompletedCallback,
+		ArgsJSON:         string(argsJSON),
+		MaxAttempts:      callback.OutboxMaxAttempts,
+		Priority:         callback.OutboxPriority,
+		DedupKey:         dedupKey,
+		RetryBackoffType: dto.RetryBackoffExponential,
+		Source:           "",
+	}); err != nil {
+		base.Logger.WithErr(err).WithField("job_id", jobID).WithField("source", source).
+			Error("提交回调 outbox 任务失败，本次 Ack 将整体回滚")
+		return err
+	}
+
+	base.Logger.WithField("job_id", jobID).
+		WithField("source", source).
+		WithField("dedup_key", dedupKey).
+		Info("回调 outbox 任务已入队")
 	return nil
+}
+
+// callbackViaOutbox 判定是否走 outbox 回调。
+//
+// 注意：配置缺失（含测试环境 base.Configures 为 nil）时返回 true——
+// 未配置即新行为，退回同步回调必须显式配置 workflow.callback-mode: sync。
+func callbackViaOutbox() bool {
+	if base.Configures == nil {
+		return true
+	}
+	return base.Configures.Config.Workflow.CallbackMode != "sync"
+}
+
+// DispatchCompletionCallback 按 source 路由到已注册的完成处理器。
+//
+// 参数：source 为提交任务时指定的来源标识；jobID 为原始任务 ID。
+//
+// 返回：未注册对应 source 时返回错误（让 outbox 任务重试，
+// 避免注册时序问题导致回调被静默丢弃）。
+func (s *ExecutorJobService) DispatchCompletionCallback(ctx context.Context, source string,
+	jobID uint64, callbackData, resultJSON string) error {
+	s.mu.RLock()
+	handler := s.handlers[source]
+	s.mu.RUnlock()
+	if handler == nil {
+		return s.err.New("未注册 source 对应的完成处理器: "+source, nil).WithTraceID(ctx)
+	}
+	return handler.OnJobCompleted(ctx, jobID, callbackData, resultJSON)
 }
 
 // GetJob 获取任务详情
@@ -399,7 +495,7 @@ func (s *ExecutorJobService) GetJob(ctx context.Context, jobID uint64) (*model.E
 	job, err := s.dao.GetByID(ctx, jobID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("任务不存在")
+			return nil, s.err.New("任务不存在", err).WithTraceID(ctx)
 		}
 		return nil, err
 	}
@@ -466,14 +562,14 @@ func (s *ExecutorJobService) CancelJob(ctx context.Context, jobID uint64) error 
 	job, err := s.dao.GetByID(ctx, jobID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("任务不存在")
+			return s.err.New("任务不存在", err).WithTraceID(ctx)
 		}
 		return err
 	}
 
 	// 只有 pending 或 running（租约过期）的任务才能取消
 	if job.Status != model.JobStatusPending && job.Status != model.JobStatusRunning {
-		return errors.New("只有待执行或执行中的任务才能取消")
+		return s.err.New("只有待执行或执行中的任务才能取消", nil).WithTraceID(ctx)
 	}
 
 	err = s.dao.UpdateStatus(ctx, jobID, model.JobStatusCanceled)
@@ -491,7 +587,7 @@ func (s *ExecutorJobService) RequeueJob(ctx context.Context, jobID uint64, runAt
 	job, err := s.dao.GetByID(ctx, jobID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("任务不存在")
+			return s.err.New("任务不存在", err).WithTraceID(ctx)
 		}
 		return err
 	}
@@ -500,7 +596,7 @@ func (s *ExecutorJobService) RequeueJob(ctx context.Context, jobID uint64, runAt
 	if job.Status != model.JobStatusFailed &&
 		job.Status != model.JobStatusCanceled &&
 		job.Status != model.JobStatusDead {
-		return errors.New("只有失败、已取消或死信状态的任务才能重新入队")
+		return s.err.New("只有失败、已取消或死信状态的任务才能重新入队", nil).WithTraceID(ctx)
 	}
 
 	// 计算执行时间
@@ -618,14 +714,14 @@ func (s *ExecutorJobService) UpdateJobArgsJSON(ctx context.Context, jobID uint64
 	job, err := s.dao.GetByID(ctx, jobID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("任务不存在")
+			return s.err.New("任务不存在", err).WithTraceID(ctx)
 		}
 		return err
 	}
 
 	// 只有非 running 状态的任务才能修改参数
 	if job.Status == model.JobStatusRunning {
-		return errors.New("running 任务不允许修改参数")
+		return s.err.New("running 任务不允许修改参数", nil).WithTraceID(ctx)
 	}
 
 	// 更新参数

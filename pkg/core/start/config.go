@@ -39,6 +39,7 @@ type Config struct {
 	Proxy        config.ProxyConfig        `yaml:"proxy"`
 	GRPC         config.GRPCConfig         `yaml:"grpc"`
 	Sdk          config.SdkConfig          `yaml:"sdk"`
+	Workflow     config.WorkflowConfig     `yaml:"workflow"`
 }
 
 type Configures struct {
