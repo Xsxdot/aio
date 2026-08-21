@@ -435,7 +435,10 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 
 		// 如果实例已经失败/完成，且当前是成功回调，只记录 Checkpoint，不触发下游
 		if (instance.Status == model.InstanceStatusFailed || instance.Status == model.InstanceStatusCompleted || instance.Status == model.InstanceStatusCanceled) && !hasErrorMsg {
-			fmt.Printf("[TRACE-REPORT-LATE-SUCCESS] 实例已结束，记录迟到成功: instance_id=%d, node_id=%s, status=%s\n", instanceID, nodeID, instance.Status)
+			a.log.WithField("instance_id", instanceID).
+				WithField("node_id", nodeID).
+				WithField("status", instance.Status).
+				Info("实例已结束，仅记录迟到的成功回调")
 			// 解析状态
 			data, sys, err := parseWorkflowState(instance.CurrentState)
 			if err != nil {
@@ -732,27 +735,32 @@ func (a *App) ReportNodeCompleted(ctx context.Context, instanceID int64, nodeID 
 			return err
 		}
 
+		// 事务透传：ExecutorClient 是进程内直调、executor DAO 全线走 mvc.ExtractDB，
+		// 因此把 tx 放进 ctx 后，下游任务的 INSERT 与本次状态推进落在同一个事务。
+		// 这消除了「状态已提交、任务未入库」的崩溃窗口——此前该窗口会让实例停在
+		// RUNNING 且 ActiveNodeIDs 非空，但没有任何 executor job 存在，永久卡死。
+		txCtx := mvc.WithTxToContext(ctx, tx)
+		for _, nextNodeID := range nextNodeIDs {
+			node := dag.GetNode(nextNodeID)
+			if node == nil {
+				continue
+			}
+			if err := a.triggerNode(txCtx, &instance, node, &dag, env); err != nil {
+				a.log.WithErr(err).
+					WithField("instance_id", instance.ID).
+					WithField("node_id", node.ID).
+					Error("触发后续节点失败，整体回滚本次推进")
+				// 返回错误让整个事务回滚：要么状态推进且下游已入库，要么什么都没发生。
+				// 由承载本次回调的 outbox 任务重试兜底，不再需要把实例置 FAILED。
+				return err
+			}
+		}
+
 		return nil
 	})
 
 	if err != nil {
 		return a.err.New("完成节点流转失败", err)
-	}
-
-	// TX 提交成功后，触发新节点
-	for _, nextNodeID := range nextNodeIDs {
-		node := dag.GetNode(nextNodeID)
-		if node != nil {
-			if err := a.triggerNode(ctx, &instance, node, &dag, env); err != nil {
-				a.log.WithErr(err).Errorf("触发后续节点 %s 失败", node.ID)
-
-				// 修复：防假死机制。如果无法触发下个节点，将实例挂起为 FAILED
-				instance.Status = model.InstanceStatusFailed
-				if _, updErr := a.InstanceService.UpdateById(ctx, instance.ID, &instance); updErr != nil {
-					a.log.WithErr(updErr).Errorf("尝试将假死实例置为 FAILED 失败: %d", instance.ID)
-				}
-			}
-		}
 	}
 
 	return nil
