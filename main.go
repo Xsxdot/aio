@@ -114,6 +114,17 @@ func main() {
 	// 创建应用组合根
 	appRoot := app.NewApp()
 
+	// 启动内部回调 worker：消费 AckJob 产生的 outbox 回调任务。
+	// consumerID 必须跨实例唯一，否则多实例会争抢同一 slot 导致领取受阻。
+	hostname, _ := os.Hostname()
+	callbackConsumerID := fmt.Sprintf("aio-%s-%d", hostname, os.Getpid())
+	appRoot.ExecutorModule.StartInternalWorker(base.ENV, callbackConsumerID)
+	base.Logger.WithField("consumer_id", callbackConsumerID).Info("内部回调 worker 已注册")
+	system.RegisterClose(func() {
+		base.Logger.Info("正在关闭内部回调 worker...")
+		appRoot.ExecutorModule.StopInternalWorker()
+	})
+
 	// 初始化默认超级管理员（当 user_admin 表为空时自动创建 admin/admin）
 	if err := appRoot.UserModule.EnsureBootstrapSuperAdmin(context.Background()); err != nil {
 		configures.Logger.Panic(fmt.Sprintf("初始化默认超级管理员失败: %v", err))
